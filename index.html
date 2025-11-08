@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 科创平台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body class="theme-light">
+  <div id="app">
+    <!-- 首页：1 : 8 布局 -->
+    <section id="home-view" class="view active">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo scalehub-logo">
+            <div class="logo-m logo-m-1">M</div>
+            <div class="logo-m logo-m-2">M</div>
+          </div>
+          <div class="brand__name">ScaleHub</div>
+          <button id="themeToggle" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+        </div>
+
+        <nav class="sidebar__nav">
+          <div class="nav__group">
+            <div class="nav__title">Main Menu</div>
+            <ul class="nav__list">
+              <li>
+                <button class="nav__item is-active" data-menu="dashboard">
+                  <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2 4L8 1L14 4V13C14 13.5304 13.7893 14.0391 13.4142 14.4142C13.0391 14.7893 12.5304 15 12 15H4C3.46957 15 2.96086 14.7893 2.58579 14.4142C2.21071 14.0391 2 13.5304 2 13V4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M6 15V8H10V15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>Dashboard</span>
+                </button>
+              </li>
+              <li>
+                <button class="nav__item" data-menu="insight">
+                  <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 12L6 9L9 12L13 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M11 8H13V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>Insight</span>
+                </button>
+              </li>
+              <li>
+                <button class="nav__item" data-menu="invoices">
+                  <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M4 2H12C12.5304 2 13.0391 2.21071 13.4142 2.58579C13.7893 2.96086 14 3.46957 14 4V14C14 14.5304 13.7893 15.0391 13.4142 15.4142C13.0391 15.7893 12.5304 16 12 16H4C3.46957 16 2.96086 15.7893 2.58579 15.4142C2.21071 15.0391 2 14.5304 2 14V4C2 3.46957 2.21071 2.96086 2.58579 2.58579C2.96086 2.21071 3.46957 2 4 2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M5 6H11M5 10H9" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                  <span>Invoices</span>
+                </button>
+              </li>
+              <li>
+                <button class="nav__item" data-menu="products">
+                  <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 6L8 1L13 6M3 6L8 11L13 6M3 6H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8 11V1" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                  </svg>
+                  <span>Products</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </nav>
+
+        <div class="sidebar__profile">
+          <div class="profile__avatar">你</div>
+          <div class="profile__meta">
+            <div class="profile__name">个人中心</div>
+            <div class="profile__sub">已登录 · 研究者</div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="blue-ribbon-bg"></div>
+        <div class="container">
+          <header class="hero">
+            <div class="hero__top-cta">
+              <button class="btn-cta-top">
+                <span>⚡</span>
+                <span>Start Building with AI</span>
+                <span>→</span>
+              </button>
+            </div>
+            <h1 class="hero__title">Your Work. Supercharged by AI.</h1>
+            <p class="hero__sub">Automate tasks, get instant insights, and scale your productivity — all in one powerful SaaS platform.</p>
+            <div class="hero__actions">
+              <button class="btn btn--primary btn--large">Get Started</button>
+              <button class="btn btn--secondary btn--large">
+                <span>See Demo</span>
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M4 12L12 4M12 4H6M12 4V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </button>
+            </div>
+            <div class="hero__search" style="display: none;">
+              <div class="search__wrapper">
+                <svg class="search__icon" width="20" height="20" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M9 17C13.4183 17 17 13.4183 17 9C17 4.58172 13.4183 1 9 1C4.58172 1 1 4.58172 1 9C1 13.4183 4.58172 17 9 17Z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                  <path d="M19 19L14.65 14.65" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+                <input id="searchInput" class="input input--xl" placeholder="搜索科学工具…" />
+                <button id="searchBtn" class="btn btn--primary search__btn">搜索</button>
+              </div>
+            </div>
+          </header>
+
+          <section id="projectGrid" class="grid grid--auto"></section>
+        </div>
+      </main>
+    </section>
+
+    <!-- 详情页：1 : 4 : 4 布局 -->
+    <section id="detail-view" class="view">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo">AI</div>
+          <div class="brand__name">科创平台</div>
+          <button id="themeToggle2" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+        </div>
+
+        <div class="detail__sidectrl">
+          <button id="backBtnSide" class="btn btn--ghost">← 上一页</button>
+        </div>
+
+        <nav class="sidebar__nav" id="detailMenu"></nav>
+
+        <div class="sidebar__profile">
+          <div class="profile__avatar">你</div>
+          <div class="profile__meta">
+            <div class="profile__name">个人中心</div>
+            <div class="profile__sub">已登录 · 研究者</div>
+          </div>
+        </div>
+      </aside>
+
+      <section class="detail__middle">
+        <div class="detail__topbar">
+          <div class="detail__breadcrumbs">图像 · 去噪 · 背景</div>
+        </div>
+
+        <div class="detail__menu"></div>
+
+        <div class="detail__video" aria-label="视频演示区">
+          <div class="video__placeholder">视频区域（演示/讲解）</div>
+        </div>
+
+        <article class="detail__content">
+          <header class="article__head">
+            <h2 id="projectTitle" class="article__title">—</h2>
+            <div class="article__meta">—</div>
+          </header>
+          <div id="detailContent" class="article__section"></div>
+        </article>
+      </section>
+
+      <aside class="detail__qa">
+        <div class="qa__tabs">
+          <button class="qa__tab is-active" data-tab="paper">文献</button>
+          <div class="qa__split"></div>
+          <button class="qa__tab" data-tab="research">科研</button>
+        </div>
+        <div class="qa__messages" id="qaMessages">
+          <div class="msg msg--ai">
+            <div class="msg__avatar">AI</div>
+            <div class="msg__bubble">
+              <div class="msg__content">你好，我是 AI Agent，可为你检索相关文献与研究建议。</div>
+            </div>
+          </div>
+        </div>
+        <div class="qa__input">
+          <input id="qaInput" class="input" placeholder="向 AI 提问…（回车发送）" />
+        </div>
+      </aside>
+    </section>
+  </div>
+
+  <!-- 登录模态框 -->
+  <div id="loginModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content">
+      <button class="modal__close" id="closeModal">×</button>
+      <h2 class="modal__title">选择登录角色</h2>
+      <div class="modal__roles">
+        <button class="role__card" data-role="enterprise">
+          <div class="role__icon">🏢</div>
+          <div class="role__name">企业</div>
+          <div class="role__desc">可出题、数据上传</div>
+        </button>
+        <button class="role__card" data-role="teacher">
+          <div class="role__icon">👨‍🏫</div>
+          <div class="role__name">高校教师</div>
+          <div class="role__desc">可出题、数据上传</div>
+        </button>
+        <button class="role__card" data-role="user">
+          <div class="role__icon">👤</div>
+          <div class="role__name">普通使用者</div>
+          <div class="role__desc">浏览与学习</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 功能入口（登录后显示） -->
+  <div id="featureBar" class="feature-bar" style="display: none;">
+    <div class="feature-bar__content">
+      <span class="feature-bar__user">当前角色：<span id="currentRole"></span></span>
+      <div class="feature-bar__actions">
+        <button id="createProblemBtn" class="btn btn--primary">出题</button>
+        <button id="uploadDataBtn" class="btn btn--primary">数据上传</button>
+        <button id="logoutBtn" class="btn btn--ghost">退出登录</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
+
+

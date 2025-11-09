@@ -4,7 +4,6 @@
 
   const homeView = qs('#home-view');
   const detailView = qs('#detail-view');
-  const grid = qs('#projectGrid');
   const searchInput = qs('#searchInput');
   const searchBtn = qs('#searchBtn');
   const loginModal = qs('#loginModal');
@@ -14,6 +13,12 @@
   const createProblemBtn = qs('#createProblemBtn');
   const uploadDataBtn = qs('#uploadDataBtn');
   const logoutBtn = qs('#logoutBtn');
+  const homeNavBtn = qs('#homeNavBtn');
+  const projectsNavBtn = qs('#projectsNavBtn');
+  const createNavBtn = qs('#createNavBtn');
+  const homeHero = qs('#homeHero');
+  const projectsView = qs('#projectsView');
+  const projectsGrid = qs('#projectsGrid');
 
   let currentUserRole = null;
 
@@ -382,13 +387,13 @@
         position: absolute;
         width: ${size}px;
         height: ${size}px;
-        background: linear-gradient(135deg, rgba(201, 31, 46, 0.6), rgba(220, 38, 38, 0.6));
+        background: linear-gradient(135deg, rgba(160, 82, 45, 0.5), rgba(139, 69, 19, 0.5));
         border-radius: 50%;
         left: ${left}%;
         top: ${top}%;
         animation: ${animations[animIndex]} ${duration}s infinite ease-in-out;
         animation-delay: ${delay}s;
-        box-shadow: 0 0 ${Math.random() * 6 + 2}px rgba(201, 31, 46, 0.5);
+        box-shadow: 0 0 ${Math.random() * 6 + 2}px rgba(160, 82, 45, 0.4);
         pointer-events: none;
       `;
       particlesContainer.appendChild(particle);
@@ -406,14 +411,14 @@
     style.textContent = `
       @keyframes textGlow {
         0%, 100% {
-          text-shadow: 0 0 10px rgba(201, 31, 46, 0.3),
-                       0 0 20px rgba(201, 31, 46, 0.2),
-                       0 0 30px rgba(220, 38, 38, 0.1);
+          text-shadow: 0 0 10px rgba(160, 82, 45, 0.3),
+                       0 0 20px rgba(160, 82, 45, 0.2),
+                       0 0 30px rgba(139, 69, 19, 0.1);
         }
         50% {
-          text-shadow: 0 0 15px rgba(201, 31, 46, 0.5),
-                       0 0 30px rgba(201, 31, 46, 0.3),
-                       0 0 45px rgba(220, 38, 38, 0.2);
+          text-shadow: 0 0 15px rgba(160, 82, 45, 0.5),
+                       0 0 30px rgba(160, 82, 45, 0.3),
+                       0 0 45px rgba(139, 69, 19, 0.2);
         }
       }
       .particle-text-overlay {
@@ -421,6 +426,67 @@
       }
     `;
     document.head.appendChild(style);
+  }
+
+  // 扇形展开特效（放慢节奏）
+  function initFanSpreadAnimation() {
+    const fanElement = qs('#learnEveryHere');
+    if (!fanElement) return;
+
+    // 将文字拆分成单个字符
+    const text = fanElement.textContent.trim();
+    fanElement.innerHTML = '';
+    
+    const chars = text.split('');
+    const totalChars = chars.length;
+    const centerIndex = Math.floor(totalChars / 2);
+    
+    // 为每个字符创建span，并设置延迟和旋转角度（扇形展开）
+    chars.forEach((char, index) => {
+      const span = document.createElement('span');
+      span.textContent = char === '\u0020' ? '\u00A0' : char; // 空格用不间断空格
+      
+      // 计算相对于中心的位置，创建扇形效果
+      const offsetFromCenter = index - centerIndex;
+      const maxAngle = 20; // 更柔和
+      const initialAngle = centerIndex > 0 ? (offsetFromCenter / centerIndex) * maxAngle : 0;
+      const delay = Math.abs(offsetFromCenter) * 0.12; // 更慢
+      
+      span.style.animationDelay = `${delay}s`;
+      span.style.setProperty('--initial-angle', `${initialAngle}deg`);
+      fanElement.appendChild(span);
+    });
+
+    // 注入更慢的动画样式
+    const existing = document.getElementById('fanSpreadStyles');
+    if (existing) existing.remove();
+    const style = document.createElement('style');
+    style.id = 'fanSpreadStyles';
+    style.textContent = `
+      .hero__title-fan.fan-animate span {
+        animation: fanSpreadVar 1.8s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+      }
+      @keyframes fanSpreadVar {
+        0% {
+          opacity: 0;
+          transform: rotate(calc(var(--initial-angle, 0deg) - 50deg)) translateY(100px) scale(0.2);
+        }
+        50% {
+          opacity: 0.9;
+          transform: rotate(calc(var(--initial-angle, 0deg) + 5deg)) translateY(-15px) scale(1.2);
+        }
+        100% {
+          opacity: 1;
+          transform: rotate(0deg) translateY(0) scale(1);
+        }
+      }
+    `;
+    document.head.appendChild(style);
+
+    // 触发动画
+    setTimeout(() => {
+      fanElement.classList.add('fan-animate');
+    }, 200);
   }
 
   // 初始化动画效果
@@ -432,6 +498,9 @@
       createTechParticles();
       addTextGlow();
     }
+
+    // 初始化扇形展开动画
+    initFanSpreadAnimation();
   }
 
   // 页面加载完成后初始化
@@ -440,11 +509,13 @@
       if (homeView && homeView.classList.contains('active')) {
         initAnimations();
       }
+      showHomeView();
     });
   } else {
     if (homeView && homeView.classList.contains('active')) {
       initAnimations();
     }
+    showHomeView();
   }
 
   // 监听视图切换，在首页显示时启动动画
@@ -453,10 +524,18 @@
       initAnimations();
     }
   });
+  if (homeView) observer.observe(homeView, { attributes: true, attributeFilter: ['class'] });
 
-  if (homeView) {
-    observer.observe(homeView, { attributes: true, attributeFilter: ['class'] });
-  }
+  // 绑定侧边导航
+  if (homeNavBtn) homeNavBtn.addEventListener('click', showHomeView);
+  if (projectsNavBtn) projectsNavBtn.addEventListener('click', showProjectsView);
+  if (createNavBtn) createNavBtn.addEventListener('click', () => {
+    if (createProblemBtn) {
+      createProblemBtn.click();
+    } else if (loginModal) {
+      loginModal.classList.add('active');
+    }
+  });
 
   // 分类与项目数据
   const categories = [
@@ -491,15 +570,16 @@
     { id: 'p5', category: 'agent', subKey: 'research-agent', title: 'Agent · 科研助手', desc: '工作流编排与自动化研究。', likes: 141 }
   ];
 
-  // 渲染卡片
+  // 渲染项目卡片到 projectsGrid
   function renderCards(list) {
-    grid.innerHTML = '';
+    if (!projectsGrid) return;
+    projectsGrid.innerHTML = '';
     list.forEach(p => {
       const card = document.createElement('div');
       card.className = 'card';
       card.setAttribute('data-id', p.id);
       card.innerHTML = `
-        <div class="card__poster">${p.category.toUpperCase()}<span class="badge">Trending</span></div>
+        <div class="card__poster">${p.category.toUpperCase()}<span class="badge">精选</span></div>
         <div class="card__body">
           <div class="card__title">${p.title}</div>
           <div class="card__desc">${p.desc}</div>
@@ -507,8 +587,34 @@
         </div>
       `;
       card.addEventListener('click', () => openDetail(p));
-      grid.appendChild(card);
+      projectsGrid.appendChild(card);
     });
+  }
+
+  function setPrimaryNavActive(btn) {
+    [homeNavBtn, projectsNavBtn].forEach(b => b && b.classList.remove('is-active'));
+    if (btn) btn.classList.add('is-active');
+  }
+
+  function showHomeView() {
+    setPrimaryNavActive(homeNavBtn);
+    if (homeHero) homeHero.style.display = '';
+    if (projectsView) {
+      projectsView.classList.remove('is-active');
+      projectsView.style.display = 'none';
+    }
+    if (projectsGrid) projectsGrid.innerHTML = '';
+    initFanSpreadAnimation();
+  }
+
+  function showProjectsView() {
+    setPrimaryNavActive(projectsNavBtn);
+    if (homeHero) homeHero.style.display = 'none';
+    if (projectsView) {
+      projectsView.classList.add('is-active');
+      projectsView.style.display = '';
+    }
+    renderCards(projects);
   }
 
   // 渲染左侧分类（可展开）
@@ -666,14 +772,45 @@
     detailView.classList.toggle('active', !toHome);
   }
 
+  // 渲染项目列表到左侧导航
+  function renderProjectsList() {
+    const projectsList = qs('#projectsList');
+    const projectsMenuBtn = qs('#projectsMenuBtn');
+    
+    if (!projectsList || !projectsMenuBtn) return;
+
+    // 清空列表
+    projectsList.innerHTML = '';
+
+    // 渲染每个项目
+    projects.forEach(project => {
+      const li = document.createElement('li');
+      const button = document.createElement('button');
+      button.className = 'subitem';
+      button.textContent = project.title;
+      button.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openDetail(project);
+      });
+      li.appendChild(button);
+      projectsList.appendChild(li);
+    });
+
+    // 点击项目菜单按钮时切换显示
+    projectsMenuBtn.addEventListener('click', () => {
+      const isVisible = projectsList.style.display !== 'none';
+      projectsList.style.display = isVisible ? 'none' : 'block';
+      projectsMenuBtn.classList.toggle('is-active', !isVisible);
+    });
+  }
+
   // 首页分类渲染（替代旧的静态按钮）
   renderCategories();
+  renderProjectsList();
 
-  // 搜索
+  // 搜索（已移除，项目现在在左侧导航中）
   function performSearch() {
-    const kw = searchInput.value.trim().toLowerCase();
-    const list = projects.filter(p => (p.title + p.desc).toLowerCase().includes(kw));
-    renderCards(list);
+    // 搜索功能已移除，项目现在在左侧导航中显示
   }
 
   searchInput.addEventListener('input', performSearch);
@@ -781,10 +918,15 @@
 
   // 返回上一页（侧栏按钮）
   const backBtnSide = document.getElementById('backBtnSide');
-  backBtnSide.addEventListener('click', () => {
-    switchView('home');
-    history.pushState({ view: 'home' }, '', '#');
-  });
+  if (backBtnSide) {
+    backBtnSide.addEventListener('click', (e) => {
+      e.preventDefault();
+      // 直接回首页主页面
+      history.pushState({ view: 'home' }, '', '#');
+      switchView('home');
+      if (typeof showHomeView === 'function') showHomeView();
+    });
+  }
 
   // 轻量路由（前进后退）
   window.addEventListener('popstate', (e) => {
@@ -792,6 +934,7 @@
       switchView('detail');
     } else {
       switchView('home');
+      if (typeof showHomeView === 'function') showHomeView();
     }
   });
 
@@ -799,6 +942,27 @@
   const qaTabs = qsa('.qa__tab');
   const qaMessages = document.getElementById('qaMessages');
   const qaInput = document.getElementById('qaInput');
+  const qaSendBtn = document.getElementById('qaSendBtn');
+
+  function sendQaMessage() {
+    const text = (qaInput?.value || '').trim();
+    if (!text) return;
+    qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--user">
+      <div class="msg__avatar">你</div>
+      <div class="msg__bubble">
+        <div class="msg__content">${text}</div>
+      </div>
+    </div>`);
+    qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--ai">
+      <div class="msg__avatar">AI</div>
+      <div class="msg__bubble">
+        <div class="msg__content">（占位）正在为你检索与生成回答…</div>
+      </div>
+    </div>`);
+    qaMessages.scrollTop = qaMessages.scrollHeight;
+    qaInput.value = '';
+  }
+
   qaTabs.forEach(tab => tab.addEventListener('click', () => {
     qaTabs.forEach(t => t.classList.remove('is-active'));
     tab.classList.add('is-active');
@@ -809,29 +973,21 @@
       </div>
     </div>`;
   }));
-  qaInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && qaInput.value.trim()) {
-      const text = qaInput.value.trim();
-      qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--user">
-        <div class="msg__avatar">你</div>
-        <div class="msg__bubble">
-          <div class="msg__content">${text}</div>
-        </div>
-      </div>`);
-      qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--ai">
-        <div class="msg__avatar">AI</div>
-        <div class="msg__bubble">
-          <div class="msg__content">（占位）正在为你检索与生成回答…</div>
-        </div>
-      </div>`);
-      qaMessages.scrollTop = qaMessages.scrollHeight;
-      qaInput.value = '';
-    }
-  });
+
+  if (qaInput) {
+    qaInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        sendQaMessage();
+      }
+    });
+  }
+  if (qaSendBtn) {
+    qaSendBtn.addEventListener('click', sendQaMessage);
+  }
 
   // 初始化
-  renderCards(projects);
-  switchView('home');
+  showHomeView();
   // 恢复主题
   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
     document.body.classList.remove('theme-light');

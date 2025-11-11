@@ -525,7 +525,7 @@ body.has-feature-bar .content { padding-top: 68px; }
 .modal__close { position: absolute; top: 16px; right: 16px; width: 32px; height: 32px; border: none; background: var(--muted); border-radius: 50%; font-size: 24px; line-height: 1; cursor: pointer; color: var(--text); display: grid; place-items: center; }
 .modal__close:hover { background: var(--border); }
 .modal__title { margin: 0 0 24px; font-size: 24px; font-weight: 700; text-align: center; }
-.modal__roles { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.modal__roles { display: grid; grid-template-columns: repeat(2, 1fr); gap: 16px; }
 .role__card { display: flex; flex-direction: column; align-items: center; gap: 12px; padding: 24px; background: var(--bg-elev); border: 2px solid var(--border); border-radius: 12px; cursor: pointer; transition: all 0.2s; }
 .role__card:hover { border-color: var(--brand); transform: translateY(-2px); box-shadow: var(--shadow); }
 .role__icon { font-size: 48px; }
@@ -647,7 +647,7 @@ body.has-feature-bar .content { padding-top: 68px; }
 .notebook-cell.markdown-cell.editing:hover .cell-toolbar { opacity: 1; }
 
 /* 代码单元格 */
-.notebook-cell.code-cell { }
+.notebook-cell.code-cell { position: relative; }
 .cell-wrapper { position: relative; border: 1px solid #e0e0e0; border-radius: 4px; background: #f7f7f7; }
 .theme-dark .cell-wrapper { border-color: #404040; background: #2a2a2a; }
 
@@ -806,4 +806,262 @@ body.has-feature-bar .content { padding-top: 68px; }
 .reply-input:focus { outline: none; border-color: var(--brand); }
 .btn--small { height: 32px; padding: 0 16px; font-size: 13px; }
 
+/* ============================================
+   出题功能样式 - Problem Creation Styles
+   作者: zhaoziwei
+   说明: 独立的样式模块，使用 .problem-creation-* 前缀
+   ============================================ */
 
+/* 出题视图布局 */
+#create-view.view.active {
+  grid-template-columns: 240px 1fr;
+  column-gap: 24px;
+  padding: 0 24px;
+}
+
+/* 出题内容容器 */
+.problem-creation-content {
+  padding: 24px 0;
+  overflow-y: auto;
+  max-height: 100dvh;
+}
+
+.problem-creation-container {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+/* 出题头部 */
+.problem-creation-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 32px;
+}
+
+.problem-creation-title {
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--text);
+  margin: 0;
+}
+
+/* 出题表单 */
+.problem-creation-form {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.problem-creation-form .form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.problem-creation-form .form-label {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.problem-creation-form .required {
+  color: #e74c3c;
+}
+
+.problem-creation-form .form-hint {
+  font-size: 12px;
+  color: var(--text-2);
+  margin-top: -4px;
+}
+
+.problem-creation-form .input,
+.problem-creation-form textarea,
+.problem-creation-form select {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elev);
+  color: var(--text);
+  font-size: 14px;
+  font-family: inherit;
+  transition: border-color 0.2s;
+}
+
+.problem-creation-form .input:focus,
+.problem-creation-form textarea:focus,
+.problem-creation-form select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(160, 82, 45, 0.1);
+}
+
+.problem-creation-form textarea {
+  resize: vertical;
+  min-height: 120px;
+  line-height: 1.6;
+}
+
+.problem-creation-form .form-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 8px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+/* 响应式 */
+@media (max-width: 680px) {
+  #create-view.view.active {
+    grid-template-columns: 1fr;
+    padding: 0 16px;
+  }
+  
+  .problem-creation-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 16px;
+  }
+  
+  .problem-creation-form .form-actions {
+    flex-direction: column-reverse;
+  }
+  
+  .problem-creation-form .form-actions button {
+    width: 100%;
+  }
+}
+
+/* ============================================
+   审核功能样式 - Admin Review Styles
+   作者: zhaoziwei
+   说明: 独立的审核功能样式，使用 .review-* 前缀
+   ============================================ */
+
+/* 审核列表容器 */
+.review-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 4px;
+}
+
+.review-empty {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+/* 审核条目 */
+.review-item {
+  padding: 20px;
+  background: var(--bg-elev);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  transition: all 0.2s;
+}
+
+.review-item:hover {
+  border-color: var(--brand);
+  box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+
+.review-item__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 16px;
+}
+
+.review-item__title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text);
+  margin: 0 0 8px 0;
+}
+
+.review-item__meta {
+  font-size: 12px;
+  color: var(--text-2);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.review-item__status {
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.review-item__status--pending {
+  background: #fff3cd;
+  color: #856404;
+}
+
+.theme-dark .review-item__status--pending {
+  background: #6c5614;
+  color: #fff3cd;
+}
+
+.review-item__content {
+  margin: 16px 0;
+}
+
+.review-item__field {
+  margin-bottom: 16px;
+}
+
+.review-item__field-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-2);
+  margin-bottom: 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.review-item__field-value {
+  font-size: 14px;
+  color: var(--text);
+  line-height: 1.6;
+}
+
+.review-item__field-value.pre-wrap {
+  white-space: pre-wrap;
+  background: var(--bg);
+  padding: 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+}
+
+.review-item__actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid var(--border);
+}
+
+/* 响应式 */
+@media (max-width: 680px) {
+  .review-item__header {
+    flex-direction: column;
+    gap: 12px;
+  }
+  
+  .review-item__actions {
+    flex-direction: column;
+  }
+  
+  .review-item__actions button {
+    width: 100%;
+  }
+}

@@ -4,6 +4,7 @@
 
   const homeView = qs('#home-view');
   const detailView = qs('#detail-view');
+  const createViewGlobal = qs('#create-view');  // 用于视图切换
   const searchInput = qs('#searchInput');
   const searchBtn = qs('#searchBtn');
   const loginModal = qs('#loginModal');
@@ -540,14 +541,30 @@
     toggleCategoryList();
   });
   if (createNavBtn) createNavBtn.addEventListener('click', () => {
-    if (createProblemBtn) {
-      createProblemBtn.click();
-    } else if (loginModal) {
-      loginModal.classList.add('active');
+    // 检查权限
+    if (currentUserRole === 'enterprise' || currentUserRole === 'teacher') {
+      // 跳转到出题页面
+      history.pushState({ view: 'create' }, '', '#create');
+      switchView('create');
+      // 重置表单
+      const form = qs('#createProblemForm');
+      if (form) form.reset();
+    } else if (currentUserRole) {
+      alert('您没有出题权限，只有企业或高校教师可以出题。');
+    } else {
+      // 未登录，显示登录模态框
+      if (loginModal) loginModal.classList.add('active');
     }
   });
 
-  // 分类与项目数据
+  // ============================================
+  // 数据管理模块 - Data Management Module
+  // ============================================
+  // 说明: 管理项目和分类数据，支持 localStorage 持久化
+  
+  const STORAGE_KEY_PROJECTS = 'ai_platform_projects';
+  
+  // 分类数据（保持不变）
   const categories = [
     { key: 'image', name: '图像', items: [
       { key: 'cam-denoise', name: '相机的图像去噪' },
@@ -569,16 +586,80 @@
     ]}
   ];
 
-  const projects = [
-    { id: 'p1', category: 'image', subKey: 'cam-denoise', title: '相机的图像去噪 · 实验版', desc: '复杂背景下的高保真去噪。', likes: 128 },
-    { id: 'p6', category: 'image', subKey: 'photo-restore', title: '照片的图像修复 · 划痕', desc: '老照片划痕修复与细节重建。', likes: 64 },
-    { id: 'p2', category: 'audio', subKey: 'speech-enhance', title: '语音增强 · 远场', desc: '远场语音的清晰化处理。', likes: 76 },
-    { id: 'p7', category: 'audio', subKey: 'speech-separate', title: '语音分离 · 鸣噪', desc: '音乐与语音的自适应分离。', likes: 58 },
-    { id: 'p3', category: 'llm', subKey: 'knowledge-retrieval', title: 'LLM · 知识检索', desc: '检索增强生成。', likes: 203 },
-    { id: 'p8', category: 'llm', subKey: 'code-assistant', title: 'LLM · 代码助手', desc: '上下文感知的编程辅助。', likes: 312 },
-    { id: 'p4', category: 'mllm', subKey: 'vision-language', title: 'MLLM · 图文理解', desc: '多模态语义对齐与问答。', likes: 97 },
-    { id: 'p5', category: 'agent', subKey: 'research-agent', title: 'Agent · 科研助手', desc: '工作流编排与自动化研究。', likes: 141 }
+  // 默认项目数据（作为初始数据）
+  const defaultProjects = [
+    { id: 'p1', category: 'image', subKey: 'cam-denoise', title: '相机的图像去噪 · 实验版', desc: '复杂背景下的高保真去噪。', likes: 128, status: 'approved' },
+    { id: 'p6', category: 'image', subKey: 'photo-restore', title: '照片的图像修复 · 划痕', desc: '老照片划痕修复与细节重建。', likes: 64, status: 'approved' },
+    { id: 'p2', category: 'audio', subKey: 'speech-enhance', title: '语音增强 · 远场', desc: '远场语音的清晰化处理。', likes: 76, status: 'approved' },
+    { id: 'p7', category: 'audio', subKey: 'speech-separate', title: '语音分离 · 鸣噪', desc: '音乐与语音的自适应分离。', likes: 58, status: 'approved' },
+    { id: 'p3', category: 'llm', subKey: 'knowledge-retrieval', title: 'LLM · 知识检索', desc: '检索增强生成。', likes: 203, status: 'approved' },
+    { id: 'p8', category: 'llm', subKey: 'code-assistant', title: 'LLM · 代码助手', desc: '上下文感知的编程辅助。', likes: 312, status: 'approved' },
+    { id: 'p4', category: 'mllm', subKey: 'vision-language', title: 'MLLM · 图文理解', desc: '多模态语义对齐与问答。', likes: 97, status: 'approved' },
+    { id: 'p5', category: 'agent', subKey: 'research-agent', title: 'Agent · 科研助手', desc: '工作流编排与自动化研究。', likes: 141, status: 'approved' }
   ];
+  
+  /**
+   * 初始化项目数据
+   * 从 localStorage 加载，如果没有则使用默认数据
+   */
+  function initProjectsData() {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_PROJECTS);
+      
+      if (stored) {
+        // 使用存储的数据
+        const storedProjects = JSON.parse(stored);
+        console.log('[DataManagement] 从 localStorage 加载项目，数量:', storedProjects.length);
+        return storedProjects;
+      } else {
+        // 使用默认数据并保存
+        console.log('[DataManagement] 使用默认项目数据并保存到 localStorage');
+        localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(defaultProjects));
+        return defaultProjects;
+      }
+    } catch (e) {
+      console.error('[DataManagement] 初始化项目数据失败:', e);
+      return defaultProjects;
+    }
+  }
+  
+  // 初始化项目列表（从 localStorage 或默认数据）
+  const projects = initProjectsData();
+  
+  // 暴露到全局（供其他模块使用）
+  window.projects = projects;
+  
+  /**
+   * 监听项目更新事件
+   * 当新项目被审核通过后，自动更新项目列表
+   */
+  window.addEventListener('projectsUpdated', (e) => {
+    const { projects: newProjects } = e.detail;
+    console.log('[DataManagement] 接收到项目更新事件，新项目数量:', newProjects.length);
+    
+    // 更新 localStorage
+    try {
+      localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(newProjects));
+    } catch (err) {
+      console.error('[DataManagement] 保存项目到 localStorage 失败:', err);
+    }
+    
+    // 更新全局 projects 数组
+    window.projects.length = 0;
+    window.projects.push(...newProjects);
+    
+    // 如果当前在项目视图，重新渲染
+    if (projectsView && projectsView.classList.contains('is-active')) {
+      renderCards(window.projects);
+    }
+    
+    // 更新左侧导航列表
+    if (typeof renderProjectsList === 'function') {
+      renderProjectsList();
+    }
+    
+    console.log('[DataManagement] 项目列表已更新 ✓');
+  });
 
   // 渲染项目卡片到 projectsGrid
   function renderCards(list) {
@@ -641,6 +722,9 @@
     if (projectsGrid) projectsGrid.innerHTML = '';
     initFanSpreadAnimation();
   }
+  
+  // 暴露到全局（供模块使用）
+  window.showHomeView = showHomeView;
 
   function showProjectsView() {
     console.log('显示项目视图');
@@ -1412,7 +1496,7 @@
         'background': `
 <div class="content-section">
   <h2>背景</h2>
-  <p>在真实相机成像链路中，噪声来源包括读出噪声、光子噪声以及 ISP 处理引入的复合噪声。低照度、运动模糊与复杂背景进一步放大噪声影响，导致细节丢失与纹理伪影。</p>
+        <p>在真实相机成像链路中，噪声来源包括读出噪声、光子噪声以及 ISP 处理引入的复合噪声。低照度、运动模糊与复杂背景进一步放大噪声影响，导致细节丢失与纹理伪影。</p>
   
   <h3>数据来源</h3>
   <p>合成+真实数据集（DND、SIDD、自采样室内外场景）。</p>
@@ -1425,7 +1509,7 @@
     <li>弱光噪声分布不均</li>
     <li>跨设备域泛化</li>
     <li>速度与质量的平衡</li>
-  </ul>
+        </ul>
   
   <div class="code-block">
     <div class="code-header">Python</div>
@@ -2093,10 +2177,23 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
   }
 
   function switchView(view) {
-    const toHome = view === 'home';
-    homeView.classList.toggle('active', toHome);
-    detailView.classList.toggle('active', !toHome);
+    // 隐藏所有视图
+    if (homeView) homeView.classList.remove('active');
+    if (detailView) detailView.classList.remove('active');
+    if (createViewGlobal) createViewGlobal.classList.remove('active');
+    
+    // 显示目标视图
+    if (view === 'home' && homeView) {
+      homeView.classList.add('active');
+    } else if (view === 'detail' && detailView) {
+      detailView.classList.add('active');
+    } else if (view === 'create' && createViewGlobal) {
+      createViewGlobal.classList.add('active');
+    }
   }
+  
+  // 暴露到全局（供模块使用）
+  window.switchView = switchView;
 
   // 渲染项目列表到左侧导航
   function renderProjectsList() {
@@ -2355,15 +2452,24 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     });
   }
 
-  // 角色选择登录（改为显示登录表单）
+  // 角色选择登录（测试模式：直接登录）
   roleCards.forEach(card => {
     card.addEventListener('click', () => {
+      const role = card.getAttribute('data-role');
+      const roleNames = {
+        'enterprise': '企业用户',
+        'teacher': '教师用户',
+        'user': '普通用户',
+        'admin': '管理员'
+      };
+      
+      // 测试模式：直接登录，无需注册
+      const username = roleNames[role] || role;
+      handleLogin(role, username);
+      
       if (loginModal) loginModal.classList.remove('active');
-      // 直接显示登录表单
-      setTimeout(() => {
-        showLoginForm();
-        loginModal.classList.add('active');
-      }, 100);
+      
+      console.log(`[登录] 角色: ${role}, 用户名: ${username}`);
     });
   });
 
@@ -2372,7 +2478,8 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     const roleNames = {
       'enterprise': '企业',
       'teacher': '高校教师',
-      'user': '普通使用者'
+      'user': '普通使用者',
+      'admin': '管理员'
     };
 
     if (currentRoleEl) {
@@ -2384,15 +2491,25 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
       document.body.classList.add('has-feature-bar');
     }
 
+    // 获取审核按钮
+    const adminReviewBtn = qs('#adminReviewBtn');
+
     // 根据角色显示/隐藏功能按钮
-    if (createProblemBtn && uploadDataBtn) {
       if (role === 'enterprise' || role === 'teacher') {
-        createProblemBtn.style.display = 'inline-block';
-        uploadDataBtn.style.display = 'inline-block';
+      // 企业和教师：显示出题和上传按钮
+      if (createProblemBtn) createProblemBtn.style.display = 'inline-block';
+      if (uploadDataBtn) uploadDataBtn.style.display = 'inline-block';
+      if (adminReviewBtn) adminReviewBtn.style.display = 'none';
+    } else if (role === 'admin') {
+      // 管理员：显示所有按钮
+      if (createProblemBtn) createProblemBtn.style.display = 'inline-block';
+      if (uploadDataBtn) uploadDataBtn.style.display = 'inline-block';
+      if (adminReviewBtn) adminReviewBtn.style.display = 'inline-block';
       } else {
-        createProblemBtn.style.display = 'none';
-        uploadDataBtn.style.display = 'none';
-      }
+      // 普通用户：隐藏所有按钮
+      if (createProblemBtn) createProblemBtn.style.display = 'none';
+      if (uploadDataBtn) uploadDataBtn.style.display = 'none';
+      if (adminReviewBtn) adminReviewBtn.style.display = 'none';
     }
 
     // 更新侧边栏个人中心信息
@@ -2404,7 +2521,17 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
 
   if (createProblemBtn) {
     createProblemBtn.addEventListener('click', () => {
-      alert('出题功能开发中...');
+      // 检查权限
+      if (currentUserRole === 'enterprise' || currentUserRole === 'teacher') {
+        // 跳转到出题页面
+        history.pushState({ view: 'create' }, '', '#create');
+        switchView('create');
+        // 重置表单
+        const form = qs('#createProblemForm');
+        if (form) form.reset();
+      } else {
+        alert('您没有出题权限，只有企业或高校教师可以出题。');
+      }
     });
   }
 
@@ -2444,6 +2571,8 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
   window.addEventListener('popstate', (e) => {
     if (e.state?.view === 'detail') {
       switchView('detail');
+    } else if (e.state?.view === 'create') {
+      switchView('create');
     } else {
       switchView('home');
       if (typeof showHomeView === 'function') showHomeView();
@@ -2903,6 +3032,729 @@ tensorboard>=2.13.0`
       content.innerHTML = saved;
     }
   }
+
+  // ============================================
+  // 出题功能模块 - Problem Creation Module
+  // ============================================
+  // 作者: zhaoziwei
+  // 说明: 独立的出题功能模块，通过数据接口与其他模块交互
+  
+  (function ProblemCreationModule() {
+    'use strict';  // 严格模式，避免变量污染
+    
+    // ========== 模块配置 ==========
+    const MODULE_NAME = 'ProblemCreation';
+    const STORAGE_KEY_PENDING = 'ai_platform_pending_problems';
+    const STORAGE_KEY_PROJECTS = 'ai_platform_projects';
+    
+    // ========== DOM 元素（模块私有） ==========
+    const createView = qs('#create-view');
+    const createProblemForm = qs('#createProblemForm');
+    const backFromCreateBtn = qs('#backFromCreateBtn');
+    const closeCreateViewBtn = qs('#closeCreateViewBtn');
+    const cancelCreateBtn = qs('#cancelCreateBtn');
+    const themeToggle3 = qs('#themeToggle3');
+    
+    // ========== 数据接口函数（对外暴露） ==========
+    
+    /**
+     * 获取待审核题目列表
+     * @returns {Array} 待审核题目数组
+     */
+    function getPendingProblems() {
+      try {
+        const data = localStorage.getItem(STORAGE_KEY_PENDING);
+        return data ? JSON.parse(data) : [];
+      } catch (e) {
+        console.error(`[${MODULE_NAME}] 读取待审核题目失败:`, e);
+        return [];
+      }
+    }
+    
+    /**
+     * 保存待审核题目列表
+     * @param {Array} problems - 题目数组
+     */
+    function savePendingProblems(problems) {
+      try {
+        localStorage.setItem(STORAGE_KEY_PENDING, JSON.stringify(problems));
+        // 触发自定义事件，通知其他模块数据已更新
+        window.dispatchEvent(new CustomEvent('pendingProblemsUpdated', {
+          detail: { problems }
+        }));
+        console.log(`[${MODULE_NAME}] 待审核题目已保存，数量:`, problems.length);
+      } catch (e) {
+        console.error(`[${MODULE_NAME}] 保存待审核题目失败:`, e);
+      }
+    }
+    
+    /**
+     * 获取已发布项目列表
+     * @returns {Array} 项目数组
+     */
+    function getPublishedProjects() {
+      try {
+        const data = localStorage.getItem(STORAGE_KEY_PROJECTS);
+        return data ? JSON.parse(data) : [];
+      } catch (e) {
+        console.error(`[${MODULE_NAME}] 读取项目列表失败:`, e);
+        return [];
+      }
+    }
+    
+    /**
+     * 添加新项目到已发布列表（由审核模块调用）
+     * @param {Object} project - 项目对象
+     */
+    function addPublishedProject(project) {
+      try {
+        const projects = getPublishedProjects();
+        projects.push(project);
+        localStorage.setItem(STORAGE_KEY_PROJECTS, JSON.stringify(projects));
+        // 触发自定义事件，通知其他模块数据已更新
+        window.dispatchEvent(new CustomEvent('projectsUpdated', {
+          detail: { projects }
+        }));
+        console.log(`[${MODULE_NAME}] 项目已添加:`, project.title);
+      } catch (e) {
+        console.error(`[${MODULE_NAME}] 添加项目失败:`, e);
+      }
+    }
+    
+    // ========== 模块内部函数 ==========
+    
+    /**
+     * 获取当前用户角色（从全局状态）
+     */
+    function getCurrentUserRole() {
+      return window.currentUserRole || 'user';
+    }
+    
+    /**
+     * 获取当前用户名（从全局状态或 profileSubs）
+     */
+    function getCurrentUsername() {
+      const profileSub = qs('.profile__sub');
+      if (profileSub) {
+        const text = profileSub.textContent;
+        const match = text.match(/·\s*(.+?)$/);
+        if (match && match[1] && match[1] !== '访客' && match[1] !== '研究者') {
+          return match[1].trim();
+        }
+      }
+      return getCurrentUserRole();
+    }
+    
+    /**
+     * 收集表单数据
+     */
+    function collectFormData() {
+      if (!createProblemForm) return null;
+      
+      return {
+        title: qs('#problemTitle', createProblemForm)?.value.trim() || '',
+        category: qs('#problemCategory', createProblemForm)?.value || '',
+        subKey: qs('#problemSubKey', createProblemForm)?.value.trim() || '',
+        desc: qs('#problemDesc', createProblemForm)?.value.trim() || '',
+        background: qs('#problemBackground', createProblemForm)?.value.trim() || ''
+      };
+    }
+    
+    /**
+     * 验证表单数据
+     */
+    function validateFormData(data) {
+      if (!data) {
+        showErrorMessage('表单数据无效');
+        return false;
+      }
+      
+      if (!data.title || !data.category || !data.subKey || !data.desc) {
+        showErrorMessage('请填写所有必填字段！');
+        return false;
+      }
+      
+      // 验证子分类键格式
+      const subKeyPattern = /^[a-z0-9-]+$/;
+      if (!subKeyPattern.test(data.subKey)) {
+        showErrorMessage('子分类键格式不正确！请使用英文小写字母、数字和连字符。');
+        return false;
+      }
+      
+      return true;
+    }
+    
+    /**
+     * 创建题目对象
+     */
+    function createProblemObject(formData) {
+      const userRole = getCurrentUserRole();
+      const username = getCurrentUsername();
+      
+      return {
+        // 基础信息
+        id: 'p' + Date.now(),
+        category: formData.category,
+        subKey: formData.subKey,
+        title: formData.title,
+        desc: formData.desc,
+        background: formData.background || '',
+        
+        // 状态信息
+        status: 'pending',
+        likes: 0,
+        createdAt: new Date().toISOString(),
+        createdBy: userRole,
+        createdByUsername: username,
+        
+        // 详情内容（初始为空，审核通过后可编辑）
+        detailContent: null
+      };
+    }
+    
+    /**
+     * 处理表单提交
+     */
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      console.log(`[${MODULE_NAME}] 表单提交`);
+      
+      // 收集表单数据
+      const formData = collectFormData();
+      
+      // 验证数据
+      if (!validateFormData(formData)) {
+        return;
+      }
+      
+      // 创建题目对象
+      const problem = createProblemObject(formData);
+      console.log(`[${MODULE_NAME}] 创建题目对象:`, problem);
+      
+      // 保存到待审核列表
+      const pendingList = getPendingProblems();
+      pendingList.push(problem);
+      savePendingProblems(pendingList);
+      
+      // 显示成功提示
+      showSuccessMessage('题目已提交，等待管理员审核！');
+      
+      // 重置表单
+      createProblemForm.reset();
+      
+      // 返回首页
+      navigateToHome();
+    }
+    
+    /**
+     * 导航到首页
+     */
+    function navigateToHome() {
+      console.log(`[${MODULE_NAME}] 导航到首页`);
+      
+      // 更新 URL
+      if (window.history && window.history.pushState) {
+        window.history.pushState({ view: 'home' }, '', '#');
+      }
+      
+      // 调用全局的视图切换函数
+      if (typeof window.switchView === 'function') {
+        window.switchView('home');
+      }
+      
+      // 调用首页视图函数（如果存在）
+      if (typeof window.showHomeView === 'function') {
+        window.showHomeView();
+      }
+    }
+    
+    /**
+     * 显示成功消息
+     */
+    function showSuccessMessage(message) {
+      alert(message);  // 使用简单的 alert，后续可替换为更优雅的提示
+    }
+    
+    /**
+     * 显示错误消息
+     */
+    function showErrorMessage(message) {
+      alert(message);  // 使用简单的 alert，后续可替换为更优雅的提示
+    }
+    
+    /**
+     * 初始化表单
+     */
+    function initForm() {
+      if (!createProblemForm) {
+        console.warn(`[${MODULE_NAME}] 表单元素未找到`);
+        return;
+      }
+      
+      // 绑定提交事件
+      createProblemForm.addEventListener('submit', handleFormSubmit);
+      console.log(`[${MODULE_NAME}] 表单事件已绑定`);
+    }
+    
+    /**
+     * 初始化导航按钮
+     */
+    function initNavigationButtons() {
+      // 返回主页按钮（侧边栏）
+      if (backFromCreateBtn) {
+        backFromCreateBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log(`[${MODULE_NAME}] 返回按钮被点击`);
+          navigateToHome();
+        });
+      }
+      
+      // 关闭按钮（头部）
+      if (closeCreateViewBtn) {
+        closeCreateViewBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log(`[${MODULE_NAME}] 关闭按钮被点击`);
+          navigateToHome();
+        });
+      }
+      
+      // 取消按钮（表单）
+      if (cancelCreateBtn) {
+        cancelCreateBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log(`[${MODULE_NAME}] 取消按钮被点击`);
+          
+          // 询问是否确认取消
+          if (createProblemForm && createProblemForm.checkValidity && createProblemForm.checkValidity()) {
+            const formData = collectFormData();
+            if (formData && (formData.title || formData.desc)) {
+              if (confirm('表单有未保存的内容，确定要取消吗？')) {
+                createProblemForm.reset();
+                navigateToHome();
+              }
+              return;
+            }
+          }
+          
+          createProblemForm.reset();
+          navigateToHome();
+        });
+      }
+      
+      console.log(`[${MODULE_NAME}] 导航按钮事件已绑定`);
+    }
+    
+    /**
+     * 初始化主题切换（出题页面）
+     */
+    function initThemeToggle() {
+      if (themeToggle3) {
+        themeToggle3.addEventListener('click', () => {
+          document.body.classList.toggle('theme-dark');
+          document.body.classList.toggle('theme-light');
+        });
+      }
+    }
+    
+    /**
+     * 模块初始化
+     */
+    function init() {
+      if (!createView) {
+        console.warn(`[${MODULE_NAME}] 出题视图未找到，模块未初始化`);
+        return;
+      }
+      
+      initForm();
+      initNavigationButtons();
+      initThemeToggle();
+      
+      console.log(`[${MODULE_NAME}] 模块初始化完成 ✓`);
+    }
+    
+    // ========== 模块导出 ==========
+    // 将需要对外暴露的函数挂载到全局对象
+    
+    window.ProblemCreation = {
+      getPendingProblems,
+      savePendingProblems,
+      getPublishedProjects,
+      addPublishedProject,
+      init
+    };
+    
+    // 自动初始化
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+    
+  })();
+  // ========== 出题功能模块结束 ==========
+
+  // ============================================
+  // 审核功能模块 - Admin Review Module
+  // ============================================
+  // 作者: zhaoziwei
+  // 说明: 管理员审核功能模块，与出题模块协同工作
+  
+  (function AdminReviewModule() {
+    'use strict';  // 严格模式
+    
+    // ========== 模块配置 ==========
+    const MODULE_NAME = 'AdminReview';
+    
+    // ========== DOM 元素（模块私有） ==========
+    const adminReviewBtn = qs('#adminReviewBtn');
+    const adminReviewModal = qs('#adminReviewModal');
+    const closeReviewModal = qs('#closeReviewModal');
+    const reviewList = qs('#reviewList');
+    
+    // ========== 辅助函数 ==========
+    
+    /**
+     * 格式化日期时间
+     */
+    function formatDateTime(isoString) {
+      const date = new Date(isoString);
+      return date.toLocaleString('zh-CN', {
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+    }
+    
+    /**
+     * 获取分类中文名
+     */
+    function getCategoryName(categoryKey) {
+      const categoryNames = {
+        'image': '图像',
+        'audio': '语音',
+        'llm': 'LLM',
+        'mllm': 'MLLM',
+        'agent': 'Agent'
+      };
+      return categoryNames[categoryKey] || categoryKey;
+    }
+    
+    /**
+     * 获取角色中文名
+     */
+    function getRoleName(roleKey) {
+      const roleNames = {
+        'enterprise': '企业',
+        'teacher': '高校教师',
+        'user': '普通使用者'
+      };
+      return roleNames[roleKey] || roleKey;
+    }
+    
+    // ========== 核心功能函数 ==========
+    
+    /**
+     * 渲染审核列表
+     */
+    function renderReviewList() {
+      if (!reviewList) {
+        console.warn(`[${MODULE_NAME}] reviewList 元素未找到`);
+        return;
+      }
+      
+      // 获取待审核列表
+      const pendingProblems = window.ProblemCreation 
+        ? window.ProblemCreation.getPendingProblems() 
+        : [];
+      
+      console.log(`[${MODULE_NAME}] 待审核题目数量:`, pendingProblems.length);
+      
+      // 如果没有待审核题目
+      if (pendingProblems.length === 0) {
+        reviewList.innerHTML = '<div class="review-empty">暂无待审核题目</div>';
+        return;
+      }
+      
+      // 渲染审核条目
+      reviewList.innerHTML = '';
+      
+      pendingProblems.forEach((problem, index) => {
+        const item = document.createElement('div');
+        item.className = 'review-item';
+        item.setAttribute('data-index', index);
+        
+        item.innerHTML = `
+          <div class="review-item__header">
+            <div>
+              <h3 class="review-item__title">${problem.title}</h3>
+              <div class="review-item__meta">
+                <span>提交者：${getRoleName(problem.createdBy)} · ${problem.createdByUsername}</span>
+                <span>提交时间：${formatDateTime(problem.createdAt)}</span>
+              </div>
+            </div>
+            <span class="review-item__status review-item__status--pending">待审核</span>
+          </div>
+          
+          <div class="review-item__content">
+            <div class="review-item__field">
+              <div class="review-item__field-label">分类</div>
+              <div class="review-item__field-value">${getCategoryName(problem.category)} / ${problem.subKey}</div>
+            </div>
+            
+            <div class="review-item__field">
+              <div class="review-item__field-label">项目描述</div>
+              <div class="review-item__field-value">${problem.desc}</div>
+            </div>
+            
+            ${problem.background ? `
+              <div class="review-item__field">
+                <div class="review-item__field-label">背景介绍</div>
+                <div class="review-item__field-value pre-wrap">${problem.background}</div>
+              </div>
+            ` : ''}
+          </div>
+          
+          <div class="review-item__actions">
+            <button class="btn btn--ghost reject-btn" data-index="${index}">拒绝</button>
+            <button class="btn btn--primary approve-btn" data-index="${index}">批准发布</button>
+          </div>
+        `;
+        
+        reviewList.appendChild(item);
+      });
+      
+      // 绑定批准/拒绝按钮事件
+      bindReviewActions();
+    }
+    
+    /**
+     * 绑定审核操作按钮事件
+     */
+    function bindReviewActions() {
+      // 批准按钮
+      const approveBtns = reviewList.querySelectorAll('.approve-btn');
+      approveBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const index = parseInt(btn.getAttribute('data-index'));
+          approveProblem(index);
+        });
+      });
+      
+      // 拒绝按钮
+      const rejectBtns = reviewList.querySelectorAll('.reject-btn');
+      rejectBtns.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const index = parseInt(btn.getAttribute('data-index'));
+          rejectProblem(index);
+        });
+      });
+    }
+    
+    /**
+     * 批准题目
+     */
+    function approveProblem(index) {
+      console.log(`[${MODULE_NAME}] 批准题目，索引:`, index);
+      
+      if (!window.ProblemCreation) {
+        console.error(`[${MODULE_NAME}] ProblemCreation 模块未找到`);
+        return;
+      }
+      
+      // 确认操作
+      if (!confirm('确定要批准这个题目并发布到项目列表吗？')) {
+        return;
+      }
+      
+      // 获取待审核列表
+      const pendingList = window.ProblemCreation.getPendingProblems();
+      
+      if (index < 0 || index >= pendingList.length) {
+        alert('题目索引无效');
+        return;
+      }
+      
+      // 获取题目
+      const problem = pendingList[index];
+      
+      // 修改状态为已批准
+      problem.status = 'approved';
+      problem.reviewedAt = new Date().toISOString();
+      problem.reviewedBy = getCurrentUsername();
+      
+      // 从待审核列表移除
+      pendingList.splice(index, 1);
+      window.ProblemCreation.savePendingProblems(pendingList);
+      
+      // 添加到已发布项目列表
+      window.ProblemCreation.addPublishedProject(problem);
+      
+      // 提示成功
+      alert('题目已批准并发布！');
+      
+      // 重新渲染审核列表
+      renderReviewList();
+      
+      console.log(`[${MODULE_NAME}] 题目已批准:`, problem.title);
+    }
+    
+    /**
+     * 拒绝题目
+     */
+    function rejectProblem(index) {
+      console.log(`[${MODULE_NAME}] 拒绝题目，索引:`, index);
+      
+      if (!window.ProblemCreation) {
+        console.error(`[${MODULE_NAME}] ProblemCreation 模块未找到`);
+        return;
+      }
+      
+      // 询问拒绝原因
+      const reason = prompt('请输入拒绝原因（将通知提交者）：');
+      
+      if (reason === null) {
+        // 用户取消
+        return;
+      }
+      
+      if (!reason.trim()) {
+        alert('请输入拒绝原因');
+        return;
+      }
+      
+      // 获取待审核列表
+      const pendingList = window.ProblemCreation.getPendingProblems();
+      
+      if (index < 0 || index >= pendingList.length) {
+        alert('题目索引无效');
+        return;
+      }
+      
+      // 获取题目
+      const problem = pendingList[index];
+      
+      // 记录拒绝信息（可选：保存到历史记录）
+      problem.status = 'rejected';
+      problem.reviewedAt = new Date().toISOString();
+      problem.reviewedBy = getCurrentUsername();
+      problem.rejectReason = reason.trim();
+      
+      // 从待审核列表移除
+      pendingList.splice(index, 1);
+      window.ProblemCreation.savePendingProblems(pendingList);
+      
+      // 提示成功
+      alert(`题目已拒绝。拒绝原因：${reason.trim()}`);
+      
+      // 重新渲染审核列表
+      renderReviewList();
+      
+      console.log(`[${MODULE_NAME}] 题目已拒绝:`, problem.title);
+    }
+    
+    /**
+     * 获取当前用户名
+     */
+    function getCurrentUsername() {
+      const profileSub = qs('.profile__sub');
+      if (profileSub) {
+        const text = profileSub.textContent;
+        const match = text.match(/·\s*(.+?)$/);
+        if (match && match[1] && match[1] !== '访客' && match[1] !== '研究者') {
+          return match[1].trim();
+        }
+      }
+      return 'admin';
+    }
+    
+    /**
+     * 初始化审核按钮
+     */
+    function initReviewButton() {
+      if (!adminReviewBtn) {
+        console.warn(`[${MODULE_NAME}] adminReviewBtn 元素未找到`);
+        return;
+      }
+      
+      adminReviewBtn.addEventListener('click', () => {
+        console.log(`[${MODULE_NAME}] 审核按钮被点击`);
+        renderReviewList();
+        if (adminReviewModal) {
+          adminReviewModal.classList.add('active');
+        }
+      });
+      
+      console.log(`[${MODULE_NAME}] 审核按钮事件已绑定`);
+    }
+    
+    /**
+     * 初始化关闭按钮
+     */
+    function initCloseButton() {
+      if (closeReviewModal) {
+        closeReviewModal.addEventListener('click', () => {
+          if (adminReviewModal) {
+            adminReviewModal.classList.remove('active');
+          }
+        });
+      }
+      
+      // 点击遮罩层关闭
+      if (adminReviewModal) {
+        adminReviewModal.addEventListener('click', (e) => {
+          if (e.target === adminReviewModal || e.target.classList.contains('modal__overlay')) {
+            adminReviewModal.classList.remove('active');
+          }
+        });
+        
+        // 阻止模态框内容区域的点击事件冒泡
+        const modalContent = adminReviewModal.querySelector('.modal__content');
+        if (modalContent) {
+          modalContent.addEventListener('click', (e) => {
+            e.stopPropagation();
+          });
+        }
+      }
+    }
+    
+    /**
+     * 模块初始化
+     */
+    function init() {
+      if (!adminReviewModal) {
+        console.warn(`[${MODULE_NAME}] 审核模态框未找到，模块未初始化`);
+        return;
+      }
+      
+      initReviewButton();
+      initCloseButton();
+      
+      console.log(`[${MODULE_NAME}] 模块初始化完成 ✓`);
+    }
+    
+    // ========== 模块导出 ==========
+    
+    window.AdminReview = {
+      renderReviewList,
+      approveProblem,
+      rejectProblem,
+      init
+    };
+    
+    // 自动初始化
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', init);
+    } else {
+      init();
+    }
+    
+  })();
+  // ========== 审核功能模块结束 ==========
 
   // 初始化
   showHomeView();

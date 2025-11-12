@@ -92,6 +92,12 @@
 
     <!-- 详情页：1 : 4 : 4 布局 -->
     <section id="detail-view" class="view">
+      <button class="sidebar-toggle" id="sidebarToggle" aria-label="切换侧边栏">
+        <span id="toggleIcon">«</span>
+      </button>
+      <button class="agent-toggle" id="agentToggle" aria-label="切换Agent面板">
+        <span id="agentToggleIcon">»</span>
+      </button>
       <aside class="sidebar">
         <div class="sidebar__brand">
           <div class="brand__logo ai-logo">AI</div>
@@ -143,17 +149,54 @@
 
         <div class="detail__menu"></div>
 
-        <div class="detail__video" aria-label="视频演示区">
-          <div class="video__placeholder">视频区域（演示/讲解）</div>
+        <!-- 内容区标签页 -->
+        <div class="content-tabs">
+          <button class="content-tab is-active" data-tab="edit">
+            <span class="content-tab-icon">📝</span>
+            <span>编辑视图</span>
+          </button>
+          <button class="content-tab" data-tab="run">
+            <span class="content-tab-icon">▶️</span>
+            <span>代码运行</span>
+          </button>
         </div>
 
-        <article class="detail__content">
-          <header class="article__head">
-            <h2 id="projectTitle" class="article__title">—</h2>
-            <div class="article__meta">—</div>
-          </header>
-          <div id="detailContent" class="article__section"></div>
-        </article>
+        <!-- 编辑视图标签页内容 -->
+        <div class="tab-content-area is-active" id="editTab">
+          <div class="detail__video" aria-label="视频演示区">
+            <button class="video-toggle" id="videoToggle" aria-label="收缩视频区域" title="收缩/展开视频">
+              <span id="videoToggleIcon">▲</span>
+            </button>
+            <div class="video__placeholder">视频区域（演示/讲解）</div>
+          </div>
+
+          <article class="detail__content">
+            <header class="article__head">
+              <h2 id="projectTitle" class="article__title">—</h2>
+              <div class="article__meta">—</div>
+            </header>
+            <div id="detailContent" class="article__section"></div>
+          </article>
+        </div>
+
+        <!-- 代码运行标签页内容 -->
+        <div class="tab-content-area" id="runTab">
+          <div class="code-runner">
+            <div class="code-runner__header">
+              <h3 class="code-runner__title">代码运行环境</h3>
+              <div class="code-runner__actions">
+                <button class="btn btn--ghost btn--small" id="clearOutput">清空输出</button>
+                <button class="btn btn--primary btn--small" id="runAllCode">运行所有</button>
+              </div>
+            </div>
+            <div class="code-runner__content" id="codeRunnerContent">
+              <div class="runner-placeholder">
+                <p>✨ 在这里可以运行您在编辑视图中编写的所有代码</p>
+                <p>点击"运行所有"按钮开始执行</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <aside class="detail__qa" id="agentPanel">
@@ -210,6 +253,119 @@
         </div>
       </aside>
     </section>
+
+    <!-- 出题页面视图 -->
+    <section id="create-view" class="view">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo ai-logo">AI</div>
+          <div class="brand__name">AI科创平台</div>
+          <button id="themeToggle3" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+        </div>
+
+        <div class="detail__sidectrl">
+          <button id="backFromCreateBtn" class="btn btn--ghost">← 返回主页</button>
+        </div>
+
+        <div class="sidebar__profile">
+          <div class="profile__avatar">你</div>
+          <div class="profile__meta">
+            <div class="profile__name">个人中心</div>
+            <div class="profile__sub">已登录 · 研究者</div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="content problem-creation-content">
+        <div class="problem-creation-container">
+          <header class="problem-creation-header">
+            <h1 class="problem-creation-title">我要出题</h1>
+            <button id="closeCreateViewBtn" class="btn btn--ghost">× 关闭</button>
+          </header>
+          
+          <form id="createProblemForm" class="problem-creation-form">
+            <!-- 题目名称 -->
+            <div class="form-group">
+              <label for="problemTitle" class="form-label">
+                题目名称 <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="problemTitle" 
+                class="input input--full" 
+                placeholder="例如：相机的图像去噪 · 实验版" 
+                required 
+              />
+            </div>
+
+            <!-- 分类 -->
+            <div class="form-group">
+              <label for="problemCategory" class="form-label">
+                分类 <span class="required">*</span>
+              </label>
+              <select id="problemCategory" class="input input--full" required>
+                <option value="">请选择分类</option>
+                <option value="image">图像</option>
+                <option value="audio">语音</option>
+                <option value="llm">LLM</option>
+                <option value="mllm">MLLM</option>
+                <option value="agent">Agent</option>
+              </select>
+            </div>
+
+            <!-- 子分类 -->
+            <div class="form-group">
+              <label for="problemSubKey" class="form-label">
+                子分类 <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="problemSubKey" 
+                class="input input--full" 
+                placeholder="例如：cam-denoise（英文小写，使用连字符）" 
+                required 
+                pattern="[a-z0-9-]+"
+              />
+              <small class="form-hint">子分类键用于URL和内部标识，请使用英文小写字母、数字和连字符</small>
+            </div>
+
+            <!-- 项目描述 -->
+            <div class="form-group">
+              <label for="problemDesc" class="form-label">
+                项目描述 <span class="required">*</span>
+              </label>
+              <textarea 
+                id="problemDesc" 
+                class="input input--full" 
+                rows="4" 
+                placeholder="简要描述项目的内容和目标..." 
+                required
+              ></textarea>
+            </div>
+
+            <!-- 背景介绍（可选） -->
+            <div class="form-group">
+              <label for="problemBackground" class="form-label">
+                背景介绍（可选）
+              </label>
+              <textarea 
+                id="problemBackground" 
+                class="input input--full" 
+                rows="6" 
+                placeholder="详细描述项目的背景信息...（支持Markdown格式）"
+              ></textarea>
+              <small class="form-hint">支持Markdown格式，将在详情页的"背景"章节显示</small>
+            </div>
+
+            <!-- 表单操作按钮 -->
+            <div class="form-actions">
+              <button type="button" class="btn btn--ghost" id="cancelCreateBtn">取消</button>
+              <button type="submit" class="btn btn--primary">提交审核</button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </section>
   </div>
 
   <!-- 登录模态框 -->
@@ -233,6 +389,11 @@
           <div class="role__icon">👤</div>
           <div class="role__name">普通使用者</div>
           <div class="role__desc">浏览与学习</div>
+        </button>
+        <button class="role__card" data-role="admin">
+          <div class="role__icon">⚙️</div>
+          <div class="role__name">管理员</div>
+          <div class="role__desc">审核题目、管理平台</div>
         </button>
       </div>
     </div>
@@ -268,6 +429,7 @@
             <option value="enterprise">企业</option>
             <option value="teacher">高校教师</option>
             <option value="user">普通使用者</option>
+            <option value="admin">管理员</option>
           </select>
         </div>
         <button type="submit" class="btn btn--primary btn--large" style="width: 100%; margin-top: 12px;">注册</button>
@@ -285,7 +447,20 @@
       <div class="feature-bar__actions">
         <button id="createProblemBtn" class="btn btn--primary">出题</button>
         <button id="uploadDataBtn" class="btn btn--primary">数据上传</button>
+        <button id="adminReviewBtn" class="btn btn--primary" style="display: none;">审核题目</button>
         <button id="logoutBtn" class="btn btn--ghost">退出登录</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 管理员审核模态框 -->
+  <div id="adminReviewModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--large">
+      <button class="modal__close" id="closeReviewModal">×</button>
+      <h2 class="modal__title">题目审核</h2>
+      <div id="reviewList" class="review-list">
+        <div class="review-empty">暂无待审核题目</div>
       </div>
     </div>
   </div>

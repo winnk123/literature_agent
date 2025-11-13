@@ -1452,6 +1452,8 @@ body.has-feature-bar .content { padding-top: 68px; }
   max-width: 600px;
   width: 90%;
   padding: 48px 40px;
+  max-height: 90vh;
+  overflow-y: auto;
 }
 
 .onboarding-step {
@@ -1459,6 +1461,10 @@ body.has-feature-bar .content { padding-top: 68px; }
   flex-direction: column;
   gap: 24px;
   min-height: 400px;
+}
+
+.onboarding-step.onboarding-welcome {
+  min-height: auto;
 }
 
 .onboarding-progress {
@@ -1630,8 +1636,19 @@ body.has-feature-bar .content { padding-top: 68px; }
 
 /* 欢迎页面 */
 .onboarding-welcome {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   text-align: center;
-  min-height: 600px;
+  min-height: auto;
+  padding: 20px 0 40px;
+  justify-content: flex-start;
+}
+
+.onboarding-welcome #finishOnboardingBtn {
+  margin-top: 40px;
+  min-width: 200px;
+  flex-shrink: 0;
 }
 
 .welcome-success-animation {
@@ -1676,12 +1693,13 @@ body.has-feature-bar .content { padding-top: 68px; }
 .welcome-features-row {
   display: flex;
   gap: 24px;
-  margin: 40px 0;
+  margin: 40px 0 0;
   justify-content: center;
   flex-wrap: wrap;
   max-width: 900px;
   margin-left: auto;
   margin-right: auto;
+  flex-shrink: 0;
 }
 
 .welcome-feature-card {

@@ -560,6 +560,83 @@
   });
 
   // ============================================
+  // 渲染器注册表 - Renderer Registry
+  // ============================================
+  // 说明: 将章节类型映射到对应的渲染函数，支持动态注册
+  
+  window.RendererRegistry = {
+    // Notebook渲染器
+    notebook: function(sectionKey, content, project) {
+      const sectionConfig = window.ProjectStructureConfig?.getSection(sectionKey);
+      const cells = content || sectionConfig?.notebookConfig?.defaultCells || [];
+      renderNotebook('detailContent', cells);
+    },
+    
+    // 个性化检验渲染器
+    quiz: function(sectionKey, content, project) {
+      const sectionConfig = window.ProjectStructureConfig?.getSection(sectionKey);
+      const quizData = content || sectionConfig?.quizConfig?.defaultQuizData || [];
+      const wrap = document.getElementById('detailContent');
+      if (wrap) {
+        renderPersonalizeSection(wrap, quizData);
+      }
+    },
+    
+    // 留言区渲染器
+    comments: function(sectionKey, content, project) {
+      const sectionConfig = window.ProjectStructureConfig?.getSection(sectionKey);
+      const initialComments = content || sectionConfig?.commentsConfig?.defaultInitialComments || [];
+      const wrap = document.getElementById('detailContent');
+      if (wrap) {
+        renderCommentsSection(wrap, initialComments);
+      }
+    },
+    
+    // 自定义渲染器（通过函数名调用）
+    custom: function(sectionKey, content, project) {
+      const sectionConfig = window.ProjectStructureConfig?.getSection(sectionKey);
+      const rendererName = sectionConfig?.customRenderer;
+      
+      if (!rendererName) {
+        console.warn(`[RendererRegistry] 章节 "${sectionKey}" 未指定自定义渲染器`);
+        return;
+      }
+      
+      const wrap = document.getElementById('detailContent');
+      if (!wrap) {
+        console.error(`[RendererRegistry] detailContent 元素未找到`);
+        return;
+      }
+      
+      // 尝试从全局作用域获取渲染器函数
+      const renderer = window[rendererName];
+      
+      if (typeof renderer === 'function') {
+        try {
+          // 小频道等自定义渲染器只需要wrap参数
+          renderer(wrap);
+        } catch (e) {
+          console.error(`[RendererRegistry] 自定义渲染器 "${rendererName}" 调用失败:`, e);
+          wrap.innerHTML = `<p>渲染出错: ${e.message}</p>`;
+        }
+      } else {
+        console.error(`[RendererRegistry] 自定义渲染器 "${rendererName}" 未找到或不是函数`);
+        wrap.innerHTML = `<p>渲染器 "${rendererName}" 未找到</p>`;
+      }
+    },
+    
+    // 注册新的渲染器
+    register: function(type, renderer) {
+      if (typeof renderer !== 'function') {
+        console.error(`[RendererRegistry] 渲染器必须是函数`);
+        return;
+      }
+      this[type] = renderer;
+      console.log(`[RendererRegistry] 已注册渲染器: ${type}`);
+    }
+  };
+
+  // ============================================
   // 数据管理模块 - Data Management Module
   // ============================================
   // 说明: 管理项目和分类数据，支持 localStorage 持久化
@@ -827,7 +904,7 @@
     // 设置当前项目ID到全局变量
     window.currentProjectId = project.id;
 
-    renderDetailSection('background');
+    renderDetailSection('background', project);
     switchView('detail');
     history.pushState({ view: 'detail', id: project.id, section: 'background' }, '', `#project/${project.id}/background`);
     
@@ -843,17 +920,41 @@
   function buildDetailMenu(project) {
     const menu = document.getElementById('detailMenu');
     menu.innerHTML = '';
-    const groups = [
-      { key: 'background', name: '背景' },
-      { key: 'model', name: '模型', children: [
-        { key: 'model-intro', name: '模型介绍' },
-        { key: 'baseline', name: 'baseline 介绍' }
-      ]},
-      { key: 'idea', name: 'IDEA 引导' },
-      { key: 'personalize', name: '个性化检验' },
-      { key: 'comments', name: '留言区' },
-      { key: 'channels', name: '小频道' }
-    ];
+    
+    // 从配置获取章节结构
+    if (!window.ProjectStructureConfig) {
+      console.warn('[buildDetailMenu] ProjectStructureConfig 未加载，使用默认结构');
+      // 回退到默认结构
+      const groups = [
+        { key: 'background', name: '背景' },
+        { key: 'model', name: '模型', children: [
+          { key: 'model-intro', name: '模型介绍' },
+          { key: 'baseline', name: 'baseline 介绍' }
+        ]},
+        { key: 'idea', name: 'IDEA 引导' },
+        { key: 'personalize', name: '个性化检验' },
+        { key: 'comments', name: '留言区' },
+        { key: 'channels', name: '小频道' }
+      ];
+      buildMenuFromGroups(menu, groups, project);
+      return;
+    }
+    
+    const rootSections = window.ProjectStructureConfig.getRootSections();
+    const groups = rootSections.map(section => {
+      const childSections = window.ProjectStructureConfig.getChildSections(section.key);
+      return {
+        key: section.key,
+        name: section.name,
+        children: childSections.length > 0 ? childSections.map(c => ({ key: c.key, name: c.name })) : undefined
+      };
+    });
+    
+    buildMenuFromGroups(menu, groups, project);
+  }
+  
+  // 辅助函数：从groups数组构建菜单
+  function buildMenuFromGroups(menu, groups, project) {
 
     const ul = document.createElement('ul');
     ul.className = 'nav__list';
@@ -873,7 +974,7 @@
             sli.innerHTML = `<button class=\"subitem\" data-sec=\"${c.key}\">${c.name}</button>`;
             sli.querySelector('button').addEventListener('click', (e) => {
               e.stopPropagation();
-              renderDetailSection(c.key);
+              renderDetailSection(c.key, project);
               history.pushState({ view: 'detail', id: project.id, section: c.key }, '', `#project/${project.id}/${c.key}`);
             });
             sub.appendChild(sli);
@@ -882,13 +983,22 @@
         });
       } else {
         btn.addEventListener('click', () => {
-          renderDetailSection(g.key);
+          renderDetailSection(g.key, project);
           history.pushState({ view: 'detail', id: project.id, section: g.key }, '', `#project/${project.id}/${g.key}`);
         });
       }
       ul.appendChild(li);
     });
     menu.appendChild(ul);
+  }
+  
+  // 获取当前项目
+  function getCurrentProject() {
+    const projectId = window.currentProjectId;
+    if (!projectId) return null;
+    
+    const projects = window.projects || [];
+    return projects.find(p => p.id === projectId) || null;
   }
 
   // Jupyter Notebook 单元格管理
@@ -1420,21 +1530,79 @@
     container.appendChild(notebookDiv);
   }
 
-  function renderDetailSection(key) {
+  function renderDetailSection(key, project = null) {
     const wrap = document.getElementById('detailContent');
     const videoArea = document.querySelector('.detail__video');
     
-    // 更新当前分区（用于划词工具栏限制）
+    // 获取当前项目（如果未传入）
+    if (!project) {
+      project = getCurrentProject();
+    }
+    
+    // 从配置获取章节定义
+    if (!window.ProjectStructureConfig) {
+      console.warn(`[renderDetailSection] ProjectStructureConfig 未加载，使用默认渲染逻辑`);
+      // 回退到旧的硬编码逻辑
+      renderDetailSectionLegacy(key);
+      return;
+    }
+    
+    const sectionConfig = window.ProjectStructureConfig.getSection(key);
+    if (!sectionConfig) {
+      console.warn(`[renderDetailSection] 章节 "${key}" 未在配置中找到`);
+      wrap.innerHTML = '<p>章节未找到</p>';
+      return;
+    }
+    
+    // 更新当前分区
     currentSection = key;
     
-    // 个性化检验和留言区：隐藏视频区域
+    // 处理视频区域显示/隐藏（基于配置类型）
+    if (sectionConfig.type === 'quiz' || sectionConfig.type === 'comments' || sectionConfig.type === 'custom') {
+      // custom类型（如小频道）也需要隐藏视频区域
+      if (videoArea) videoArea.style.display = 'none';
+    } else {
+      if (videoArea) videoArea.style.display = '';
+    }
+    
+    // 从项目数据获取内容，如果没有则使用默认内容
+    let content = null;
+    if (project?.detailContent?.[key]) {
+      content = project.detailContent[key];
+    } else {
+      // 使用配置中的默认内容
+      content = window.ProjectStructureConfig.getDefaultContent(key);
+    }
+    
+    // 根据章节类型调用对应的渲染器
+    const renderer = window.RendererRegistry?.[sectionConfig.type];
+    if (renderer && typeof renderer === 'function') {
+      try {
+        renderer(key, content, project);
+      } catch (error) {
+        console.error(`[renderDetailSection] 渲染章节 "${key}" 时出错:`, error);
+        wrap.innerHTML = `<p>渲染出错: ${error.message}</p>`;
+      }
+    } else {
+      console.error(`[renderDetailSection] 未找到类型 "${sectionConfig.type}" 的渲染器`);
+      // 回退到旧的硬编码逻辑
+      renderDetailSectionLegacy(key);
+    }
+  }
+  
+  // 旧的渲染逻辑（作为回退）
+  function renderDetailSectionLegacy(key) {
+    const wrap = document.getElementById('detailContent');
+    const videoArea = document.querySelector('.detail__video');
+    
+    currentSection = key;
+    
     if (key === 'personalize' || key === 'comments') {
       if (videoArea) videoArea.style.display = 'none';
     } else {
       if (videoArea) videoArea.style.display = '';
     }
     
-    // 使用Notebook的部分
     if (key === 'background' || key === 'model' || key === 'model-intro' || key === 'baseline' || key === 'idea') {
       const notebookData = {
         'background': [
@@ -1792,60 +1960,63 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     }
   }
 
-  function renderPersonalizeSection(wrap) {
-    // 个性化检验 - 10道选择题
-    const quizData = [
-      {
-        question: "在图像去噪任务中，PSNR指标主要衡量什么？",
-        options: ["图像的感知质量", "图像的峰值信噪比", "图像的结构相似度", "图像的颜色准确度"],
-        correct: 1
-      },
-      {
-        question: "ISP（Image Signal Processor）主要用于？",
-        options: ["深度学习模型训练", "相机原始信号处理", "图像压缩", "视频编码"],
-        correct: 1
-      },
-      {
-        question: "DND数据集主要用于哪种任务？",
-        options: ["图像分类", "图像去噪", "目标检测", "语义分割"],
-        correct: 1
-      },
-      {
-        question: "在深度学习中，Encoder-Decoder架构主要用于？",
-        options: ["分类任务", "回归任务", "序列到序列任务", "聚类任务"],
-        correct: 2
-      },
-      {
-        question: "LPIPS指标主要衡量什么？",
-        options: ["图像的峰值信噪比", "图像的感知相似度", "图像的结构相似度", "图像的均方误差"],
-        correct: 1
-      },
-      {
-        question: "在图像处理中，跨层跳连（Skip Connection）的主要作用是？",
-        options: ["减少参数量", "保留细节信息", "加速训练", "防止过拟合"],
-        correct: 1
-      },
-      {
-        question: "注意力机制（Attention Mechanism）的核心思想是？",
-        options: ["增加模型深度", "选择性关注重要特征", "减少计算量", "增加参数量"],
-        correct: 1
-      },
-      {
-        question: "Baseline模型的作用是？",
-        options: ["作为最终模型", "作为对比参考", "作为数据预处理", "作为损失函数"],
-        correct: 1
-      },
-      {
-        question: "在真实相机成像中，噪声的主要来源不包括？",
-        options: ["读出噪声", "光子噪声", "ISP处理噪声", "显示器噪声"],
-        correct: 3
-      },
-      {
-        question: "SSIM（Structural Similarity Index）主要关注图像的什么特性？",
-        options: ["颜色准确度", "结构相似性", "亮度均匀度", "边缘锐利度"],
-        correct: 1
-      }
-    ];
+  function renderPersonalizeSection(wrap, quizData = null) {
+    // 个性化检验 - 如果没有传入quizData，使用默认题目
+    if (!quizData || !Array.isArray(quizData) || quizData.length === 0) {
+      // 使用默认题目（保持向后兼容）
+      quizData = [
+        {
+          question: "在图像去噪任务中，PSNR指标主要衡量什么？",
+          options: ["图像的感知质量", "图像的峰值信噪比", "图像的结构相似度", "图像的颜色准确度"],
+          correct: 1
+        },
+        {
+          question: "ISP（Image Signal Processor）主要用于？",
+          options: ["深度学习模型训练", "相机原始信号处理", "图像压缩", "视频编码"],
+          correct: 1
+        },
+        {
+          question: "DND数据集主要用于哪种任务？",
+          options: ["图像分类", "图像去噪", "目标检测", "语义分割"],
+          correct: 1
+        },
+        {
+          question: "在深度学习中，Encoder-Decoder架构主要用于？",
+          options: ["分类任务", "回归任务", "序列到序列任务", "聚类任务"],
+          correct: 2
+        },
+        {
+          question: "LPIPS指标主要衡量什么？",
+          options: ["图像的峰值信噪比", "图像的感知相似度", "图像的结构相似度", "图像的均方误差"],
+          correct: 1
+        },
+        {
+          question: "在图像处理中，跨层跳连（Skip Connection）的主要作用是？",
+          options: ["减少参数量", "保留细节信息", "加速训练", "防止过拟合"],
+          correct: 1
+        },
+        {
+          question: "注意力机制（Attention Mechanism）的核心思想是？",
+          options: ["增加模型深度", "选择性关注重要特征", "减少计算量", "增加参数量"],
+          correct: 1
+        },
+        {
+          question: "Baseline模型的作用是？",
+          options: ["作为最终模型", "作为对比参考", "作为数据预处理", "作为损失函数"],
+          correct: 1
+        },
+        {
+          question: "在真实相机成像中，噪声的主要来源不包括？",
+          options: ["读出噪声", "光子噪声", "ISP处理噪声", "显示器噪声"],
+          correct: 3
+        },
+        {
+          question: "SSIM（Structural Similarity Index）主要关注图像的什么特性？",
+          options: ["颜色准确度", "结构相似性", "亮度均匀度", "边缘锐利度"],
+          correct: 1
+        }
+      ];
+    }
 
     let userAnswers = new Array(quizData.length).fill(null);
     let submitted = false;
@@ -1954,11 +2125,23 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     resetBtn.addEventListener('click', () => {
       submitted = false;
       userAnswers = new Array(quizData.length).fill(null);
-      renderPersonalizeSection(wrap);
+      renderPersonalizeSection(wrap, quizData);
     });
   }
 
   function renderChannelsSection(wrap) {
+    console.log('[renderChannelsSection] 开始渲染小频道界面');
+    
+    // 确保wrap存在
+    if (!wrap) {
+      console.error('[renderChannelsSection] wrap 元素未找到');
+      wrap = document.getElementById('detailContent');
+      if (!wrap) {
+        console.error('[renderChannelsSection] detailContent 元素也未找到');
+        return;
+      }
+    }
+    
     // 隐藏视频区域和标签页
     const videoArea = qs('.detail__video');
     const contentTabs = qs('.content-tabs');
@@ -1967,19 +2150,29 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     
     // 获取当前项目ID
     const currentProjectId = window.currentProjectId || 'default';
+    console.log('[renderChannelsSection] 当前项目ID:', currentProjectId);
+    
     const projectOnboardingKey = `channels_onboarding_${currentProjectId}`;
     
     // 检查当前项目是否已完成引导流程
     const projectOnboarding = JSON.parse(localStorage.getItem(projectOnboardingKey) || 'null');
     
     if (!projectOnboarding || !projectOnboarding.completed) {
+      console.log('[renderChannelsSection] 未完成引导流程，显示引导模态框');
       // 显示引导流程
       const onboardingModal = qs('#channelsOnboardingModal');
       if (onboardingModal) {
         onboardingModal.classList.add('active');
         initChannelsOnboarding(currentProjectId);
+        // 同时显示主界面（即使未完成引导，也可以看到界面）
+        renderChannelsMainInterface(wrap, currentProjectId);
+      } else {
+        console.warn('[renderChannelsSection] 引导模态框未找到，直接显示主界面');
+        // 如果模态框不存在，直接显示主界面
+        renderChannelsMainInterface(wrap, currentProjectId);
       }
     } else {
+      console.log('[renderChannelsSection] 已完成引导流程，显示主界面');
       // 显示主界面
       renderChannelsMainInterface(wrap, currentProjectId);
     }
@@ -2241,6 +2434,13 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
   }
 
   function renderChannelsMainInterface(wrap, projectId) {
+    console.log('[renderChannelsMainInterface] 开始渲染小频道主界面，项目ID:', projectId);
+    
+    if (!wrap) {
+      console.error('[renderChannelsMainInterface] wrap 元素未找到');
+      return;
+    }
+    
     const teamData = JSON.parse(localStorage.getItem('channels_team_data') || '{}');
     const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
     const currentUsername = currentUser ? currentUser.username : (teamData.userName || '你');
@@ -2263,6 +2463,8 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     const channelName = '新频道';
     const messagesKey = `channels_messages_${projectId}_${channelName}`;
     const messages = JSON.parse(localStorage.getItem(messagesKey) || '[]');
+    
+    console.log('[renderChannelsMainInterface] 准备渲染HTML，消息数量:', messages.length);
 
     wrap.innerHTML = `
       <div class="channels-container">
@@ -3017,11 +3219,24 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     }
   }
 
-  function renderCommentsSection(wrap) {
+  function renderCommentsSection(wrap, initialComments = null) {
     // 留言区 - 类似微信公众号评论区
-    // 使用全局变量存储留言数据，保持状态
-    if (!window.commentsData) {
-      window.commentsData = [
+    // 使用项目ID作为存储键，支持多项目独立留言
+    const projectId = window.currentProjectId || 'default';
+    const storageKey = `comments_${projectId}`;
+    
+    // 初始化留言数据（每次渲染时重新加载，支持项目切换）
+    try {
+      const stored = localStorage.getItem(storageKey);
+      if (stored) {
+        window.commentsData = JSON.parse(stored);
+      } else if (initialComments && Array.isArray(initialComments) && initialComments.length > 0) {
+        window.commentsData = initialComments;
+        // 保存初始留言到localStorage
+        localStorage.setItem(storageKey, JSON.stringify(initialComments));
+      } else {
+        // 使用默认留言（保持向后兼容）
+        window.commentsData = [
         {
           id: 1,
           author: "张三",
@@ -3082,7 +3297,14 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
           ]
         }
       ];
+        // 保存默认留言到localStorage
+        localStorage.setItem(storageKey, JSON.stringify(window.commentsData));
+      }
+    } catch (e) {
+      console.error('[renderCommentsSection] 初始化留言数据失败:', e);
+      window.commentsData = [];
     }
+    
     const commentsData = window.commentsData;
 
     const commentsHTML = `
@@ -3179,7 +3401,17 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
       
       commentsData.unshift(newComment);
       newCommentInput.value = '';
-      renderCommentsSection(wrap);
+      
+      // 保存到localStorage（使用项目ID）
+      const projectId = window.currentProjectId || 'default';
+      const storageKey = `comments_${projectId}`;
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(commentsData));
+      } catch (e) {
+        console.error('[renderCommentsSection] 保存留言失败:', e);
+      }
+      
+      renderCommentsSection(wrap, initialComments);
     });
 
     // 点赞功能
@@ -3195,6 +3427,15 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
           btn.classList.toggle('liked');
           btn.querySelector('.action-icon').textContent = comment.liked ? '❤️' : '🤍';
           btn.querySelector('.action-text').textContent = comment.likes;
+          
+          // 保存到localStorage
+          const projectId = window.currentProjectId || 'default';
+          const storageKey = `comments_${projectId}`;
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(commentsData));
+          } catch (e) {
+            console.error('[renderCommentsSection] 保存点赞状态失败:', e);
+          }
         }
       });
     });
@@ -3238,18 +3479,29 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
         
         const comment = commentsData.find(c => c.id === commentId);
         if (comment) {
-          comment.replies.push({
+          const newReply = {
             id: Date.now(),
             author: "你",
             avatar: "👤",
             content: content,
             time: "刚刚",
             isAuthor: false
-          });
+          };
+          
+          comment.replies.push(newReply);
+          
+          // 保存到localStorage
+          const projectId = window.currentProjectId || 'default';
+          const storageKey = `comments_${projectId}`;
+          try {
+            localStorage.setItem(storageKey, JSON.stringify(commentsData));
+          } catch (e) {
+            console.error('[renderCommentsSection] 保存回复失败:', e);
+          }
           
           replyInput.value = '';
           replyArea.style.display = 'none';
-          renderCommentsSection(wrap);
+          renderCommentsSection(wrap, initialComments);
         }
       });
     });
@@ -3273,6 +3525,7 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
   
   // 暴露到全局（供模块使用）
   window.switchView = switchView;
+  window.renderChannelsSection = renderChannelsSection;
 
   // 渲染项目列表到左侧导航
   function renderProjectsList() {
@@ -4480,13 +4733,106 @@ tensorboard>=2.13.0`
     function collectFormData() {
       if (!createProblemForm) return null;
       
-      return {
+      const baseData = {
         title: qs('#problemTitle', createProblemForm)?.value.trim() || '',
         category: qs('#problemCategory', createProblemForm)?.value || '',
         subKey: qs('#problemSubKey', createProblemForm)?.value.trim() || '',
-        desc: qs('#problemDesc', createProblemForm)?.value.trim() || '',
-        background: qs('#problemBackground', createProblemForm)?.value.trim() || ''
+        desc: qs('#problemDesc', createProblemForm)?.value.trim() || ''
       };
+      
+      // 收集详情内容（如果配置系统可用）
+      let detailContent = null;
+      if (window.ProjectStructureConfig) {
+        detailContent = {};
+        const formSections = window.ProjectStructureConfig.getFormSections();
+        
+        formSections.forEach(section => {
+          const sectionData = collectSectionData(section);
+          if (sectionData !== null) {
+            detailContent[section.key] = sectionData;
+          }
+        });
+        
+        // 如果没有任何详情内容，设置为null
+        if (Object.keys(detailContent).length === 0) {
+          detailContent = null;
+        }
+      }
+      
+      return {
+        ...baseData,
+        detailContent: detailContent
+      };
+    }
+    
+    /**
+     * 收集单个章节的数据
+     */
+    function collectSectionData(sectionConfig) {
+      switch (sectionConfig.type) {
+        case 'notebook':
+          return collectNotebookSectionData(sectionConfig.key);
+        case 'quiz':
+          return collectQuizSectionData(sectionConfig.key);
+        case 'comments':
+          return null; // 留言区不需要在表单中收集
+        default:
+          return null;
+      }
+    }
+    
+    /**
+     * 收集Notebook章节数据
+     */
+    function collectNotebookSectionData(sectionKey) {
+      const editor = qs(`.notebook-editor[data-section-key="${sectionKey}"]`, createProblemForm);
+      if (!editor) return null;
+      
+      const cells = [];
+      const cellEditors = editor.querySelectorAll('.notebook-cell-editor');
+      
+      cellEditors.forEach(cellEl => {
+        const type = cellEl.dataset.cellType; // 'markdown' or 'code'
+        const content = cellEl.querySelector('.cell-content-input')?.value.trim() || '';
+        const language = cellEl.dataset.language || 'python';
+        
+        if (content) {
+          cells.push({ type, content, language });
+        }
+      });
+      
+      return cells.length > 0 ? cells : null;
+    }
+    
+    /**
+     * 收集个性化检验数据
+     */
+    function collectQuizSectionData(sectionKey) {
+      const editor = qs(`.quiz-editor[data-section-key="${sectionKey}"]`, createProblemForm);
+      if (!editor) return null;
+      
+      const questions = [];
+      const questionEditors = editor.querySelectorAll('.quiz-question-editor');
+      
+      questionEditors.forEach(qEl => {
+        const question = qEl.querySelector('.question-input')?.value.trim();
+        const options = [];
+        const optionInputs = qEl.querySelectorAll('.option-input');
+        
+        optionInputs.forEach(opt => {
+          const value = opt.value.trim();
+          if (value) options.push(value);
+        });
+        
+        const correctRadio = qEl.querySelector('input[type="radio"]:checked');
+        const correct = correctRadio ? parseInt(correctRadio.value) : 0;
+        
+        if (question && options.length === 4) {
+          questions.push({ question, options, correct });
+        }
+      });
+      
+      return questions.length > 0 ? questions : null;
     }
     
     /**
@@ -4527,7 +4873,6 @@ tensorboard>=2.13.0`
         subKey: formData.subKey,
         title: formData.title,
         desc: formData.desc,
-        background: formData.background || '',
         
         // 状态信息
         status: 'pending',
@@ -4536,8 +4881,8 @@ tensorboard>=2.13.0`
         createdBy: userRole,
         createdByUsername: username,
         
-        // 详情内容（初始为空，审核通过后可编辑）
-        detailContent: null
+        // 详情内容（从表单收集）
+        detailContent: formData.detailContent || null
       };
     }
     
@@ -4612,6 +4957,334 @@ tensorboard>=2.13.0`
     }
     
     /**
+     * 动态生成详情内容表单
+     * 基于 ProjectStructureConfig 配置自动生成
+     */
+    function generateDetailContentForm() {
+      const container = qs('#dynamicSectionsContainer', createProblemForm);
+      const formSection = qs('#detailContentFormSection', createProblemForm);
+      
+      if (!container) {
+        console.warn(`[${MODULE_NAME}] 动态表单容器未找到`);
+        return;
+      }
+      
+      // 检查配置系统是否可用
+      if (!window.ProjectStructureConfig) {
+        console.warn(`[${MODULE_NAME}] ProjectStructureConfig 未加载，跳过动态表单生成`);
+        return;
+      }
+      
+      container.innerHTML = '';
+      
+      // 从配置获取需要在表单中显示的章节
+      const formSections = window.ProjectStructureConfig.getFormSections();
+      
+      formSections.forEach(section => {
+        const sectionEditor = createSectionEditor(section);
+        if (sectionEditor) {
+          container.appendChild(sectionEditor);
+        }
+      });
+      
+      // 显示表单区域
+      if (formSection && formSections.length > 0) {
+        formSection.style.display = 'block';
+      }
+      
+      console.log(`[${MODULE_NAME}] 已生成 ${formSections.length} 个章节编辑器`);
+    }
+    
+    /**
+     * 创建单个章节编辑器
+     */
+    function createSectionEditor(sectionConfig) {
+      const sectionDiv = document.createElement('div');
+      sectionDiv.className = 'form-section-item';
+      sectionDiv.dataset.sectionKey = sectionConfig.key;
+      
+      const header = document.createElement('div');
+      header.className = 'form-section-item-header';
+      header.innerHTML = `
+        <h3 class="form-section-item-title">
+          ${sectionConfig.name}
+          ${sectionConfig.required ? '<span class="required">*</span>' : ''}
+        </h3>
+        <p class="form-section-item-desc">${sectionConfig.description || ''}</p>
+      `;
+      sectionDiv.appendChild(header);
+      
+      const content = document.createElement('div');
+      content.className = 'form-section-item-content';
+      
+      // 根据章节类型创建对应的编辑器
+      switch (sectionConfig.type) {
+        case 'notebook':
+          content.appendChild(createNotebookEditor(sectionConfig));
+          break;
+        case 'quiz':
+          content.appendChild(createQuizEditor(sectionConfig));
+          break;
+        case 'comments':
+          // 留言区不需要编辑器
+          content.innerHTML = '<p class="form-hint">留言区将在项目发布后自动创建，无需在此设置初始内容。</p>';
+          break;
+        default:
+          console.warn(`[${MODULE_NAME}] 未支持的章节类型: ${sectionConfig.type}`);
+          return null;
+      }
+      
+      sectionDiv.appendChild(content);
+      return sectionDiv;
+    }
+    
+    /**
+     * 创建Notebook编辑器
+     */
+    function createNotebookEditor(sectionConfig) {
+      const editor = document.createElement('div');
+      editor.className = 'notebook-editor';
+      editor.dataset.sectionKey = sectionConfig.key;
+      
+      const cellsContainer = document.createElement('div');
+      cellsContainer.className = 'notebook-cells-container';
+      editor.appendChild(cellsContainer);
+      
+      // 添加默认单元格（如果配置中有）
+      const defaultCells = sectionConfig.notebookConfig?.defaultCells || [];
+      defaultCells.forEach((cellData, index) => {
+        const cellEditor = createNotebookCellEditor(cellData, index);
+        cellsContainer.appendChild(cellEditor);
+      });
+      
+      // 如果没有默认单元格，添加一个空的Markdown单元格
+      if (defaultCells.length === 0) {
+        const cellEditor = createNotebookCellEditor({ type: 'markdown', content: '' }, 0);
+        cellsContainer.appendChild(cellEditor);
+      }
+      
+      // 添加单元格按钮
+      const actions = document.createElement('div');
+      actions.className = 'notebook-editor-actions';
+      actions.innerHTML = `
+        <button type="button" class="btn btn--ghost btn--small add-markdown-cell">+ Markdown</button>
+        <button type="button" class="btn btn--ghost btn--small add-code-cell">+ Code</button>
+      `;
+      
+      actions.querySelector('.add-markdown-cell').addEventListener('click', () => {
+        const cellEditor = createNotebookCellEditor({ type: 'markdown', content: '' }, cellsContainer.children.length);
+        cellsContainer.appendChild(cellEditor);
+        cellEditor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+      
+      actions.querySelector('.add-code-cell').addEventListener('click', () => {
+        const cellEditor = createNotebookCellEditor({
+          type: 'code',
+          content: '',
+          language: sectionConfig.notebookConfig?.defaultLanguage || 'python'
+        }, cellsContainer.children.length);
+        cellsContainer.appendChild(cellEditor);
+        cellEditor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+      
+      editor.appendChild(actions);
+      return editor;
+    }
+    
+    /**
+     * 创建Notebook单元格编辑器
+     */
+    function createNotebookCellEditor(cellData, index) {
+      const cellDiv = document.createElement('div');
+      cellDiv.className = 'notebook-cell-editor';
+      cellDiv.dataset.cellIndex = index;
+      cellDiv.dataset.cellType = cellData.type || 'markdown';
+      cellDiv.dataset.language = cellData.language || 'python';
+      
+      const header = document.createElement('div');
+      header.className = 'notebook-cell-editor-header';
+      
+      const typeSelect = document.createElement('select');
+      typeSelect.className = 'cell-type-select';
+      typeSelect.innerHTML = `
+        <option value="markdown" ${cellData.type === 'markdown' ? 'selected' : ''}>Markdown</option>
+        <option value="code" ${cellData.type === 'code' ? 'selected' : ''}>Code</option>
+      `;
+      
+      const languageSelect = document.createElement('select');
+      languageSelect.className = 'cell-language-select';
+      languageSelect.style.display = cellData.type === 'code' ? 'inline-block' : 'none';
+      languageSelect.innerHTML = `
+        <option value="python" ${cellData.language === 'python' ? 'selected' : ''}>Python</option>
+        <option value="javascript" ${cellData.language === 'javascript' ? 'selected' : ''}>JavaScript</option>
+      `;
+      
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'btn btn--ghost btn--tiny delete-cell-btn';
+      deleteBtn.textContent = '删除';
+      deleteBtn.addEventListener('click', () => {
+        cellDiv.remove();
+        // 更新索引
+        const container = cellDiv.parentElement;
+        const cells = container.querySelectorAll('.notebook-cell-editor');
+        cells.forEach((cell, idx) => {
+          cell.dataset.cellIndex = idx;
+        });
+      });
+      
+      header.appendChild(typeSelect);
+      header.appendChild(languageSelect);
+      header.appendChild(deleteBtn);
+      
+      const contentTextarea = document.createElement('textarea');
+      contentTextarea.className = 'cell-content-input';
+      contentTextarea.value = cellData.content || '';
+      contentTextarea.placeholder = cellData.type === 'markdown' 
+        ? '输入 Markdown 内容...' 
+        : '输入代码...';
+      contentTextarea.rows = 5;
+      
+      typeSelect.addEventListener('change', (e) => {
+        cellDiv.dataset.cellType = e.target.value;
+        languageSelect.style.display = e.target.value === 'code' ? 'inline-block' : 'none';
+      });
+      
+      languageSelect.addEventListener('change', (e) => {
+        cellDiv.dataset.language = e.target.value;
+      });
+      
+      cellDiv.appendChild(header);
+      cellDiv.appendChild(contentTextarea);
+      
+      return cellDiv;
+    }
+    
+    /**
+     * 创建个性化检验编辑器
+     */
+    function createQuizEditor(sectionConfig) {
+      const editor = document.createElement('div');
+      editor.className = 'quiz-editor';
+      editor.dataset.sectionKey = sectionConfig.key;
+      
+      const questionsContainer = document.createElement('div');
+      questionsContainer.className = 'quiz-questions-container';
+      editor.appendChild(questionsContainer);
+      
+      // 添加默认题目（如果配置中有）
+      const defaultQuestions = sectionConfig.quizConfig?.defaultQuizData || [];
+      if (defaultQuestions.length > 0) {
+        defaultQuestions.forEach((questionData, index) => {
+          const questionEditor = createQuizQuestionEditor(questionData, index);
+          questionsContainer.appendChild(questionEditor);
+        });
+      } else {
+        // 如果没有默认题目，添加一个空题目
+        const questionEditor = createQuizQuestionEditor({
+          question: '',
+          options: ['', '', '', ''],
+          correct: 0
+        }, 0);
+        questionsContainer.appendChild(questionEditor);
+      }
+      
+      // 添加题目按钮
+      const addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn--ghost btn--small add-question-btn';
+      addBtn.textContent = '+ 添加题目';
+      addBtn.addEventListener('click', () => {
+        const maxQuestions = sectionConfig.quizConfig?.maxQuestions || 10;
+        if (questionsContainer.children.length >= maxQuestions) {
+          alert(`最多只能添加 ${maxQuestions} 道题目`);
+          return;
+        }
+        const questionEditor = createQuizQuestionEditor({
+          question: '',
+          options: ['', '', '', ''],
+          correct: 0
+        }, questionsContainer.children.length);
+        questionsContainer.appendChild(questionEditor);
+        questionEditor.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      });
+      
+      editor.appendChild(addBtn);
+      return editor;
+    }
+    
+    /**
+     * 创建题目编辑器
+     */
+    function createQuizQuestionEditor(questionData, index) {
+      const questionDiv = document.createElement('div');
+      questionDiv.className = 'quiz-question-editor';
+      questionDiv.dataset.questionIndex = index;
+      
+      const header = document.createElement('div');
+      header.className = 'quiz-question-editor-header';
+      header.innerHTML = `<span class="question-number">第 ${index + 1} 题</span>`;
+      
+      const deleteBtn = document.createElement('button');
+      deleteBtn.type = 'button';
+      deleteBtn.className = 'btn btn--ghost btn--tiny delete-question-btn';
+      deleteBtn.textContent = '删除';
+      deleteBtn.addEventListener('click', () => {
+        questionDiv.remove();
+        // 更新题目编号
+        const container = questionDiv.parentElement;
+        const questions = container.querySelectorAll('.quiz-question-editor');
+        questions.forEach((q, idx) => {
+          const numSpan = q.querySelector('.question-number');
+          if (numSpan) numSpan.textContent = `第 ${idx + 1} 题`;
+          q.dataset.questionIndex = idx;
+        });
+      });
+      header.appendChild(deleteBtn);
+      
+      const questionInput = document.createElement('textarea');
+      questionInput.className = 'question-input';
+      questionInput.value = questionData.question || '';
+      questionInput.placeholder = '输入问题...';
+      questionInput.rows = 2;
+      
+      const optionsContainer = document.createElement('div');
+      optionsContainer.className = 'quiz-options-container';
+      
+      questionData.options.forEach((option, optIndex) => {
+        const optionDiv = document.createElement('div');
+        optionDiv.className = 'quiz-option-editor';
+        
+        const optionLabel = document.createElement('label');
+        optionLabel.className = 'option-label';
+        optionLabel.textContent = String.fromCharCode(65 + optIndex);
+        
+        const optionInput = document.createElement('input');
+        optionInput.type = 'text';
+        optionInput.className = 'option-input';
+        optionInput.value = option || '';
+        optionInput.placeholder = `选项 ${String.fromCharCode(65 + optIndex)}`;
+        
+        const correctRadio = document.createElement('input');
+        correctRadio.type = 'radio';
+        correctRadio.name = `correct_${questionDiv.dataset.questionIndex}`;
+        correctRadio.value = optIndex;
+        correctRadio.checked = optIndex === questionData.correct;
+        
+        optionDiv.appendChild(correctRadio);
+        optionDiv.appendChild(optionLabel);
+        optionDiv.appendChild(optionInput);
+        optionsContainer.appendChild(optionDiv);
+      });
+      
+      questionDiv.appendChild(header);
+      questionDiv.appendChild(questionInput);
+      questionDiv.appendChild(optionsContainer);
+      
+      return questionDiv;
+    }
+    
+    /**
      * 初始化表单
      */
     function initForm() {
@@ -4619,6 +5292,9 @@ tensorboard>=2.13.0`
         console.warn(`[${MODULE_NAME}] 表单元素未找到`);
         return;
       }
+      
+      // 动态生成详情内容表单
+      generateDetailContentForm();
       
       // 绑定提交事件
       createProblemForm.addEventListener('submit', handleFormSubmit);

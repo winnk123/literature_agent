@@ -8,6 +8,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
+  <!-- 项目结构配置系统 -->
+  <script src="project-structure-config.js"></script>
 </head>
 <body class="theme-light">
   <div id="app">
@@ -351,20 +353,13 @@
               ></textarea>
             </div>
 
-            <!-- 背景介绍（可选） -->
-            <div class="form-group">
-              <label for="problemBackground" class="form-label">
-                背景介绍（可选）
-              </label>
-              <textarea 
-                id="problemBackground" 
-                name="problemBackground"
-                class="input input--full" 
-                rows="6" 
-                placeholder="详细描述项目的背景信息...（支持Markdown格式）"
-                autocomplete="off"
-              ></textarea>
-              <small class="form-hint">支持Markdown格式，将在详情页的"背景"章节显示</small>
+            <!-- 详情内容表单（动态生成） -->
+            <div class="form-section" id="detailContentFormSection" style="display: none;">
+              <h2 class="form-section-title">详情内容</h2>
+              <p class="form-section-desc">填写项目的详细内容，未填写的部分将使用默认内容</p>
+              
+              <!-- 动态生成的章节编辑器将插入这里 -->
+              <div id="dynamicSectionsContainer"></div>
             </div>
 
             <!-- 表单操作按钮 -->

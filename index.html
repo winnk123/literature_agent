@@ -92,6 +92,12 @@
 
     <!-- 详情页：1 : 4 : 4 布局 -->
     <section id="detail-view" class="view">
+      <button class="sidebar-toggle" id="sidebarToggle" aria-label="切换侧边栏">
+        <span id="toggleIcon">«</span>
+      </button>
+      <button class="agent-toggle" id="agentToggle" aria-label="切换Agent面板">
+        <span id="agentToggleIcon">»</span>
+      </button>
       <aside class="sidebar">
         <div class="sidebar__brand">
           <div class="brand__logo ai-logo">AI</div>
@@ -143,7 +149,24 @@
 
         <div class="detail__menu"></div>
 
+        <!-- 内容区标签页 -->
+        <div class="content-tabs">
+          <button class="content-tab is-active" data-tab="edit">
+            <span class="content-tab-icon">📝</span>
+            <span>编辑视图</span>
+          </button>
+          <button class="content-tab" data-tab="run">
+            <span class="content-tab-icon">▶️</span>
+            <span>代码运行</span>
+          </button>
+        </div>
+
+        <!-- 编辑视图标签页内容 -->
+        <div class="tab-content-area is-active" id="editTab">
         <div class="detail__video" aria-label="视频演示区">
+            <button class="video-toggle" id="videoToggle" aria-label="收缩视频区域" title="收缩/展开视频">
+              <span id="videoToggleIcon">▲</span>
+            </button>
           <div class="video__placeholder">视频区域（演示/讲解）</div>
         </div>
 
@@ -154,6 +177,26 @@
           </header>
           <div id="detailContent" class="article__section"></div>
         </article>
+        </div>
+
+        <!-- 代码运行标签页内容 -->
+        <div class="tab-content-area" id="runTab">
+          <div class="code-runner">
+            <div class="code-runner__header">
+              <h3 class="code-runner__title">代码运行环境</h3>
+              <div class="code-runner__actions">
+                <button class="btn btn--ghost btn--small" id="clearOutput">清空输出</button>
+                <button class="btn btn--primary btn--small" id="runAllCode">运行所有</button>
+              </div>
+            </div>
+            <div class="code-runner__content" id="codeRunnerContent">
+              <div class="runner-placeholder">
+                <p>✨ 在这里可以运行您在编辑视图中编写的所有代码</p>
+                <p>点击"运行所有"按钮开始执行</p>
+              </div>
+            </div>
+          </div>
+        </div>
       </section>
 
       <aside class="detail__qa" id="agentPanel">
@@ -164,7 +207,8 @@
             <p class="welcome__subtitle">有什么我能帮您的吗？</p>
           </div>
           <div class="welcome__input">
-            <input id="qaWelcomeInput" class="input input--welcome" placeholder="向 AI 提问..." />
+            <label for="qaWelcomeInput" class="sr-only">向 AI 提问</label>
+            <input type="text" id="qaWelcomeInput" name="qaWelcomeQuery" class="input input--welcome" placeholder="向 AI 提问..." autocomplete="off" />
             <button id="qaWelcomeSendBtn" class="btn btn--primary btn--welcome" aria-label="发送">
               <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M4 12L12 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -199,7 +243,8 @@
             </div>
           </div>
           <div class="qa__input">
-            <input id="qaInput" class="input" placeholder="向 AI 提问…" />
+            <label for="qaInput" class="sr-only">向 AI 提问</label>
+            <input type="text" id="qaInput" name="qaQuery" class="input" placeholder="向 AI 提问…" autocomplete="off" />
             <button id="qaSendBtn" class="btn btn--primary btn--icon" aria-label="发送">
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M4 12L12 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
@@ -249,8 +294,10 @@
               <input 
                 type="text" 
                 id="problemTitle" 
+                name="problemTitle"
                 class="input input--full" 
                 placeholder="例如：相机的图像去噪 · 实验版" 
+                autocomplete="off"
                 required 
               />
             </div>
@@ -260,7 +307,7 @@
               <label for="problemCategory" class="form-label">
                 分类 <span class="required">*</span>
               </label>
-              <select id="problemCategory" class="input input--full" required>
+              <select id="problemCategory" name="problemCategory" class="input input--full" autocomplete="off" required>
                 <option value="">请选择分类</option>
                 <option value="image">图像</option>
                 <option value="audio">语音</option>
@@ -278,8 +325,10 @@
               <input 
                 type="text" 
                 id="problemSubKey" 
+                name="problemSubKey"
                 class="input input--full" 
                 placeholder="例如：cam-denoise（英文小写，使用连字符）" 
+                autocomplete="off"
                 required 
                 pattern="[a-z0-9-]+"
               />
@@ -293,9 +342,11 @@
               </label>
               <textarea 
                 id="problemDesc" 
+                name="problemDesc"
                 class="input input--full" 
                 rows="4" 
                 placeholder="简要描述项目的内容和目标..." 
+                autocomplete="off"
                 required
               ></textarea>
             </div>
@@ -307,9 +358,11 @@
               </label>
               <textarea 
                 id="problemBackground" 
+                name="problemBackground"
                 class="input input--full" 
                 rows="6" 
                 placeholder="详细描述项目的背景信息...（支持Markdown格式）"
+                autocomplete="off"
               ></textarea>
               <small class="form-hint">支持Markdown格式，将在详情页的"背景"章节显示</small>
             </div>
@@ -364,24 +417,24 @@
       <h2 class="modal__title">注册账号</h2>
       <form class="register__form" id="registerForm">
         <div class="form__group">
-          <label class="form__label">用户名</label>
-          <input type="text" class="input input--full" placeholder="请输入用户名" required />
+          <label for="registerUsername" class="form__label">用户名</label>
+          <input type="text" id="registerUsername" name="username" class="input input--full" placeholder="请输入用户名" autocomplete="username" required />
         </div>
         <div class="form__group">
-          <label class="form__label">邮箱</label>
-          <input type="email" class="input input--full" placeholder="请输入邮箱" required />
+          <label for="registerEmail" class="form__label">邮箱</label>
+          <input type="email" id="registerEmail" name="email" class="input input--full" placeholder="请输入邮箱" autocomplete="email" required />
         </div>
         <div class="form__group">
-          <label class="form__label">密码</label>
-          <input type="password" class="input input--full" placeholder="请输入密码" required />
+          <label for="registerPassword" class="form__label">密码</label>
+          <input type="password" id="registerPassword" name="password" class="input input--full" placeholder="请输入密码" autocomplete="new-password" required />
         </div>
         <div class="form__group">
-          <label class="form__label">确认密码</label>
-          <input type="password" class="input input--full" placeholder="请再次输入密码" required />
+          <label for="registerPasswordConfirm" class="form__label">确认密码</label>
+          <input type="password" id="registerPasswordConfirm" name="passwordConfirm" class="input input--full" placeholder="请再次输入密码" autocomplete="new-password" required />
         </div>
         <div class="form__group">
-          <label class="form__label">选择角色</label>
-          <select class="input input--full" required>
+          <label for="registerRole" class="form__label">选择角色</label>
+          <select id="registerRole" name="role" class="input input--full" autocomplete="off" required>
             <option value="">请选择角色</option>
             <option value="enterprise">企业</option>
             <option value="teacher">高校教师</option>
@@ -406,6 +459,100 @@
         <button id="uploadDataBtn" class="btn btn--primary">数据上传</button>
         <button id="adminReviewBtn" class="btn btn--primary" style="display: none;">审核题目</button>
         <button id="logoutBtn" class="btn btn--ghost">退出登录</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 小频道四步流程模态框 -->
+  <div id="channelsOnboardingModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--onboarding">
+      <button class="modal__close" id="closeChannelsOnboarding">×</button>
+      
+      <!-- 步骤一：团队名称 -->
+      <div class="onboarding-step" id="onboardingStep1">
+        <div class="onboarding-progress">第1步,共4步</div>
+        <h2 class="onboarding-title">你的团队名称是什么？</h2>
+        <p class="onboarding-hint">这将是你的团队名称，请选择你的团队可识别的形式。</p>
+        <label for="teamNameInput" class="sr-only">团队名称</label>
+        <input type="text" id="teamNameInput" name="teamName" class="onboarding-input" placeholder="例: Acme Marketing 或 Acme Co" autocomplete="organization" />
+        <button class="btn btn--primary btn--large onboarding-next" id="step1Next">下一步</button>
+      </div>
+
+      <!-- 步骤二：姓名和头像 -->
+      <div class="onboarding-step" id="onboardingStep2" style="display: none;">
+        <div class="onboarding-progress">第2步,共4步</div>
+        <h2 class="onboarding-title">你的姓名是什么？</h2>
+        <p class="onboarding-hint">添加你的姓名和个人档案照片有助于让团队成员更容易地认出你并与你联系。</p>
+        <label for="userNameInput" class="sr-only">你的姓名</label>
+        <input type="text" id="userNameInput" name="userName" class="onboarding-input" value="mingxuan wang" autocomplete="name" />
+        <div class="onboarding-photo-section">
+          <label for="avatarUpload" class="onboarding-photo-label">你的个人档案照片 (选填)</label>
+          <p class="onboarding-hint-small">帮助团队成员知道他们正在与正确的人聊天。</p>
+          <div class="onboarding-avatar-wrapper">
+            <div class="onboarding-avatar" id="userAvatar">
+              <span id="avatarInitial">m</span>
+            </div>
+            <button type="button" class="btn btn--ghost" id="editPhotoBtn">编辑照片</button>
+            <input type="file" id="avatarUpload" name="avatar" accept="image/*" style="display: none;" />
+          </div>
+        </div>
+        <button class="btn btn--primary btn--large onboarding-next" id="step2Next">下一步</button>
+      </div>
+
+      <!-- 步骤三：邀请团队成员 -->
+      <div class="onboarding-step" id="onboardingStep3" style="display: none;">
+        <div class="onboarding-progress">第3步,共4步</div>
+        <h2 class="onboarding-title" id="step3Title">还有谁在 <span class="team-name-highlight" id="teamNameDisplay">团队</span>？</h2>
+        <p class="onboarding-hint">通过电子邮件地址添加同事</p>
+        <label for="inviteEmailsInput" class="sr-only">邀请邮箱地址</label>
+        <textarea id="inviteEmailsInput" name="inviteEmails" class="onboarding-textarea" placeholder="例:ellis@gmail.com、maria@gmail.com" autocomplete="email"></textarea>
+        <p class="onboarding-hint-small">请注意，邀请会在30天后到期。你可以随时延长截止日期。</p>
+        
+        <!-- 生成邀请码区域 -->
+        <div class="invite-code-section">
+          <label for="inviteCodeDisplay" class="invite-code-label">生成邀请码</label>
+          <div class="invite-code-wrapper">
+            <input type="text" id="inviteCodeDisplay" name="inviteCode" class="invite-code-input" readonly value="" aria-label="邀请码" />
+            <button class="btn btn--primary" id="generateInviteCodeBtn">生成邀请码</button>
+            <button class="btn btn--ghost" id="copyInviteCodeBtn" style="display: none;">复制邀请码</button>
+          </div>
+        </div>
+
+        <div class="onboarding-actions">
+          <button class="btn btn--primary btn--large" id="step3Next">下一步</button>
+          <button class="btn btn--secondary btn--large" id="copyInviteLinkBtn">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6.5L9.5 2H4a2 2 0 0 0-2 2z" stroke="currentColor" stroke-width="1.5"/><path d="M9.5 2v4.5H14" stroke="currentColor" stroke-width="1.5"/></svg>
+            复制邀请链接
+          </button>
+          <button class="btn btn--ghost" id="skipStep3Btn">跳过这一步</button>
+        </div>
+      </div>
+
+      <!-- 步骤四：欢迎加入团队 -->
+      <div class="onboarding-step onboarding-welcome" id="onboardingStep4" style="display: none;">
+        <div class="welcome-success-animation">
+          <div class="success-checkmark">✓</div>
+        </div>
+        <h1 class="welcome-title">欢迎来到你的第一个频道！</h1>
+        <div class="welcome-features-row">
+          <div class="welcome-feature-card">
+            <div class="feature-icon">📊</div>
+            <h3>运行项目</h3>
+            <p>管理项目进度，跟踪里程碑</p>
+          </div>
+          <div class="welcome-feature-card">
+            <div class="feature-icon">💬</div>
+            <h3>与团队成员聊天</h3>
+            <p>实时沟通，协作更高效</p>
+          </div>
+          <div class="welcome-feature-card">
+            <div class="feature-icon">📁</div>
+            <h3>共享文件</h3>
+            <p>上传和分享项目文件</p>
+          </div>
+        </div>
+        <button class="btn btn--primary btn--large" id="finishOnboardingBtn">开始使用</button>
       </div>
     </div>
   </div>

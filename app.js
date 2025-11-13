@@ -565,7 +565,7 @@
   // 说明: 管理项目和分类数据，支持 localStorage 持久化
   
   const STORAGE_KEY_PROJECTS = 'ai_platform_projects';
-  
+
   // 分类与项目数据
   const categories = [
     { key: 'image', name: '图像', items: [
@@ -824,6 +824,9 @@
     const bc = document.querySelector('.detail__breadcrumbs');
     if (bc) bc.textContent = `${project.category.toUpperCase()} · ${project.title.split('·')[0].trim()}`;
 
+    // 设置当前项目ID到全局变量
+    window.currentProjectId = project.id;
+
     renderDetailSection('background');
     switchView('detail');
     history.pushState({ view: 'detail', id: project.id, section: 'background' }, '', `#project/${project.id}/background`);
@@ -848,7 +851,8 @@
       ]},
       { key: 'idea', name: 'IDEA 引导' },
       { key: 'personalize', name: '个性化检验' },
-      { key: 'comments', name: '留言区' }
+      { key: 'comments', name: '留言区' },
+      { key: 'channels', name: '小频道' }
     ];
 
     const ul = document.createElement('ul');
@@ -1018,7 +1022,8 @@
           </button>
         </div>
         <div class="cell-content">
-          <textarea class="cell-input" placeholder="在此输入代码...">${cell.content}</textarea>
+          <label for="cell-input-${cell.id}" class="sr-only">代码输入</label>
+          <textarea id="cell-input-${cell.id}" name="cellCode" class="cell-input" placeholder="在此输入代码..." autocomplete="off">${cell.content}</textarea>
           ${cell.output ? `<div class="cell-output">${cell.output}</div>` : ''}
         </div>
       `;
@@ -1049,7 +1054,8 @@
           </button>
         </div>
         <div class="cell-content">
-          <textarea class="cell-input" style="display: none;">${cell.content}</textarea>
+          <label for="cell-input-md-${cell.id}" class="sr-only">Markdown输入</label>
+          <textarea id="cell-input-md-${cell.id}" name="cellMarkdown" class="cell-input" style="display: none;" autocomplete="off">${cell.content}</textarea>
         </div>
       `;
       
@@ -1774,7 +1780,14 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
       renderPersonalizeSection(wrap);
     } else if (key === 'comments') {
       renderCommentsSection(wrap);
+    } else if (key === 'channels') {
+      renderChannelsSection(wrap);
     } else {
+      // 恢复视频区域和标签页（其他分区）
+      const videoArea = qs('.detail__video');
+      const contentTabs = qs('.content-tabs');
+      if (videoArea) videoArea.style.display = '';
+      if (contentTabs) contentTabs.style.display = '';
       wrap.innerHTML = `<p>即将上线…</p>`;
     }
   }
@@ -1945,6 +1958,1065 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     });
   }
 
+  function renderChannelsSection(wrap) {
+    // 隐藏视频区域和标签页
+    const videoArea = qs('.detail__video');
+    const contentTabs = qs('.content-tabs');
+    if (videoArea) videoArea.style.display = 'none';
+    if (contentTabs) contentTabs.style.display = 'none';
+    
+    // 获取当前项目ID
+    const currentProjectId = window.currentProjectId || 'default';
+    const projectOnboardingKey = `channels_onboarding_${currentProjectId}`;
+    
+    // 检查当前项目是否已完成引导流程
+    const projectOnboarding = JSON.parse(localStorage.getItem(projectOnboardingKey) || 'null');
+    
+    if (!projectOnboarding || !projectOnboarding.completed) {
+      // 显示引导流程
+      const onboardingModal = qs('#channelsOnboardingModal');
+      if (onboardingModal) {
+        onboardingModal.classList.add('active');
+        initChannelsOnboarding(currentProjectId);
+      }
+    } else {
+      // 显示主界面
+      renderChannelsMainInterface(wrap, currentProjectId);
+    }
+  }
+
+  function initChannelsOnboarding(projectId) {
+    let currentStep = 1;
+    let teamName = '';
+    let userName = 'mingxuan wang';
+    let userAvatar = null;
+    let inviteCode = '';
+    
+    // 获取当前登录用户信息
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    if (currentUser && currentUser.username) {
+      userName = currentUser.username;
+    }
+
+    // 步骤一：团队名称
+    const step1Next = qs('#step1Next');
+    const teamNameInput = qs('#teamNameInput');
+    
+    if (step1Next) {
+      step1Next.addEventListener('click', () => {
+        const name = teamNameInput?.value.trim();
+        if (!name) {
+          alert('请输入团队名称');
+          return;
+        }
+        teamName = name;
+        showStep(2);
+        updateTeamNameDisplay(teamName);
+      });
+    }
+
+    // 步骤二：姓名和头像
+    const step2Next = qs('#step2Next');
+    const userNameInput = qs('#userNameInput');
+    const editPhotoBtn = qs('#editPhotoBtn');
+    const avatarUpload = qs('#avatarUpload');
+    const userAvatarEl = qs('#userAvatar');
+    const avatarInitial = qs('#avatarInitial');
+
+    if (step2Next) {
+      step2Next.addEventListener('click', () => {
+        const name = userNameInput?.value.trim();
+        if (!name) {
+          alert('请输入你的姓名');
+          return;
+        }
+        userName = name;
+        updateAvatarInitial(name);
+        showStep(3);
+      });
+    }
+
+    if (editPhotoBtn && avatarUpload) {
+      editPhotoBtn.addEventListener('click', () => {
+        avatarUpload.click();
+      });
+    }
+
+    if (avatarUpload) {
+      avatarUpload.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            userAvatar = event.target.result;
+            if (userAvatarEl) {
+              userAvatarEl.innerHTML = `<img src="${userAvatar}" alt="Avatar" />`;
+            }
+          };
+          reader.readAsDataURL(file);
+        }
+      });
+    }
+
+    // 步骤三：邀请团队成员
+    const step3Next = qs('#step3Next');
+    const generateInviteCodeBtn = qs('#generateInviteCodeBtn');
+    const copyInviteCodeBtn = qs('#copyInviteCodeBtn');
+    const copyInviteLinkBtn = qs('#copyInviteLinkBtn');
+    const skipStep3Btn = qs('#skipStep3Btn');
+    const inviteCodeDisplay = qs('#inviteCodeDisplay');
+
+    // generateInviteCodeBtn 的事件在 step3Next 部分处理
+
+    if (copyInviteCodeBtn) {
+      copyInviteCodeBtn.addEventListener('click', () => {
+        if (inviteCodeDisplay) {
+          inviteCodeDisplay.select();
+          document.execCommand('copy');
+          alert('邀请码已复制到剪贴板');
+        }
+      });
+    }
+
+    if (copyInviteLinkBtn) {
+      copyInviteLinkBtn.addEventListener('click', () => {
+        const inviteLink = `${window.location.origin}${window.location.pathname}#invite/${inviteCode || 'temp'}`;
+        navigator.clipboard.writeText(inviteLink).then(() => {
+          alert('邀请链接已复制到剪贴板');
+        });
+      });
+    }
+
+    if (skipStep3Btn) {
+      skipStep3Btn.addEventListener('click', () => {
+        showStep(4);
+      });
+    }
+
+    if (step3Next) {
+      // 初始状态：下一步按钮禁用
+      step3Next.disabled = true;
+      step3Next.style.opacity = '0.5';
+      step3Next.style.cursor = 'not-allowed';
+
+      const enableNext = () => {
+        step3Next.disabled = false;
+        step3Next.style.opacity = '1';
+        step3Next.style.cursor = 'pointer';
+      };
+
+      // 监听邮箱输入或邀请码生成
+      const inviteEmailsInput = qs('#inviteEmailsInput');
+      if (inviteEmailsInput) {
+        inviteEmailsInput.addEventListener('input', () => {
+          if (inviteEmailsInput.value.trim() || inviteCode) {
+            enableNext();
+          } else {
+            step3Next.disabled = true;
+            step3Next.style.opacity = '0.5';
+            step3Next.style.cursor = 'not-allowed';
+          }
+        });
+      }
+
+      // 生成邀请码后启用
+      if (generateInviteCodeBtn) {
+        generateInviteCodeBtn.addEventListener('click', () => {
+          inviteCode = generateInviteCode();
+          if (inviteCodeDisplay) {
+            inviteCodeDisplay.value = inviteCode;
+          }
+          if (copyInviteCodeBtn) {
+            copyInviteCodeBtn.style.display = 'inline-block';
+          }
+          enableNext();
+        });
+      }
+
+      step3Next.addEventListener('click', () => {
+        if (!step3Next.disabled) {
+          showStep(4);
+        }
+      });
+    }
+
+    // 步骤四：完成
+    const finishOnboardingBtn = qs('#finishOnboardingBtn');
+    const closeOnboardingBtn = qs('#closeChannelsOnboarding');
+
+    if (finishOnboardingBtn) {
+      finishOnboardingBtn.addEventListener('click', () => {
+        // 保存团队数据（全局）
+        const teamData = {
+          teamName: teamName,
+          userName: userName,
+          userAvatar: userAvatar,
+          inviteCode: inviteCode,
+          createdAt: new Date().toISOString()
+        };
+        localStorage.setItem('channels_team_data', JSON.stringify(teamData));
+        
+        // 按项目存储引导流程完成状态
+        const projectOnboardingKey = `channels_onboarding_${projectId}`;
+        const projectOnboarding = {
+          completed: true,
+          completedAt: new Date().toISOString(),
+          projectId: projectId
+        };
+        localStorage.setItem(projectOnboardingKey, JSON.stringify(projectOnboarding));
+        
+        // 关闭模态框
+        const modal = qs('#channelsOnboardingModal');
+        if (modal) {
+          modal.classList.remove('active');
+        }
+        
+        // 重新渲染小频道界面
+        const wrap = qs('#detailContent');
+        if (wrap) {
+          renderChannelsMainInterface(wrap, projectId);
+        }
+      });
+    }
+
+    if (closeOnboardingBtn) {
+      closeOnboardingBtn.addEventListener('click', () => {
+        const modal = qs('#channelsOnboardingModal');
+        if (modal) {
+          modal.classList.remove('active');
+        }
+      });
+    }
+
+    // 视频播放器已移除
+
+    // 点击遮罩层关闭（仅在步骤1-3）
+    const modal = qs('#channelsOnboardingModal');
+    if (modal) {
+      modal.addEventListener('click', (e) => {
+        if (e.target === modal || e.target.classList.contains('modal__overlay')) {
+          if (currentStep < 4) {
+            modal.classList.remove('active');
+          }
+        }
+      });
+    }
+
+    function showStep(step) {
+      for (let i = 1; i <= 4; i++) {
+        const stepEl = qs(`#onboardingStep${i}`);
+        if (stepEl) {
+          stepEl.style.display = i === step ? 'flex' : 'none';
+        }
+      }
+      currentStep = step;
+    }
+
+    function updateTeamNameDisplay(name) {
+      const teamNameDisplay = qs('#teamNameDisplay');
+      if (teamNameDisplay) {
+        teamNameDisplay.textContent = name;
+      }
+    }
+
+    function updateAvatarInitial(name) {
+      const initial = name.charAt(0).toLowerCase();
+      if (avatarInitial) {
+        avatarInitial.textContent = initial;
+      }
+    }
+
+    function generateInviteCode() {
+      const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      let code = '';
+      for (let i = 0; i < 4; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      code += '-';
+      for (let i = 0; i < 4; i++) {
+        code += chars.charAt(Math.floor(Math.random() * chars.length));
+      }
+      return code;
+    }
+  }
+
+  function renderChannelsMainInterface(wrap, projectId) {
+    const teamData = JSON.parse(localStorage.getItem('channels_team_data') || '{}');
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    const currentUsername = currentUser ? currentUser.username : (teamData.userName || '你');
+    
+    // 获取当前项目的好友列表
+    const friendsKey = `channels_friends_${projectId}`;
+    const friends = JSON.parse(localStorage.getItem(friendsKey) || '[]');
+    
+    // 获取好友请求
+    const friendRequestsKey = `channels_friend_requests_${projectId}`;
+    const friendRequests = JSON.parse(localStorage.getItem(friendRequestsKey) || '[]');
+    const pendingRequests = friendRequests.filter(req => req.to === currentUsername && req.status === 'pending');
+    
+    // 获取未读私信数量
+    const unreadDMsKey = `channels_unread_dms_${projectId}`;
+    const unreadDMs = JSON.parse(localStorage.getItem(unreadDMsKey) || '{}');
+    const unreadCount = Object.values(unreadDMs).reduce((sum, count) => sum + count, 0);
+    
+    // 默认显示"新频道"的消息
+    const channelName = '新频道';
+    const messagesKey = `channels_messages_${projectId}_${channelName}`;
+    const messages = JSON.parse(localStorage.getItem(messagesKey) || '[]');
+
+    wrap.innerHTML = `
+      <div class="channels-container">
+        <!-- 左侧导航栏 -->
+        <aside class="channels-sidebar">
+          <div class="channels-sidebar-header">
+            <div class="channels-workspace">${teamData.teamName ? teamData.teamName.charAt(0).toUpperCase() : '1'}</div>
+          </div>
+          <nav class="channels-nav">
+            <button class="channels-nav-item is-active" data-nav="home">
+              <svg viewBox="0 0 16 16" fill="none"><path d="M2 4L8 1L14 4V13C14 13.5304 13.7893 14.0391 13.4142 14.4142C13.0391 14.7893 12.5304 15 12 15H4C3.46957 15 2.96086 14.7893 2.58579 14.4142C2.21071 14.0391 2 13.5304 2 13V4Z" stroke="currentColor" stroke-width="1.5"/><path d="M6 15V8H10V15" stroke="currentColor" stroke-width="1.5"/></svg>
+              <span>主页</span>
+            </button>
+            <button class="channels-nav-item" data-nav="messages">
+              <svg viewBox="0 0 16 16" fill="none"><path d="M3 3h10v10H3z" stroke="currentColor" stroke-width="1.5"/><path d="M8 3v10M3 8h10" stroke="currentColor" stroke-width="1.5"/></svg>
+              <span>私信</span>
+              ${unreadCount > 0 ? `<span class="channels-nav-badge">${unreadCount}</span>` : ''}
+            </button>
+            <button class="channels-nav-item" data-nav="activity">
+              <svg viewBox="0 0 16 16" fill="none"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.5"/><path d="M8 4v4l3 2" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>
+              <span>活动</span>
+              ${pendingRequests.length > 0 ? `<span class="channels-nav-badge">${pendingRequests.length}</span>` : ''}
+            </button>
+            <button class="channels-nav-item" data-nav="files">
+              <svg viewBox="0 0 16 16" fill="none"><path d="M8.5 2L14 7.5V13C14 13.2652 13.8946 13.5196 13.7071 13.7071C13.5196 13.8946 13.2652 14 13 14H3C2.73478 14 2.48043 13.8946 2.29289 13.7071C2.10536 13.5196 2 13.2652 2 13V3C2 2.73478 2.10536 2.48043 2.29289 2.29289C2.48043 2.10536 2.73478 2 3 2H8.5Z" stroke="currentColor" stroke-width="1.5"/></svg>
+              <span>文件</span>
+            </button>
+          </nav>
+          <div class="channels-section">
+            <div class="channels-section-title">频道</div>
+            <ul class="channels-list">
+              <li class="channels-list-item is-active" data-channel="new">新频道</li>
+              <li class="channels-list-item" data-channel="project">项目讨论</li>
+              <li class="channels-list-item" data-channel="tech">技术交流</li>
+            </ul>
+          </div>
+          <div class="channels-section">
+            <div class="channels-section-title">话题标签</div>
+            <div class="channels-tags" id="channelsTags" style="display: none;">
+              <span class="channels-tag" data-tag="进度汇报">#进度汇报</span>
+              <span class="channels-tag" data-tag="需求变更">#需求变更</span>
+              <span class="channels-tag" data-tag="问题追踪">#问题追踪</span>
+            </div>
+          </div>
+          <div class="channels-section">
+            <div class="channels-section-title">
+              好友
+              <button class="btn btn--ghost btn--tiny" id="addFriendBtn" title="添加好友">+</button>
+            </div>
+            <ul class="channels-list" id="friendsList">
+              ${friends.length > 0 ? friends.map(friend => `
+                <li class="channels-list-item" data-friend="${friend.username}">
+                  <span>${friend.username}</span>
+                  ${friend.online ? '<span class="online-indicator" title="在线"></span>' : ''}
+                </li>
+              `).join('') : '<li class="channels-list-item channels-list-empty">暂无好友</li>'}
+            </ul>
+          </div>
+        </aside>
+
+        <!-- 主内容区 -->
+        <main class="channels-main">
+          <div class="channels-header">
+            <div class="channels-header-left">
+              <h2 class="channels-header-title">新频道</h2>
+              <button class="btn btn--ghost btn--small">添加成员</button>
+            </div>
+            <div class="channels-header-actions">
+              <label for="channelsSearchInput" class="sr-only">搜索频道</label>
+              <input type="search" id="channelsSearchInput" name="channelsSearch" class="channels-search" placeholder="搜索" autocomplete="off" />
+            </div>
+          </div>
+
+          <div class="channels-messages" id="channelsMessages">
+            ${renderChannelMessages(channelName, messages, projectId)}
+          </div>
+
+          <div class="channels-input-area">
+            <div class="channels-input-toolbar">
+              <button class="channels-toolbar-btn" title="粗体">
+                <svg viewBox="0 0 16 16" fill="none"><path d="M4 3h5a3 3 0 0 1 0 6H4V3zM4 9h4a2 2 0 0 1 0 4H4V9z" stroke="currentColor" stroke-width="1.5"/></svg>
+              </button>
+              <button class="channels-toolbar-btn" title="斜体">
+                <svg viewBox="0 0 16 16" fill="none"><path d="M6 3h4M5 13h4M7 3l-2 10" stroke="currentColor" stroke-width="1.5"/></svg>
+              </button>
+              <button class="channels-toolbar-btn" title="代码块">
+                <svg viewBox="0 0 16 16" fill="none"><path d="M6 4L2 8l4 4M10 4l4 4-4 4" stroke="currentColor" stroke-width="1.5"/></svg>
+              </button>
+              <div class="channels-tags-input" id="channelsTagsInput" style="display: none;">
+                <span class="channels-tag channels-tag--clickable" data-tag="进度汇报">#进度汇报</span>
+                <span class="channels-tag channels-tag--clickable" data-tag="需求变更">#需求变更</span>
+                <span class="channels-tag channels-tag--clickable" data-tag="问题追踪">#问题追踪</span>
+              </div>
+            </div>
+            <div class="channels-input-wrapper">
+              <label for="channelsMessageInput" class="sr-only">输入消息</label>
+              <textarea class="channels-input" id="channelsMessageInput" name="channelMessage" placeholder="消息 #新频道" autocomplete="off"></textarea>
+              <button class="channels-send-btn" id="channelsSendBtn">
+                <svg viewBox="0 0 16 16" fill="none"><path d="M4 12L12 4M6 4h6v6" stroke="currentColor" stroke-width="1.6"/></svg>
+              </button>
+            </div>
+          </div>
+        </main>
+      </div>
+    `;
+
+    // 绑定发送消息事件
+    const sendBtn = wrap.querySelector('#channelsSendBtn');
+    const messageInput = wrap.querySelector('#channelsMessageInput');
+
+    if (sendBtn && messageInput) {
+      const sendMessage = () => {
+        const text = messageInput.value.trim();
+        if (!text) return;
+        
+        // 获取当前选中的频道
+        const activeChannel = wrap.querySelector('.channels-list-item.is-active');
+        const channelName = activeChannel ? activeChannel.textContent.trim() : '新频道';
+        
+        // 按项目和频道存储消息
+        const messagesKey = `channels_messages_${projectId}_${channelName}`;
+        const messages = JSON.parse(localStorage.getItem(messagesKey) || '[]');
+        
+        const newMessage = {
+          id: Date.now(),
+          author: currentUsername,
+          text: text,
+          time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+        };
+
+        messages.push(newMessage);
+        localStorage.setItem(messagesKey, JSON.stringify(messages));
+
+        messageInput.value = '';
+        
+        // 更新当前频道消息显示
+        switchChannel(channelName, wrap, projectId);
+      };
+
+      sendBtn.addEventListener('click', sendMessage);
+      messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+    }
+
+    // 绑定导航项点击事件（防止跳转）
+    const navItems = wrap.querySelectorAll('.channels-nav-item');
+    navItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // 移除所有活动状态
+        navItems.forEach(nav => nav.classList.remove('is-active'));
+        // 添加当前活动状态
+        item.classList.add('is-active');
+        
+        const navType = item.dataset.nav;
+        switchChannelsView(navType, wrap, projectId);
+      });
+    });
+
+    // 绑定频道列表点击事件
+    const channelItems = wrap.querySelectorAll('.channels-list-item');
+    channelItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        // 移除所有活动状态
+        channelItems.forEach(ch => ch.classList.remove('is-active'));
+        // 添加当前活动状态
+        item.classList.add('is-active');
+        
+        // 确保主页视图处于活动状态
+        const homeNav = wrap.querySelector('.channels-nav-item[data-nav="home"]');
+        if (homeNav) {
+          wrap.querySelectorAll('.channels-nav-item').forEach(nav => nav.classList.remove('is-active'));
+          homeNav.classList.add('is-active');
+        }
+        
+        const channelName = item.textContent.trim();
+        switchChannel(channelName, wrap, projectId);
+        
+        // 显示/隐藏话题标签输入（仅项目讨论频道）
+        const tagsInput = wrap.querySelector('#channelsTagsInput');
+        if (tagsInput) {
+          tagsInput.style.display = channelName === '项目讨论' ? 'flex' : 'none';
+        }
+      });
+    });
+    
+    // 绑定话题标签点击事件（在输入框中）
+    const tagButtons = wrap.querySelectorAll('.channels-tag--clickable');
+    tagButtons.forEach(tag => {
+      tag.addEventListener('click', () => {
+        const tagText = tag.dataset.tag;
+        const messageInput = wrap.querySelector('#channelsMessageInput');
+        if (messageInput) {
+          const currentText = messageInput.value.trim();
+          const tagWithSpace = `#${tagText} `;
+          if (!currentText.includes(tagWithSpace)) {
+            messageInput.value = currentText ? `${currentText} ${tagWithSpace}` : tagWithSpace;
+            messageInput.focus();
+          }
+        }
+      });
+    });
+
+    // 绑定好友列表点击事件
+    const friendItems = wrap.querySelectorAll('[data-friend]');
+    friendItems.forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const friendName = item.dataset.friend;
+        // 切换到私信视图并打开与好友的对话
+        const messagesNav = wrap.querySelector('.channels-nav-item[data-nav="messages"]');
+        if (messagesNav) {
+          wrap.querySelectorAll('.channels-nav-item').forEach(nav => nav.classList.remove('is-active'));
+          messagesNav.classList.add('is-active');
+          switchChannelsView('messages', wrap, projectId, friendName);
+        }
+      });
+    });
+
+    // 绑定添加好友按钮
+    const addFriendBtn = wrap.querySelector('#addFriendBtn');
+    if (addFriendBtn) {
+      addFriendBtn.addEventListener('click', () => {
+        showAddFriendModal(projectId, wrap);
+      });
+    }
+  }
+
+  function switchChannelsView(viewType, wrap, projectId, friendName) {
+    // 切换不同的视图（主页、私信、活动、文件）
+    const messagesArea = wrap.querySelector('#channelsMessages');
+    if (!messagesArea) return;
+    
+    projectId = projectId || window.currentProjectId || 'default';
+
+    switch(viewType) {
+      case 'home':
+        // 显示当前选中频道的消息
+        const activeChannel = wrap.querySelector('.channels-list-item.is-active');
+        const currentChannelName = activeChannel ? activeChannel.textContent.trim() : '新频道';
+        const channelMessages = JSON.parse(localStorage.getItem(`channels_messages_${projectId}_${currentChannelName}`) || '[]');
+        messagesArea.innerHTML = channelMessages.length > 0 ? channelMessages.map(msg => `
+          <div class="channels-message">
+            <div class="channels-message-avatar">${msg.author.charAt(0).toUpperCase()}</div>
+            <div class="channels-message-content">
+              <div class="channels-message-header">
+                <span class="channels-message-author">${msg.author}</span>
+                <span class="channels-message-time">${msg.time}</span>
+              </div>
+              <p class="channels-message-text">${msg.text}</p>
+            </div>
+          </div>
+        `).join('') : `
+          <div style="text-align: center; padding: 60px 20px; color: var(--text-2);">
+            <p style="font-size: 18px; margin-bottom: 8px;">欢迎来到你的第一个频道！</p>
+            <p style="font-size: 14px;">开始发送消息，与团队成员交流吧。</p>
+          </div>
+        `;
+        break;
+      case 'messages':
+        // 显示私信列表或与特定好友的对话
+        const friendName = arguments[2] || null;
+        if (friendName) {
+          renderDirectMessage(wrap, projectId, friendName);
+        } else {
+          renderDirectMessagesList(wrap, projectId);
+        }
+        break;
+      case 'activity':
+        renderActivityView(wrap, projectId);
+        break;
+      case 'files':
+        messagesArea.innerHTML = `
+          <div style="text-align: center; padding: 60px 20px; color: var(--text-2);">
+            <p style="font-size: 18px; margin-bottom: 8px;">文件管理</p>
+            <p style="font-size: 14px;">查看和下载团队共享的文件。</p>
+          </div>
+        `;
+        break;
+    }
+  }
+
+  // 渲染频道消息（包含置顶消息和欢迎消息）
+  function renderChannelMessages(channelName, messages, projectId) {
+    let html = '';
+    
+    // 如果是"项目讨论"频道，显示置顶消息和频道信息
+    if (channelName === '项目讨论') {
+      html += `
+        <div class="channels-pinned-message">
+          <div class="channels-pinned-header">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M8 1L10 6L15 6L11 9L12 15L8 12L4 15L5 9L1 6L6 6L8 1Z" fill="currentColor"/></svg>
+            <span>频道信息</span>
+          </div>
+          <div class="channels-channel-info">
+            <div class="channel-intro">
+              <strong>频道简介：</strong>
+              <p>用于团队成员共享项目进展、协调任务与解决问题的主要交流区。</p>
+            </div>
+            <div class="channel-rules">
+              <strong>频道规则：</strong>
+              <ol>
+                <li>发言前请明确主题并@相关成员</li>
+                <li>汇报进展时建议附带最新任务状态或截图</li>
+                <li>讨论结束请总结结论并标记负责人</li>
+              </ol>
+            </div>
+            <div class="channel-pinned">
+              <strong>📌【讨论规范】</strong>
+              <ul>
+                <li>每周一上午更新项目进展</li>
+                <li>讨论完毕请使用 ✅ 表示结论已确定</li>
+                <li>所有问题需在24小时内回复</li>
+              </ul>
+              <div class="channel-template">
+                <strong>模板：</strong>
+                <pre>【任务】xxx
+【进展】xxx
+【待解决】xxx</pre>
+              </div>
+            </div>
+            <div class="channel-tags-info">
+              <strong>话题标签：</strong>
+              <div class="channels-tags-inline">
+                <span class="channels-tag">#进度汇报</span>
+                <span class="channels-tag">#需求变更</span>
+                <span class="channels-tag">#问题追踪</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      `;
+      
+      // 检查是否已有欢迎消息，如果没有则添加
+      const welcomeMessageKey = `channels_welcome_${projectId}_${channelName}`;
+      const hasWelcomeMessage = localStorage.getItem(welcomeMessageKey);
+      
+      if (!hasWelcomeMessage && messages.length === 0) {
+        const welcomeMessage = {
+          id: Date.now() - 1000, // 确保在置顶消息之后
+          author: '系统',
+          text: '👋 欢迎加入【项目讨论】频道！\n\n请先阅读置顶规则，并在首次发言时介绍你当前负责的模块。让我们一起推动项目顺利进行！',
+          time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+          isSystem: true
+        };
+        messages.unshift(welcomeMessage);
+        const messagesKey = `channels_messages_${projectId}_${channelName}`;
+        localStorage.setItem(messagesKey, JSON.stringify(messages));
+        localStorage.setItem(welcomeMessageKey, 'true');
+      }
+    }
+    
+    // 渲染普通消息
+    if (messages.length > 0) {
+      html += messages.map(msg => {
+        const isSystem = msg.isSystem || msg.author === '系统';
+        return `
+          <div class="channels-message ${isSystem ? 'channels-message--system' : ''}">
+            <div class="channels-message-avatar">${msg.author.charAt(0).toUpperCase()}</div>
+            <div class="channels-message-content">
+              <div class="channels-message-header">
+                <span class="channels-message-author">${msg.author}</span>
+                <span class="channels-message-time">${msg.time}</span>
+              </div>
+              <p class="channels-message-text">${msg.text.replace(/\n/g, '<br>')}</p>
+            </div>
+          </div>
+        `;
+      }).join('');
+    } else if (channelName !== '项目讨论') {
+      html += `
+        <div style="text-align: center; padding: 60px 20px; color: var(--text-2);">
+          <p style="font-size: 18px; margin-bottom: 8px;">欢迎来到 ${channelName}！</p>
+          <p style="font-size: 14px;">开始发送消息，与团队成员交流吧。</p>
+        </div>
+      `;
+    }
+    
+    return html;
+  }
+
+  function switchChannel(channelName, wrap, projectId) {
+    // 切换频道
+    const headerTitle = wrap.querySelector('.channels-header-title');
+    const messageInput = wrap.querySelector('#channelsMessageInput');
+    const tagsContainer = wrap.querySelector('#channelsTags');
+    
+    if (headerTitle) {
+      headerTitle.innerHTML = `<span>${channelName}</span>`;
+    }
+    
+    if (messageInput) {
+      messageInput.placeholder = `消息 ${channelName}`;
+    }
+
+    // 显示/隐藏话题标签（仅项目讨论频道显示）
+    if (tagsContainer) {
+      tagsContainer.style.display = channelName === '项目讨论' ? 'flex' : 'none';
+    }
+
+    // 加载该频道的消息
+    const messagesKey = `channels_messages_${projectId}_${channelName}`;
+    const messages = JSON.parse(localStorage.getItem(messagesKey) || '[]');
+    const messagesArea = wrap.querySelector('#channelsMessages');
+    
+    if (messagesArea) {
+      messagesArea.innerHTML = renderChannelMessages(channelName, messages, projectId);
+      
+      // 滚动到底部
+      messagesArea.scrollTop = messagesArea.scrollHeight;
+    }
+  }
+
+  // 显示添加好友模态框
+  function showAddFriendModal(projectId, wrap) {
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.innerHTML = `
+      <div class="modal__overlay"></div>
+      <div class="modal__content">
+        <button class="modal__close" id="closeAddFriendModal">×</button>
+        <h2 class="modal__title">添加好友</h2>
+        <div style="padding: 20px;">
+          <label for="friendUsernameInput" class="form__label">用户名</label>
+          <input type="text" id="friendUsernameInput" class="input input--full" placeholder="输入要添加的好友用户名" autocomplete="off" />
+          <div style="margin-top: 16px; display: flex; gap: 8px;">
+            <button class="btn btn--primary" id="sendFriendRequestBtn">发送好友请求</button>
+            <button class="btn btn--ghost" id="cancelAddFriendBtn">取消</button>
+          </div>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(modal);
+
+    const closeBtn = modal.querySelector('#closeAddFriendModal');
+    const cancelBtn = modal.querySelector('#cancelAddFriendBtn');
+    const sendBtn = modal.querySelector('#sendFriendRequestBtn');
+    const usernameInput = modal.querySelector('#friendUsernameInput');
+
+    const closeModal = () => {
+      document.body.removeChild(modal);
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    cancelBtn.addEventListener('click', closeModal);
+    modal.querySelector('.modal__overlay').addEventListener('click', closeModal);
+
+    sendBtn.addEventListener('click', () => {
+      const friendUsername = usernameInput.value.trim();
+      if (!friendUsername) {
+        alert('请输入用户名');
+        return;
+      }
+
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+      const currentUsername = currentUser ? currentUser.username : '你';
+
+      if (friendUsername === currentUsername) {
+        alert('不能添加自己为好友');
+        return;
+      }
+
+      // 检查是否已经是好友
+      const friendsKey = `channels_friends_${projectId}`;
+      const friends = JSON.parse(localStorage.getItem(friendsKey) || '[]');
+      if (friends.find(f => f.username === friendUsername)) {
+        alert('该用户已经是你的好友');
+        closeModal();
+        return;
+      }
+
+      // 发送好友请求
+      const friendRequestsKey = `channels_friend_requests_${projectId}`;
+      const friendRequests = JSON.parse(localStorage.getItem(friendRequestsKey) || '[]');
+      
+      // 检查是否已经发送过请求
+      if (friendRequests.find(req => req.from === currentUsername && req.to === friendUsername && req.status === 'pending')) {
+        alert('已经发送过好友请求，请等待对方回复');
+        closeModal();
+        return;
+      }
+
+      const newRequest = {
+        id: Date.now(),
+        from: currentUsername,
+        to: friendUsername,
+        status: 'pending',
+        createdAt: new Date().toISOString()
+      };
+
+      friendRequests.push(newRequest);
+      localStorage.setItem(friendRequestsKey, JSON.stringify(friendRequests));
+
+      alert('好友请求已发送！');
+      closeModal();
+      
+      // 重新渲染界面以更新活动徽章
+      renderChannelsMainInterface(wrap, projectId);
+    });
+  }
+
+  // 渲染私信列表
+  function renderDirectMessagesList(wrap, projectId) {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    const currentUsername = currentUser ? currentUser.username : '你';
+    const friendsKey = `channels_friends_${projectId}`;
+    const friends = JSON.parse(localStorage.getItem(friendsKey) || '[]');
+    
+    const messagesArea = wrap.querySelector('#channelsMessages');
+    const headerTitle = wrap.querySelector('.channels-header-title');
+    
+    if (headerTitle) {
+      headerTitle.innerHTML = '<span>私信</span>';
+    }
+
+    if (messagesArea) {
+      if (friends.length === 0) {
+        messagesArea.innerHTML = `
+          <div style="text-align: center; padding: 60px 20px; color: var(--text-2);">
+            <p style="font-size: 18px; margin-bottom: 8px;">暂无好友</p>
+            <p style="font-size: 14px;">添加好友后可以开始私信对话。</p>
+          </div>
+        `;
+      } else {
+        messagesArea.innerHTML = friends.map(friend => {
+          // 获取最后一条消息
+          const dmKey = `channels_dm_${projectId}_${currentUsername}_${friend.username}`;
+          const messages = JSON.parse(localStorage.getItem(dmKey) || '[]');
+          const lastMessage = messages.length > 0 ? messages[messages.length - 1] : null;
+          
+          return `
+            <div class="channels-dm-item" data-friend="${friend.username}" style="padding: 16px; border-bottom: 1px solid var(--border); cursor: pointer; display: flex; align-items: center; gap: 12px;">
+              <div class="channels-message-avatar">${friend.username.charAt(0).toUpperCase()}</div>
+              <div style="flex: 1;">
+                <div style="font-weight: 600; margin-bottom: 4px;">${friend.username}</div>
+                ${lastMessage ? `<div style="font-size: 13px; color: var(--text-2);">${lastMessage.text}</div>` : '<div style="font-size: 13px; color: var(--text-2);">暂无消息</div>'}
+              </div>
+              ${lastMessage ? `<div style="font-size: 12px; color: var(--text-2);">${lastMessage.time}</div>` : ''}
+            </div>
+          `;
+        }).join('');
+
+        // 绑定点击事件
+        const dmItems = messagesArea.querySelectorAll('.channels-dm-item');
+        dmItems.forEach(item => {
+          item.addEventListener('click', () => {
+            const friendName = item.dataset.friend;
+            renderDirectMessage(wrap, projectId, friendName);
+          });
+        });
+      }
+    }
+  }
+
+  // 渲染与好友的私信对话
+  function renderDirectMessage(wrap, projectId, friendName) {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    const currentUsername = currentUser ? currentUser.username : '你';
+    
+    // 获取私信消息（双向存储）
+    const dmKey1 = `channels_dm_${projectId}_${currentUsername}_${friendName}`;
+    const dmKey2 = `channels_dm_${projectId}_${friendName}_${currentUsername}`;
+    const messages1 = JSON.parse(localStorage.getItem(dmKey1) || '[]');
+    const messages2 = JSON.parse(localStorage.getItem(dmKey2) || '[]');
+    
+    // 合并消息并按时间排序
+    const allMessages = [...messages1, ...messages2].sort((a, b) => a.id - b.id);
+    
+    const messagesArea = wrap.querySelector('#channelsMessages');
+    const headerTitle = wrap.querySelector('.channels-header-title');
+    const messageInput = wrap.querySelector('#channelsMessageInput');
+    
+    if (headerTitle) {
+      headerTitle.innerHTML = `<span>与 ${friendName} 的对话</span>`;
+    }
+    
+    if (messageInput) {
+      messageInput.placeholder = `发送私信给 ${friendName}...`;
+    }
+
+    if (messagesArea) {
+      messagesArea.innerHTML = allMessages.length > 0 ? allMessages.map(msg => {
+        const isMe = msg.from === currentUsername;
+        return `
+          <div class="channels-message" style="display: flex; ${isMe ? 'flex-direction: row-reverse;' : ''} margin-bottom: 16px;">
+            <div class="channels-message-avatar">${msg.from.charAt(0).toUpperCase()}</div>
+            <div class="channels-message-content" style="${isMe ? 'background: var(--brand); color: white;' : ''}">
+              <div class="channels-message-header">
+                <span class="channels-message-author">${msg.from}</span>
+                <span class="channels-message-time">${msg.time}</span>
+              </div>
+              <p class="channels-message-text">${msg.text}</p>
+            </div>
+          </div>
+        `;
+      }).join('') : `
+        <div style="text-align: center; padding: 60px 20px; color: var(--text-2);">
+          <p style="font-size: 18px; margin-bottom: 8px;">开始与 ${friendName} 的对话</p>
+          <p style="font-size: 14px;">发送第一条消息开始聊天吧。</p>
+        </div>
+      `;
+      
+      messagesArea.scrollTop = messagesArea.scrollHeight;
+    }
+
+    // 更新发送消息功能
+    const sendBtn = wrap.querySelector('#channelsSendBtn');
+    const input = wrap.querySelector('#channelsMessageInput');
+    
+    if (sendBtn && input) {
+      // 移除旧的事件监听器（通过克隆节点）
+      const newSendBtn = sendBtn.cloneNode(true);
+      sendBtn.parentNode.replaceChild(newSendBtn, sendBtn);
+      const newInput = input.cloneNode(true);
+      input.parentNode.replaceChild(newInput, input);
+
+      const sendDirectMessage = () => {
+        const text = newInput.value.trim();
+        if (!text) return;
+
+        const newMessage = {
+          id: Date.now(),
+          from: currentUsername,
+          to: friendName,
+          text: text,
+          time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+        };
+
+        // 存储到当前用户的私信记录
+        const messages = JSON.parse(localStorage.getItem(dmKey1) || '[]');
+        messages.push(newMessage);
+        localStorage.setItem(dmKey1, JSON.stringify(messages));
+
+        newInput.value = '';
+        renderDirectMessage(wrap, projectId, friendName);
+      };
+
+      newSendBtn.addEventListener('click', sendDirectMessage);
+      newInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendDirectMessage();
+        }
+      });
+    }
+  }
+
+  // 渲染活动动态视图（好友请求）
+  function renderActivityView(wrap, projectId) {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    const currentUsername = currentUser ? currentUser.username : '你';
+    
+    const friendRequestsKey = `channels_friend_requests_${projectId}`;
+    const friendRequests = JSON.parse(localStorage.getItem(friendRequestsKey) || '[]');
+    const pendingRequests = friendRequests.filter(req => req.to === currentUsername && req.status === 'pending');
+    
+    const messagesArea = wrap.querySelector('#channelsMessages');
+    const headerTitle = wrap.querySelector('.channels-header-title');
+    
+    if (headerTitle) {
+      headerTitle.innerHTML = '<span>活动动态</span>';
+    }
+
+    if (messagesArea) {
+      if (pendingRequests.length === 0) {
+        messagesArea.innerHTML = `
+          <div style="text-align: center; padding: 60px 20px; color: var(--text-2);">
+            <p style="font-size: 18px; margin-bottom: 8px;">暂无待处理的好友请求</p>
+            <p style="font-size: 14px;">当有人向你发送好友请求时，会在这里显示。</p>
+          </div>
+        `;
+      } else {
+        messagesArea.innerHTML = pendingRequests.map(req => `
+          <div class="activity-item" data-request-id="${req.id}" style="padding: 20px; border-bottom: 1px solid var(--border);">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <div class="channels-message-avatar">${req.from.charAt(0).toUpperCase()}</div>
+              <div style="flex: 1;">
+                <div style="font-weight: 600; margin-bottom: 4px;">${req.from}</div>
+                <div style="font-size: 13px; color: var(--text-2);">想要添加你为好友</div>
+              </div>
+              <div style="font-size: 12px; color: var(--text-2);">${new Date(req.createdAt).toLocaleString('zh-CN')}</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn btn--primary btn--small accept-friend-btn" data-request-id="${req.id}">接受</button>
+              <button class="btn btn--ghost btn--small reject-friend-btn" data-request-id="${req.id}">拒绝</button>
+            </div>
+          </div>
+        `).join('');
+
+        // 绑定接受/拒绝按钮
+        const acceptBtns = messagesArea.querySelectorAll('.accept-friend-btn');
+        const rejectBtns = messagesArea.querySelectorAll('.reject-friend-btn');
+
+        acceptBtns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const requestId = parseInt(btn.dataset.requestId);
+            const request = friendRequests.find(req => req.id === requestId);
+            if (request) {
+              // 更新请求状态
+              request.status = 'accepted';
+              localStorage.setItem(friendRequestsKey, JSON.stringify(friendRequests));
+
+              // 添加到好友列表
+              const friendsKey = `channels_friends_${projectId}`;
+              const friends = JSON.parse(localStorage.getItem(friendsKey) || '[]');
+              if (!friends.find(f => f.username === request.from)) {
+                friends.push({
+                  username: request.from,
+                  addedAt: new Date().toISOString(),
+                  online: false
+                });
+                localStorage.setItem(friendsKey, JSON.stringify(friends));
+              }
+
+              // 同时将对方添加到自己的好友列表（双向）
+              const otherUserFriendsKey = `channels_friends_${projectId}`;
+              // 注意：这里简化处理，实际应该为对方用户也添加好友关系
+              
+              alert('已接受好友请求！');
+              renderActivityView(wrap, projectId);
+              // 重新渲染主界面以更新好友列表
+              renderChannelsMainInterface(wrap, projectId);
+            }
+          });
+        });
+
+        rejectBtns.forEach(btn => {
+          btn.addEventListener('click', () => {
+            const requestId = parseInt(btn.dataset.requestId);
+            const request = friendRequests.find(req => req.id === requestId);
+            if (request) {
+              // 更新请求状态
+              request.status = 'rejected';
+              localStorage.setItem(friendRequestsKey, JSON.stringify(friendRequests));
+              
+              alert('已拒绝好友请求');
+              renderActivityView(wrap, projectId);
+            }
+          });
+        });
+      }
+    }
+  }
+
   function renderCommentsSection(wrap) {
     // 留言区 - 类似微信公众号评论区
     // 使用全局变量存储留言数据，保持状态
@@ -2022,7 +3094,8 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
         
         <div class="comment-input-area">
           <div class="comment-input-wrapper">
-            <textarea class="comment-input" id="newCommentInput" placeholder="写下你的想法..."></textarea>
+            <label for="newCommentInput" class="sr-only">写下你的想法</label>
+            <textarea class="comment-input" id="newCommentInput" name="newComment" placeholder="写下你的想法..." autocomplete="off"></textarea>
             <button class="btn btn--primary" id="submitComment">发表留言</button>
           </div>
         </div>
@@ -2068,7 +3141,8 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
                   
                   <div class="reply-input-area" data-id="${comment.id}">
                     <div class="reply-input-wrapper">
-                      <input type="text" class="reply-input" placeholder="写下你的回复..." />
+                      <label for="replyInput_${comment.id}" class="sr-only">写下你的回复</label>
+                      <input type="text" id="replyInput_${comment.id}" name="replyText" class="reply-input" placeholder="写下你的回复..." autocomplete="off" />
                       <button class="btn btn--primary btn--small send-reply-btn">发送</button>
                     </div>
                   </div>
@@ -2194,7 +3268,7 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
       detailView.classList.add('active');
     } else if (view === 'create' && createViewGlobal) {
       createViewGlobal.classList.add('active');
-    }
+  }
   }
   
   // 暴露到全局（供模块使用）
@@ -2410,12 +3484,12 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
       <h2 class="modal__title">登录账号</h2>
       <form class="register__form" id="loginForm">
         <div class="form__group">
-          <label class="form__label">用户名</label>
-          <input type="text" name="username" class="input input--full" placeholder="请输入用户名" required />
+          <label for="loginUsername" class="form__label">用户名</label>
+          <input type="text" id="loginUsername" name="username" class="input input--full" placeholder="请输入用户名" autocomplete="username" required />
         </div>
         <div class="form__group">
-          <label class="form__label">密码</label>
-          <input type="password" name="password" class="input input--full" placeholder="请输入密码" required />
+          <label for="loginPassword" class="form__label">密码</label>
+          <input type="password" id="loginPassword" name="password" class="input input--full" placeholder="请输入密码" autocomplete="current-password" required />
         </div>
         <button type="submit" class="btn btn--primary btn--large" style="width: 100%; margin-top: 12px;">登录</button>
         <div class="form__footer">
@@ -2501,7 +3575,7 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     const adminReviewBtn = qs('#adminReviewBtn');
 
     // 根据角色显示/隐藏功能按钮
-    if (role === 'enterprise' || role === 'teacher') {
+      if (role === 'enterprise' || role === 'teacher') {
       // 企业和教师：显示出题和上传按钮
       if (createProblemBtn) createProblemBtn.style.display = 'inline-block';
       if (uploadDataBtn) uploadDataBtn.style.display = 'inline-block';
@@ -2511,7 +3585,7 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
       if (createProblemBtn) createProblemBtn.style.display = 'inline-block';
       if (uploadDataBtn) uploadDataBtn.style.display = 'inline-block';
       if (adminReviewBtn) adminReviewBtn.style.display = 'inline-block';
-    } else {
+      } else {
       // 普通用户：隐藏所有按钮
       if (createProblemBtn) createProblemBtn.style.display = 'none';
       if (uploadDataBtn) uploadDataBtn.style.display = 'none';

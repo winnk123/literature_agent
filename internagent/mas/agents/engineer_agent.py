@@ -6,7 +6,7 @@ import logging
 import os
 import json
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 import asyncio
 from pathlib import Path
 
@@ -226,6 +226,22 @@ class EngineerAgent(BaseAgent):
         # 获取 task_decomposition 信息
         task_decomposition = shared_context.get("task_decomposition", {})
 
+        # 基于问题概述用大模型凝练教程标题（写入 task_decomposition.concise_title）
+        try:
+            problem_overview_text = (
+                task_decomposition.get("problem_overview")
+                or task_decomposition.get("problem_formulation")
+                or goal_description
+                or ""
+            )
+            if isinstance(problem_overview_text, str) and problem_overview_text.strip():
+                condensed = await self._condense_project_title(problem_overview_text.strip())
+                if condensed:
+                    task_decomposition = dict(task_decomposition or {})
+                    task_decomposition["concise_title"] = condensed
+        except Exception as _title_exc:
+            logger.warning(f"标题凝练失败，使用默认标题: {_title_exc}")
+
         # 生成所有输出文件
         output_structure = self._generate_and_save_outputs(
             goal_description,
@@ -239,6 +255,8 @@ class EngineerAgent(BaseAgent):
             "goal_description": goal_description,
             "project_packages": project_packages,
             "output_structure": output_structure,
+            "task_decomposition": task_decomposition,
+            "references": references,
             "total_actions": len(trimmed_actions),
             "successful_actions": sum(1 for item in project_packages if item.get("status") == "success"),
             "output_directory": self.output_dir
@@ -2214,7 +2232,11 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
         """生成完整的教程文档（带全局首次引用顺序的数字编号）"""
         content = []
         
-        content.append("# 完整实现教程\n\n")
+        # 顶部标题：仅使用模型凝练得到的 concise_title（不做兜底/派生）
+        project_title = ""
+        if isinstance(task_decomposition, dict):
+            project_title = task_decomposition.get("concise_title") or ""
+        content.append(f"# {project_title or '教程'}\n\n")
         
         # 添加 Task Decomposition 信息（最前面）
         if task_decomposition:
@@ -2375,15 +2397,10 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
         """生成完整的教程文档（Jupyter Notebook 格式，支持全局首次引用顺序编号）"""
         cells = []
         
-        # 获取项目标题（从第一个package或者goal_description）
-        project_title = goal_description
-        if packages and packages[0].get("package_title"):
-            # 从第一个package的标题中提取项目名（去掉"Package X:"前缀）
-            first_pkg_title = packages[0].get("package_title", "")
-            if ":" in first_pkg_title:
-                project_title = first_pkg_title.split(":", 1)[1].strip()
-            else:
-                project_title = first_pkg_title
+        # 顶部标题：仅使用模型凝练得到的 concise_title（不做兜底/派生）
+        project_title = ""
+        if isinstance(task_decomposition, dict):
+            project_title = task_decomposition.get("concise_title") or ""
         
         # 一级标题：项目名称
         title_cell = {
@@ -2755,6 +2772,58 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
         }
         
         return notebook
+    
+    async def _condense_project_title(self, problem_overview: str) -> str:
+        """
+        使用大模型从 problem_overview 凝练中文教程标题（简短、有指向性，建议以“教程”结尾）
+        """
+        if not problem_overview:
+            return ""
+        prompt = (
+            "你是资深技术作者，请将以下研究问题概述，凝练为一个中文教程标题：\n"
+            "要求：\n"
+            "1) 简洁有力，8-12字为宜（硬性上限14字）\n"
+            "2) 能概括问题与方法场景\n"
+            "3) 以“教程”结尾（若已包含“教程”则不必重复）\n"
+            "4) 不要出现问句或标点（如？、。等），不以“如何/怎样/怎么”开头\n"
+            "5) 只输出标题本身\n\n"
+            f"【问题概述】\n{problem_overview}\n"
+        )
+        schema = {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "简洁教程标题，仅标题文本"}
+            },
+            "required": ["title"]
+        }
+        try:
+            resp = await self._call_model(
+                prompt=prompt,
+                system_prompt="你是擅长中文技术写作的编辑，输出高质量中文标题。",
+                schema=schema,
+                temperature=0.2
+            )
+            title = (resp or {}).get("title", "").strip()
+            return title
+        except Exception:
+            return ""
+    
+    def _derive_title_from_text(self, text: str) -> str:
+        """
+        纯规则的标题凝练兜底方案：截断 + 去引导词 + 加“教程”
+        """
+        if not isinstance(text, str) or not text.strip():
+            return ""
+        base = text.strip().rstrip("？?。.")
+        if len(base) > 30:
+            base = base[:30].strip()
+        for prefix in ["如何", "怎样", "怎么", "请问", "基于", "面向"]:
+            if base.startswith(prefix):
+                base = base[len(prefix):].strip()
+                break
+        if base and not base.endswith("教程") and "教程" not in base:
+            base = f"{base}教程"
+        return base
 
     def _make_author_year_key(self, ref: Dict[str, Any]) -> str:
         """生成用于匹配的 author-year 键（使用第一作者姓氏的简化形式 + 年份）"""
@@ -2774,7 +2843,7 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
         self,
         text: str,
         references: List[Dict[str, Any]]
-    ) -> (List[Dict[str, Any]], Dict[str, int]):
+    ) -> Tuple[List[Dict[str, Any]], Dict[str, int]]:
         """
         扫描全文，按作者-年份引用首次出现顺序建立编号，并返回有序参考文献列表与映射。
         仅基于作者-年份模式 [Surname, 2020] 进行编号；无法可靠映射已有的数字引用。
@@ -3002,7 +3071,7 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
         output_structure = self._generate_and_save_outputs(
             goal_description,
             revised_packages,
-            original_plan.get("references", []),
+            original_plan.get("references") or context.get("references") or [],
             task_decomposition,
             params
         )

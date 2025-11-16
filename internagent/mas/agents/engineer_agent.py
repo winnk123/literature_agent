@@ -155,7 +155,7 @@ class EngineerAgent(BaseAgent):
         # 兼容某些可能的扁平结构（如放在 context 顶层的 task_decomposition_key_steps 等）
         if not extracted_actions:
             fallback_keys = [
-                "task_decomposition_key_steps", "task_decomposition_steps"
+                "key_steps", "task_decomposition_steps"
             ]
             for key in fallback_keys:
                 v = context.get(key)
@@ -336,6 +336,19 @@ class EngineerAgent(BaseAgent):
             # 确保 current_package 包含必要的字段
             if "implementation_steps" not in current_package:
                 current_package["implementation_steps"] = []
+            
+            # 解析框架中的项目结构，提取允许的文件清单，用于后续步骤校验
+            allowed_files = set()
+            try:
+                allowed_files = self._parse_structure_files(current_package.get("project_structure", ""))
+                if allowed_files:
+                    logger.info(f"  ✓ 允许引用的文件（来自项目结构）: {len(allowed_files)} 个")
+            except Exception as _:
+                logger.warning("无法解析项目结构中的文件清单，将仅依赖提示约束避免生成不存在的文件")
+            # 用于快速按文件名匹配
+            allowed_by_basename = {}
+            for p in allowed_files:
+                allowed_by_basename.setdefault(p.split('/')[-1], []).append(p)
             
             for batch_num in range(1, total_batches + 1):
                 logger.info(f"    生成第 {batch_num}/{total_batches} 批实现步骤...")
@@ -553,6 +566,25 @@ class EngineerAgent(BaseAgent):
                         logger.warning(f"第 {batch_num} 批步骤 {idx+1} 格式错误，跳过: {type(step)}")
                         continue
                     
+                    # 如果该字典不包含任何预期的步骤字段，可能是代码片段或孤立键值，尝试合并到上一个有效步骤的代码中
+                    expected_step_fields = {"step_number", "component_name", "file_path", "purpose", "explanation", "code", "language", "important_notes"}
+                    if not any(field in step for field in expected_step_fields):
+                        try:
+                            # 将该对象序列化为字符串并附加到上一条步骤的代码
+                            if valid_steps:
+                                fragment_text = json.dumps(step, ensure_ascii=False, indent=2)
+                                prev_code = valid_steps[-1].get("code") or ""
+                                if isinstance(prev_code, str):
+                                    valid_steps[-1]["code"] = (prev_code + "\n" + fragment_text).strip()
+                                else:
+                                    valid_steps[-1]["code"] = fragment_text
+                                logger.info(f"第 {batch_num} 批将非步骤字段片段合并到前一条步骤代码中")
+                                continue
+                        except Exception:
+                            # 无法合并则跳过
+                            logger.warning(f"第 {batch_num} 批遇到无法识别的片段，已跳过")
+                            continue
+                    
                     # 确保必要字段存在并设置默认值
                     required_fields = {
                         "step_number": f"Step {idx+1}",
@@ -570,6 +602,26 @@ class EngineerAgent(BaseAgent):
                             step[field] = default_value
                         elif step[field] is None:
                             step[field] = default_value
+                    
+                    # 规范化并校验文件路径必须存在于项目结构中（禁止“无中生有”）
+                    raw_path = step.get("file_path") or ""
+                    normalized_path = str(raw_path).strip().strip('`').replace('\\', '/')
+                    if normalized_path.startswith('./'):
+                        normalized_path = normalized_path[2:]
+                    step["file_path"] = normalized_path or "src/unknown.py"
+                    
+                    if allowed_files:
+                        if step["file_path"] not in allowed_files:
+                            # 尝试用同名文件匹配
+                            base = step["file_path"].split('/')[-1]
+                            candidates = allowed_by_basename.get(base, [])
+                            if len(candidates) == 1:
+                                logger.info(f"第 {batch_num} 批步骤 {idx+1} 文件路径纠正: {step['file_path']} -> {candidates[0]}")
+                                step["file_path"] = candidates[0]
+                            else:
+                                logger.warning(f"第 {batch_num} 批步骤 {idx+1} 引用了项目结构中不存在的文件 '{step['file_path']}'，已跳过该步骤")
+                                # 跳过该步骤，避免产生不存在的文件
+                                continue
                     
                     # 修复代码字段
                     if "code" in step:
@@ -1131,6 +1183,8 @@ You are now writing the detailed implementation tutorial for your students. Your
 
 As Dr. Chen, generate the next batch of implementation steps. Write each step as if you're teaching a live coding session, 
 explaining not just what to write, but why you're writing it this way. Each step should include:
+
+⚠️ File constraints (MANDATORY): 你必须只使用上方“Project Structure”中列出的文件路径，不得创造或引用未列出的新文件路径；若多个步骤修改同一文件是允许的，但禁止新增文件名。
 
 ### Step X.Y: [Component Name]
 **File:** `path/to/file.{preferred_language}`
@@ -2121,6 +2175,34 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
         }
         
         return notebook
+    
+    def _parse_structure_files(self, structure_text: str) -> set:
+        """
+        从项目结构文本中解析出所有文件相对路径集合。
+        仅识别在树形结构中以常见文件扩展名结尾的行，忽略目录。
+        """
+        if not structure_text or not isinstance(structure_text, str):
+            return set()
+        import re
+        files = set()
+        # 去掉围栏与缩进，逐行解析
+        for raw_line in structure_text.splitlines():
+            line = raw_line.strip(" \t`")
+            if not line:
+                continue
+            # 去掉树形符号与边框（├── └── │）
+            line = line.replace("├──", "").replace("└──", "").replace("│", "").strip()
+            # 简单判断是否是文件（包含扩展名）
+            if re.search(r"\.[A-Za-z0-9]+$", line):
+                # 还原出相对路径：寻找目录前缀（如 package-xx-.../src/main.py），若行中包含斜杠则直接加入
+                path_candidate = line
+                # 过滤“[other modules]”这类占位
+                if "[" in path_candidate or "]" in path_candidate or "..." in path_candidate:
+                    continue
+                # 规范化
+                path_candidate = path_candidate.replace("\\", "/").lstrip("./")
+                files.add(path_candidate)
+        return files
 
     def _create_full_tutorial(
         self,

@@ -2,7 +2,7 @@
 
 ## 📋 概述
 
-本教程包聚焦于图像去噪模型的核心训练阶段，重点解决如何在保留语义细节的同时高效去除复杂噪声。我们将构建一个端到端的扩散去噪网络，引入**对比学习**增强特征判别性，结合**感知损失函数**对齐人类视觉偏好，并设计**多尺度特征融合**与**自适应降噪模块**以提升对真实世界噪声的鲁棒性。此步骤是连接前期LLM语义引导架构与后期轻量化部署的关键桥梁，直接决定最终图像质量能否达到PSNR ≥ 35 dB、SSIM ≥ 0.92的目标。
+本教程包聚焦于图像去噪模型的核心训练阶段，重点解决如何在保留语义细节的同时高效去除复杂噪声。我们将基于**扩散模型**（Diffusion Model）构建一个端到端的去噪网络——该模型通过定义前向加噪过程（逐步向图像添加高斯噪声）与反向去噪过程（神经网络学习从噪声中逐步恢复原始图像），并利用**时间步嵌入**（timestep embedding）使模型感知当前去噪阶段，最终实现高保真重建。在此基础上，我们引入**对比学习**（Contrastive Learning）以增强特征判别性：通过在由预训练VGG或CLIP骨干网络提取的**特征空间**中拉近干净图像与其增强视图的距离、推远噪声样本，结合带温度系数τ的**相似度函数**（如余弦相似度）优化特征几何结构；同时采用**感知损失函数**（Perceptual Loss），利用VGG等网络的中间层特征对齐人类视觉偏好。为提升对真实世界噪声的鲁棒性，我们设计**多尺度自适应特征融合模块**，并融入**通道注意力机制**（Channel Attention Mechanism）——如同识别人脸情绪时聚焦关键面部区域，该机制动态加权不同通道的重要性，抑制噪声响应、强化语义特征。此训练流程直接承接Package 2中由大语言模型（LLM）通过文本提示生成的语义条件（如CLIP文本嵌入或语义掩码），将其注入扩散模型的去噪网络（例如通过交叉注意力或时间步条件调制），确保去噪过程与高层语义一致。本包作为连接前期LLM语义引导架构与后期轻量化部署的关键桥梁，其训练策略直接决定最终图像质量能否达到PSNR ≥ 35 dB、SSIM ≥ 0.92的目标。
 
 ## 📂 项目结构
 
@@ -36,29 +36,39 @@ package-03-diffusion-denoising-training/
 
 ## 💡 理论基础
 
-同学们，今天我们进入图像去噪研究中最激动人心也最具挑战性的环节：**如何让模型不仅‘学会去噪’，更要‘聪明地去噪’？** 在前两个包中，我们已经准备了带语义标签的真实噪声数据（Package 1），并搭建了由大语言模型引导的扩散去噪主干架构（Package 2）。现在的问题是：仅靠标准的均方误差（MSE）损失训练，模型往往会生成过度平滑、缺乏纹理细节的图像——就像用砂纸打磨一幅油画，虽然表面干净了，但笔触和层次感却消失了。
+同学们，今天我们进入图像去噪研究中最激动人心也最具挑战性的环节：**如何让模型不仅‘学会去噪’，更要‘聪明地去噪’？** 在前两个包中，我们已经准备了带语义标签的真实噪声数据（Package 1），并搭建了由大语言模型（LLM）引导的扩散去噪主干架构（Package 2）。现在的问题是：仅靠标准的均方误差（MSE）损失训练，模型往往会生成过度平滑、缺乏纹理细节的图像——就像用砂纸打磨一幅油画，虽然表面干净了，但笔触和层次感却消失了。
 
-为了解决这个问题，我们必须引入更符合人类感知的优化目标。这里的核心思想是：**图像质量不能只看像素值是否接近，更要看高层语义结构是否一致**。为此，我们采用两种关键技术：**对比学习（Contrastive Learning）** 和 **感知损失（Perceptual Loss）**。对比学习通过拉近“干净图像与其去噪结果”的特征距离，同时推远“干净图像与噪声图像”的距离，迫使网络学习到更具判别性的表示。其目标函数可形式化为：
-$$\mathcal{L}_{\text{cont}} = -\log \frac{\exp(\text{sim}(f(x_{\text{clean}}), f(\hat{x})) / \tau)}{\sum_{x^- \in \mathcal{N}} \exp(\text{sim}(f(x_{\text{clean}}), f(x^-)) / \tau)}$$
-其中 $f(\cdot)$ 是特征提取器（通常取自预训练VGG或CLIP），$\text{sim}(\cdot,\cdot)$ 是余弦相似度，$\tau$ 是温度系数，$\mathcal{N}$ 是负样本集合（如其他噪声图像）。这种机制显著提升了模型对语义内容的敏感度 [Zhang, 2021]。
+为了解决这个问题，我们必须引入更符合人类感知的优化目标。这里的核心思想是：**图像质量不能只看像素值是否接近，更要看高层语义结构是否一致**。为此，我们采用两种关键技术：**对比学习（Contrastive Learning）** 和 **感知损失（Perceptual Loss）**。
 
-与此同时，感知损失则直接利用预训练视觉模型的中间层特征来衡量重建质量。不同于MSE关注像素级差异，感知损失计算的是深层特征空间的距离：
-$$\mathcal{L}_{\text{perc}} = \sum_{l} \lambda_l \| \phi_l(x_{\text{clean}}) - \phi_l(\hat{x}) \|_2^2$$
-这里 $\phi_l(\cdot)$ 表示第 $l$ 层的特征图，$\lambda_l$ 是权重系数。由于这些特征已经编码了边缘、纹理和物体部件等高级信息，最小化该损失能有效保留图像的结构性细节 [Johnson, 2016]。在我们的框架中，我们采用CLIP-ViT作为 $\phi$，因为它已在大规模图文对上预训练，对语义一致性有更强的建模能力 [Radford, 2021]。
+### 对比学习（Contrastive Learning）
+对比学习通过拉近“干净图像与其去噪结果”的特征距离，同时推远“干净图像与噪声图像”等负样本的距离，迫使网络学习到更具判别性、语义一致的表示。其目标函数可形式化为：
+$$
+\mathcal{L}_{\text{cont}} = -\log \frac{\exp(\text{sim}(f(x_{\text{clean}}), f(\hat{x})) / \tau)}{\sum_{x^- \in \mathcal{N}} \exp(\text{sim}(f(x_{\text{clean}}), f(x^-)) / \tau)}
+$$
+其中：
+- $f(\cdot)$ 是一个预训练的特征提取器（如 VGG 或 CLIP 的中间层），用于将图像映射到语义特征空间；
+- $\text{sim}(a, b)$ 表示余弦相似度，即 $\frac{a^\top b}{\|a\| \|b\|}$，衡量两个特征向量的方向一致性；
+- $\tau$ 是温度系数（temperature parameter），控制分布的尖锐程度，通常设为 0.07–0.5。例如，若 $\tau = 0.1$，则相似度微小差异会被放大，使模型更严格地区分正负样本；
+- $\mathcal{N}$ 是负样本集合，包含同一批次中的其他噪声图像或无关干净图像。
 
-然而，仅靠损失函数还不够。真实噪声往往在不同尺度上表现出不同特性——高频区域（如树叶、发丝）易受椒盐噪声影响，而低频区域（如天空、墙面）则可能被高斯模糊主导。因此，我们设计了一个**多尺度特征融合模块**，在U-Net的跳跃连接中引入自适应权重。具体而言，在解码器的每一级，我们计算来自编码器对应层级的特征 $F_{\text{enc}}$ 与当前解码特征 $F_{\text{dec}}$ 的通道注意力权重：
-$$W = \sigma(\text{MLP}(\text{GAP}([F_{\text{enc}}; F_{\text{dec}}])))$$
-其中 $\text{GAP}$ 是全局平均池化，$[\cdot;\cdot]$ 表示拼接，$\sigma$ 是Sigmoid函数。最终融合特征为 $F_{\text{fused}} = W \odot F_{\text{enc}} + (1-W) \odot F_{\text{dec}}$。这种动态融合机制让网络能根据局部内容自适应地决定“信任原始特征还是重建特征”，极大提升了对复杂噪声的鲁棒性。
+举个具体例子：假设 $f(x_{\text{clean}})$ 与 $f(\hat{x})$ 的余弦相似度为 0.9，而与其他三个负样本的相似度分别为 0.3、0.2、0.1，且 $\tau = 0.1$，则分子为 $\exp(0.9/0.1) = \exp(9) \approx 8103$，分母约为 $\exp(9) + \exp(3) + \exp(2) + \exp(1) \approx 8103 + 20 + 7 + 3 = 8133$，最终损失项约为 $-\log(8103/8133) \approx 0.0037$，说明模型已较好对齐语义内容。
 
-此外，我们还引入**自适应降噪模块（Adaptive Denoising Block）**，它根据输入噪声水平动态调整网络行为。该模块接收时间步嵌入 $t$（来自扩散过程）和文本条件 $c$（来自LLM），通过轻量级MLP生成缩放和平移参数 $\gamma(t,c)$、$\beta(t,c)$，用于调制特征：
-$$\hat{F} = \gamma(t,c) \cdot \text{LayerNorm}(F) + \beta(t,c)$$
-这类似于AdaIN [Huang, 2017]，但条件来源更丰富。实验表明，这种设计使模型能针对不同噪声强度和语义提示（如“保留锐利边缘” vs “柔和过渡”）做出差异化响应。
+该机制显著提升了模型对语义内容的敏感度 [Zhang, 2021]，尤其在结合 LLM 提供的文本语义时，可进一步约束负样本选择或特征对齐方向。
 
-为什么选择这套组合？因为单一损失函数无法兼顾所有目标。MSE保证基础保真度，对比学习增强语义判别力，感知损失对齐人类视觉——三者互补。而多尺度融合与自适应模块则解决了传统U-Net在跨尺度信息整合上的不足。正如 [Dhariwal, 2021] 所示，扩散模型的质量高度依赖于损失函数的设计；而 [Zhou, 2022] 则证明了条件提示学习能显著提升VLM的下游任务表现。我们的方法正是这些思想在去噪任务中的创新融合。
+### 感知损失（Perceptual Loss）
+感知损失直接利用预训练视觉模型（如 VGG-16 或 CLIP-ViT）的中间层特征来衡量重建质量，而非仅依赖像素级误差。其计算方式为：
+$$
+\mathcal{L}_{\text{perc}} = \sum_{l \in \mathcal{L}} \lambda_l \| \phi_l(x_{\text{clean}}) - \phi_l(\hat{x}) \|_1
+$$
+其中 $\phi_l(\cdot)$ 表示预训练网络第 $l$ 层的激活特征，$\mathcal{L}$ 是选定的多尺度层集合（如 conv2_2, conv3_3, conv4_3），$\lambda_l$ 为各层权重。我们采用 **VGG-16** 作为默认特征提取器（因其在图像重建任务中表现稳定），但保留扩展至 **CLIP** 的接口以支持跨模态语义对齐——这与 Package 2 中 LLM 引导的语义提示形成闭环。
 
-当然，也有权衡。对比学习需要构建负样本队列，增加内存开销；感知损失依赖大型预训练模型，可能引入域偏移。但我们通过冻结CLIP特征提取器、使用小批量负采样等策略加以缓解。最终，这套训练框架在保持Latent Diffusion模型高效性的同时（如 Package 2 所述），显著提升了去噪结果的视觉质量和语义一致性。
+> **注**：尽管理论部分提及 CLIP 可用于特征提取，本阶段实现优先采用 VGG 以确保训练稳定性；后续可无缝切换为 CLIP 特征以增强文本-图像语义一致性。
 
-总结一下：本步骤的理论核心是**通过多目标优化与自适应架构，让去噪过程既忠实于原始内容，又符合人类感知**。这不仅是技术实现，更是对“什么是好图像”这一根本问题的回答——好图像不仅是数值准确的，更是语义完整、视觉愉悦的。
+### 多尺度自适应特征融合与通道注意力
+为了充分利用不同感受野下的结构信息，我们在去噪主干中嵌入 **自适应多尺度特征融合模块**（adaptive multi-scale feature fusion）。该模块并行提取多个尺度的特征图，并通过 **通道注意力机制** 动态加权各通道的重要性——就像人类视觉系统会自动聚焦于关键区域（如边缘、纹理），通道注意力通过学习为不同特征通道分配权重，抑制冗余响应，强化语义相关特征。具体而言，我们采用 SE（Squeeze-and-Excitation）风格的门控机制，根据全局上下文生成通道权重向量，实现特征重标定。
+
+### 与 Package 2 的衔接：LLM 语义引导的集成
+本包并非孤立训练组件，而是 **直接构建于 Package 2 定义的 LLM 引导扩散架构之上**。具体而言，LLM 生成的语义描述（如“一只站在雪地上的红狐狸”）被编码为文本嵌入，并通过 **交叉注意力（cross-attention）机制** 注入扩散去噪网络的每一层。在训练过程中，对比学习与感知损失共同监督这一条件生成过程，确保去噪结果不仅视觉逼真，而且与文本语义严格对齐。因此，本包的损失函数设计、特征融合策略均围绕这一条件生成范式展开，形成“语义引导—多尺度感知—对比优化”的统一训练框架。
 
 ---
 
@@ -514,21 +524,7 @@ class CombinedLoss(nn.Module):
 
 具体架构上，我们采用类似Inception的多分支设计：包含1x1（捕获局部细节）、3x3（标准感受野）、5x5（更大上下文）和7x7（全局结构）四个卷积分支。每个分支后接BatchNorm和ReLU激活。关键创新在于融合阶段：我们不是简单相加，而是先将各分支特征拼接，然后通过一个轻量级的注意力网络（两个1x1卷积+sigmoid）生成每个分支的权重图，最后加权求和。
 
-为什么用注意力机制？因为不同区域的噪声特性不同——天空区域可能主要是低频雾气，而树叶区域则是高频颗粒噪声。固定权重的融合无法适应这种空间变化，而注意力机制能让模型“学会看哪里需要哪种尺度”。
-
-在代码实现上，我们定义`AdaptiveFusionBlock`类。它接收输入特征图，分别送入四个卷积分支，得到四组输出。然后将它们沿通道维度拼接，送入注意力子网络。注意力子网络先用1x1卷积降维（减少计算量），再用另一个1x1卷积升维回原始通道数×4，最后reshape并softmax得到各分支权重。注意：这里我们使用softmax而非sigmoid，确保权重和为1，避免特征幅度过大。
-
-数据流非常清晰：输入(B, C_in, H, W) → 四个分支 → (B, C_out, H, W) ×4 → 拼接(B, 4*C_out, H, W) → 注意力网络 → 权重(B, 4, H, W) → 加权融合 → (B, C_out, H, W)。整个过程保持空间分辨率不变，适合插入到U-Net等编码器-解码器结构中。
-
-设计选择方面，我们选用7x7作为最大卷积核，因为更大的核（如9x9）在标准图像尺寸（256x256）下可能导致边界效应，且计算开销剧增。同时，我们使用深度可分离卷积替代普通卷积以降低参数量——但这一步我们先用标准卷积保证效果，后续轻量化时再替换。
-
-这个模块将作为去噪网络的核心组件（在denoiser.py中调用），直接决定模型能否有效分离噪声与信号。它与损失函数模块形成闭环：自适应融合提供高质量特征表示，复合损失则指导这些表示向语义正确方向优化。
-
-举个实际例子：当处理一张带运动模糊（低频）和传感器噪声（高频）的图像时，7x7分支会捕获模糊的整体结构，1x1分支则聚焦于高频噪声点。注意力机制会自动在模糊区域给7x7更高权重，在纹理区域给1x1更高权重，实现精准去噪。
-
-边缘情况处理：如果输入通道数过小（<8），我们会自动调整分支输出通道数以避免维度崩溃。所有卷积层都包含padding='same'逻辑（通过手动计算padding），确保输出尺寸与输入一致。
-
-最后，这个模块是实现“高PSNR+高SSIM”目标的关键硬件——它让模型具备了多尺度分析能力，为后续的端到端训练奠定基础。下一步，我们将把这些组件集成到完整的去噪网络中。
+现在让我们看看如何将感知损失模块与多尺度融合网络连接起来，形成完整的训练闭环：该融合模块作为扩散去噪主干网络的核心组件，其输出特征将直接送入后续U-Net解码器，并最终参与计算包括L1损失、感知损失和对比损失在内的复合目标函数，从而在端到端训练中实现语义感知与多尺度鲁棒性的协同优化。
 
 #### 完整实现
 
@@ -554,27 +550,14 @@ class AdaptiveFusionBlock(nn.Module):
     
     示例:
         >>> fusion = AdaptiveFusionBlock(64, 32, (1,3,5,7))
-        >>> output = fusion(input_tensor)
+        >>> output = fusion(torch.randn(1, 64, 64, 64))
+        >>> print(output.shape)  # torch.Size([1, 32, 64, 64])
     """
-    
-    def __init__(self, 
-                 in_channels: int, 
-                 out_channels: int, 
-                 kernel_sizes: Tuple[int] = (1, 3, 5, 7)):
+    def __init__(self, in_channels: int, out_channels: int, kernel_sizes: Tuple[int] = (1, 3, 5, 7)):
         super().__init__()
-        self.kernel_sizes = kernel_sizes
-        self.num_branches = len(kernel_sizes)
-        
-        # 验证输入
-        if in_channels <= 0 or out_channels <= 0:
-            raise ValueError("通道数必须为正整数")
-        if self.num_branches < 2:
-            raise ValueError("至少需要两个卷积核尺寸")
-        
-        # 为每个卷积核创建分支
         self.branches = nn.ModuleList()
+        
         for k in kernel_sizes:
-            # 计算same padding
             padding = k // 2
             branch = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=k, padding=padding, bias=False),
@@ -583,109 +566,35 @@ class AdaptiveFusionBlock(nn.Module):
             )
             self.branches.append(branch)
         
-        # 注意力融合网络：先降维再升维
-        reduction_ratio = 4
-        reduced_channels = max(8, out_channels // reduction_ratio)  # 至少8通道
-        
-        self.attention = nn.Sequential(
-            # 拼接后的总通道数 = num_branches * out_channels
-            nn.Conv2d(self.num_branches * out_channels, reduced_channels, 1, bias=False),
-            nn.BatchNorm2d(reduced_channels),
+        # 注意力融合头：先拼接所有分支（通道数为 len(kernel_sizes)*out_channels），再压缩回 out_channels
+        total_channels = len(kernel_sizes) * out_channels
+        self.fusion_attention = nn.Sequential(
+            nn.Conv2d(total_channels, out_channels, kernel_size=1),
             nn.ReLU(inplace=True),
-            # 输出通道数 = num_branches * out_channels
-            nn.Conv2d(reduced_channels, self.num_branches * out_channels, 1, bias=True),
-            # 注意：这里不加激活函数，后面用softmax
+            nn.Conv2d(out_channels, len(kernel_sizes) * out_channels, kernel_size=1),
+            nn.Sigmoid()
         )
         
+        self.out_channels = out_channels
+        self.num_branches = len(kernel_sizes)
+    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        前向传播
+        # 并行前向传播各分支
+        branch_outputs = [branch(x) for branch in self.branches]  # List of (B, C_out, H, W)
         
-        Args:
-            x: 输入特征图 (B, C_in, H, W)
-        
-        Returns:
-            融合特征图 (B, C_out, H, W)
-        """
-        if x.dim() != 4:
-            raise ValueError(f"输入必须是4D张量，实际维度: {x.dim()}")
-        
-        # 获取各分支输出
-        branch_outputs = []
-        for branch in self.branches:
-            out = branch(x)
-            branch_outputs.append(out)
-        
-        # 沿通道维度拼接
-        concat_features = torch.cat(branch_outputs, dim=1)  # (B, num_branches*C_out, H, W)
+        # 拼接所有分支特征
+        concat_features = torch.cat(branch_outputs, dim=1)  # (B, num_branches * C_out, H, W)
         
         # 生成注意力权重
-        attention_weights = self.attention(concat_features)  # (B, num_branches*C_out, H, W)
+        weights = self.fusion_attention(concat_features)  # (B, num_branches * C_out, H, W)
         
-        # 重塑为 (B, num_branches, C_out, H, W)
-        B, _, H, W = attention_weights.shape
-        C_out = branch_outputs[0].shape[1]
-        attention_weights = attention_weights.view(B, self.num_branches, C_out, H, W)
+        # 按分支拆分权重
+        weight_list = torch.split(weights, self.out_channels, dim=1)  # List of (B, C_out, H, W)
         
-        # 在分支维度应用softmax（确保权重和为1）
-        attention_weights = torch.softmax(attention_weights, dim=1)
-        
-        # 加权融合：对每个分支应用对应权重
-        fused = torch.zeros_like(branch_outputs[0])
-        for i in range(self.num_branches):
-            fused += attention_weights[:, i] * branch_outputs[i]
+        # 加权融合
+        fused = sum(w * f for w, f in zip(weight_list, branch_outputs))
         
         return fused
-
-
-class MultiScaleDenoiserBackbone(nn.Module):
-    """
-    多尺度去噪骨干网络：堆叠多个自适应融合块
-    
-    参数:
-        in_channels (int): 输入通道数（通常为3）
-        base_channels (int): 基础通道数
-        num_blocks (int): 融合块数量
-        kernel_sizes (Tuple[int]): 卷积核尺寸
-    """
-    
-    def __init__(self, 
-                 in_channels: int = 3,
-                 base_channels: int = 64,
-                 num_blocks: int = 4,
-                 kernel_sizes: Tuple[int] = (1, 3, 5, 7)):
-        super().__init__()
-        
-        # 初始卷积
-        self.input_conv = nn.Sequential(
-            nn.Conv2d(in_channels, base_channels, 3, padding=1, bias=False),
-            nn.BatchNorm2d(base_channels),
-            nn.ReLU(inplace=True)
-        )
-        
-        # 堆叠自适应融合块
-        blocks = []
-        for i in range(num_blocks):
-            # 通道数逐渐增加
-            out_ch = base_channels * (2 ** min(i, 2))  # 最多4倍
-            blocks.append(AdaptiveFusionBlock(base_channels, out_ch, kernel_sizes))
-            base_channels = out_ch
-        
-        self.blocks = nn.Sequential(*blocks)
-        
-        # 输出卷积
-        self.output_conv = nn.Conv2d(base_channels, in_channels, 3, padding=1)
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """前向传播"""
-        residual = x  # 用于残差连接
-        
-        x = self.input_conv(x)
-        x = self.blocks(x)
-        x = self.output_conv(x)
-        
-        # 残差连接：输出 = 输入 + 残差
-        return x + residual
 ```
 
 #### 重要提示
@@ -706,27 +615,13 @@ class MultiScaleDenoiserBackbone(nn.Module):
 
 同学们，前两步我们分别打造了‘大脑’（复合损失函数）和‘眼睛’（多尺度特征融合模块）。现在，我们需要把它们组装成一个完整的‘智能体’——这就是本步骤要实现的**端到端去噪模型主干**。这个网络不仅要处理图像，还要理解来自大语言模型（LLM）的语义提示，并将其融入去噪过程。
 
-回想Package 2中，我们设计了文本编码器将LLM提示转换为条件向量。在本模型中，我们将这个条件向量与扩散模型的时间步嵌入一起，通过**条件批归一化（Conditional BatchNorm）** 注入到网络中。这样，模型就能根据‘这是一张猫的照片，请保留胡须细节’这样的提示，动态调整去噪策略。
+首先简要回顾扩散模型的基本原理：它通过一个前向过程逐步向图像添加噪声，直至完全破坏；然后训练神经网络学习逆过程——从纯噪声开始，一步步重建清晰图像，就像观看一段被破坏过程的录像倒放。在这个逆过程中，每一步都对应一个“时间步”t，表示当前处于去噪的哪个阶段。可以将这一过程类比为修复一幅老旧油画：正如文物修复师会逐步逆转颜料剥落、污渍侵蚀等退化过程，我们的模型也学习在每个时间步“撤销”一部分噪声，从而逐步恢复原始图像。
 
-具体架构上，我们以`MultiScaleDenoiserBackbone`为基础（来自上一步），在其每个自适应融合块之间插入**条件调制层**。这些调制层接收两个条件信号：(1) 扩散时间步t（标量），(2) 文本语义向量c（来自LLM）。我们使用正弦位置编码处理时间步t，然后与文本向量拼接，通过MLP生成缩放(scale)和平移(shift)参数，用于调整BatchNorm的γ和β。
+为了使模型能感知当前所处的去噪阶段，我们需要对时间步 t 进行有效编码。这里采用**正弦位置编码**（Sinusoidal Position Embedding）：它利用不同频率的正弦和余弦函数将标量时间步 t 映射为高维向量，使模型能够精确理解其在去噪序列中的位置。这种编码方式不仅连续且可泛化到训练时未见过的时间步，还能为后续网络层提供丰富的时序信息。
 
-为什么用条件批归一化？因为标准BatchNorm的γ/β是固定的，无法响应不同输入条件。而条件批归一化让网络能根据语义提示‘重新校准’特征分布——例如，当提示强调‘保留纹理’时，它会放大高频特征通道的响应。
+为了使去噪过程具备语义感知能力，我们还需将两个关键信息注入网络：(1) **扩散时间步嵌入**——即对当前去噪阶段t的编码，告诉模型“现在处于去噪的哪一步”；(2) 来自LLM的文本语义提示（如“这是一张猫的照片，请保留胡须细节”）。为此，我们采用**条件批归一化**（Conditional BatchNorm），这是一种可以根据外部条件动态调整归一化参数的技术，就像根据图像内容和语义提示智能调节降噪强度的旋钮。
 
-在代码实现上，我们定义`ConditionalBatchNorm2d`类，它继承自nn.Module。初始化时接收条件向量维度，创建MLP将条件映射到(scale, shift)。前向传播时，先对输入做标准BatchNorm，再应用scale*normalized + shift。注意：我们不在第一个卷积层后立即使用条件BN，因为初始特征尚未包含足够语义信息。
-
-主干网络`SemanticGuidedDenoiser`包含：(1) 时间步编码器，(2) 文本条件投影层，(3) 多尺度骨干（带条件BN），(4) 输出层。特别地，我们将条件BN插入到每个自适应融合块之后，因为此时特征已包含多尺度信息，最适合进行语义调制。
-
-数据流如下：输入(noisy_image, t, text_embedding) → 时间编码 → 条件向量拼接 → 骨干网络（每层用条件BN调制）→ 输出去噪图像。整个过程端到端可微，能与复合损失函数无缝对接。
-
-设计选择上，我们选用MLP而非FiLM层，因为MLP能学习更复杂的非线性映射。时间步编码使用标准正弦编码（类似Transformer），因为它已被证明在扩散模型中有效。文本嵌入维度设为512，与CLIP等主流VLM对齐。
-
-这个模型是连接LLM语义世界与像素世界的桥梁。它接收Package 2生成的文本条件，并输出供Package 3损失函数评估的去噪结果。没有它，语义引导就只是空谈。
-
-举个例子：当处理一张模糊的狗照片，LLM提示‘这是一只金毛，注意保留金色毛发的光泽’。条件BN会放大与‘金色’、‘毛发’相关的特征通道，抑制其他无关特征，从而在去噪时特别保护这些语义区域。
-
-边缘情况：如果未提供文本嵌入（如纯无条件去噪），我们用零向量填充，确保网络仍能工作。时间步t必须在[0,1]范围内（0=纯噪声，1=干净图像），我们会做范围检查。
-
-最后，这个主干网络是实现‘语义感知去噪’的核心。下一步，我们将用它进行端到端训练，见证语义引导的力量！
+具体架构上，我们以`MultiScaleDe...
 
 #### 完整实现
 
@@ -746,7 +641,25 @@ class SinusoidalPositionEmbedding(nn.Module):
         scale (float): 缩放因子
     
     输入:
-        t (torch.Tensor): 时间步，形状 (B
+        t (torch.Tensor): 时间步，形状 (B,)
+    
+    输出:
+        emb (torch.Tensor): 位置编码，形状 (B, dim)
+    """
+    def __init__(self, dim: int, scale: float = 1.0):
+        super().__init__()
+        self.dim = dim
+        self.scale = scale
+
+    def forward(self, t: torch.Tensor) -> torch.Tensor:
+        # 确保输入为浮点类型
+        t = t * self.scale
+        half_dim = self.dim // 2
+        emb = math.log(10000) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, device=t.device) * -emb)
+        emb = t[:, None] * emb[None, :]
+        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
+        return emb
 ```
 
 #### 重要提示
@@ -1966,12 +1879,110 @@ from torch.cuda.amp import autocast
 
 #### 详细说明
 
-
+本步骤实现模型训练完成后的综合评估与指标记录，是连接语义引导去噪架构与后续轻量化部署的关键环节。通过在标准测试集（如DIV2K、CBSD68）和真实噪声数据上计算PSNR、SSIM等客观指标，并结合人类感知对齐的LPIPS分数，验证模型是否达到预设质量目标（PSNR ≥ 35 dB, SSIM ≥ 0.92）。同时，将评估结果与LLM生成的语义提示进行一致性分析，确保去噪结果在结构保留与语义准确性上双重达标，为跨包集成提供可量化的性能依据。
 
 #### 完整实现
 
 ```python
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from torchvision import transforms
+from skimage.metrics import peak_signal_noise_ratio as psnr
+from skimage.metrics import structural_similarity as ssim
+import lpips
+import os
+import json
+from src.models.diffusion_denoiser import DiffusionDenoiser
+from src.datasets.noisy_dataset import NoisyDataset
+from src.utils.semantic_consistency import compute_semantic_alignment
 
+def evaluate_and_log_metrics(config):
+    """
+    在多个测试集上评估训练好的扩散去噪模型，计算PSNR、SSIM、LPIPS等指标，
+    并分析去噪结果与LLM生成语义提示的一致性。
+    
+    Args:
+        config (dict): 包含模型路径、数据路径、设备等配置信息
+    
+    Returns:
+        dict: 包含各项评估指标的字典
+    """
+    device = torch.device(config['device'] if torch.cuda.is_available() else 'cpu')
+    
+    # 初始化模型
+    model = DiffusionDenoiser(**config['model_params'])
+    model.load_state_dict(torch.load(config['model_path'], map_location=device))
+    model.to(device)
+    model.eval()
+    
+    # 初始化LPIPS模型
+    lpips_model = lpips.LPIPS(net='alex').to(device)
+    
+    # 准备测试数据集
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+    ])
+    test_datasets = {
+        'DIV2K': NoisyDataset(root_dir=config['div2k_path'], transform=transform),
+        'CBSD68': NoisyDataset(root_dir=config['cbsd68_path'], transform=transform),
+    }
+    
+    results = {}
+    
+    with torch.no_grad():
+        for dataset_name, dataset in test_datasets.items():
+            dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+            psnr_vals, ssim_vals, lpips_vals = [], [], []
+            
+            for clean_img, noisy_img, text_prompt in dataloader:
+                clean_img = clean_img.to(device)
+                noisy_img = noisy_img.to(device)
+                
+                # 执行去噪
+                denoised_img = model(noisy_img, text_prompt=text_prompt)
+                
+                # 转换为CPU numpy用于指标计算
+                clean_np = clean_img.squeeze().cpu().numpy().transpose(1, 2, 0)
+                denoised_np = torch.clamp(denoised_img, 0, 1).squeeze().cpu().numpy().transpose(1, 2, 0)
+                
+                # 计算PSNR和SSIM
+                psnr_val = psnr(clean_np, denoised_np, data_range=1.0)
+                ssim_val = ssim(clean_np, denoised_np, channel_axis=-1, data_range=1.0)
+                
+                # 计算LPIPS
+                lpips_val = lpips_model(clean_img, denoised_img).item()
+                
+                psnr_vals.append(psnr_val)
+                ssim_vals.append(ssim_val)
+                lpips_vals.append(lpips_val)
+            
+            # 平均指标
+            avg_psnr = sum(psnr_vals) / len(psnr_vals)
+            avg_ssim = sum(ssim_vals) / len(ssim_vals)
+            avg_lpips = sum(lpips_vals) / len(lpips_vals)
+            
+            results[dataset_name] = {
+                'PSNR': avg_psnr,
+                'SSIM': avg_ssim,
+                'LPIPS': avg_lpips
+            }
+    
+    # 语义一致性分析（使用第一个样本作为示例）
+    sample_clean, sample_noisy, sample_prompt = next(iter(test_datasets['DIV2K']))
+    sample_clean = sample_clean.unsqueeze(0).to(device)
+    sample_noisy = sample_noisy.unsqueeze(0).to(device)
+    denoised_sample = model(sample_noisy, text_prompt=sample_prompt)
+    semantic_score = compute_semantic_alignment(denoised_sample, sample_prompt)
+    
+    results['semantic_consistency'] = semantic_score
+    
+    # 保存结果
+    os.makedirs(os.path.dirname(config['results_path']), exist_ok=True)
+    with open(config['results_path'], 'w', encoding='utf-8') as f:
+        json.dump(results, f, indent=4, ensure_ascii=False)
+    
+    return results
 ```
 
 #### 重要提示
@@ -2150,31 +2161,3 @@ for epoch in range(config['training']['epochs']):
 ## 📝 行动项
 
 > [step_3] 模型训练与优化 : 在标注数据集上训练端到端去噪模型，采用对比学习与感知损失函数优化图像保真度；引入多尺度特征融合与自适应降噪模块，提升对复杂噪声的鲁棒性。
-
----
-
-## 📚 参考文献
-
-本包实现基于以下研究文献。在阅读理论基础和概念解释部分时，请注意文中引用的文献标记，如 [作者, 年份] 或 [序号]。
-
-1. Jonathan Ho, Ajay Jain, P. Abbeel (2020). *Denoising Diffusion Probabilistic Models*. ArXiv
-2. Prafulla Dhariwal, Alex Nichol (2021). *Diffusion Models Beat GANs on Image Synthesis*. ArXiv
-3. Jiaming Song, Chenlin Meng, Stefano Ermon (2020). *Denoising Diffusion Implicit Models*. ArXiv
-4. William S. Peebles, Saining Xie (2022). *Scalable Diffusion Models with Transformers*. 2023 IEEE/CVF International Conference on Computer Vision (ICCV)
-5. Chitwan Saharia, William Chan, Saurabh Saxena et al. (2022). *Photorealistic Text-to-Image Diffusion Models with Deep Language Understanding*. ArXiv
-6. Lvmin Zhang, Anyi Rao, Maneesh Agrawala (2023). *Adding Conditional Control to Text-to-Image Diffusion Models*. 2023 IEEE/CVF International Conference on Computer Vision (ICCV)
-7. Nataniel Ruiz, Yuanzhen Li, Varun Jampani et al. (2022). *DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation*. 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-8. Kaiyang Zhou, Jingkang Yang, Chen Change Loy et al. (2022). *Conditional Prompt Learning for Vision-Language Models*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-9. Pengchuan Zhang, Xiujun Li, Xiaowei Hu et al. (2021). *VinVL: Revisiting Visual Representations in Vision-Language Models*. 2021 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-10. Robin Rombach, A. Blattmann, Dominik Lorenz et al. (2021). *High-Resolution Image Synthesis with Latent Diffusion Models*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-11. Alex Nichol, Prafulla Dhariwal, A. Ramesh et al. (2021). *GLIDE: Towards Photorealistic Image Generation and Editing with Text-Guided Diffusion Models*. 
-12. Boyuan Chen, Zhuo Xu, Sean Kirmani et al. (2024). *SpatialVLM: Endowing Vision-Language Models with Spatial Reasoning Capabilities*. 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-13. Xiaokang Peng, Yake Wei, Andong Deng et al. (2022). *Balanced Multimodal Learning via On-the-fly Gradient Modulation*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-14. Dustin Podell, Zion English, Kyle Lacey et al. (2023). *SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis*. ArXiv
-15. Kaiyang Zhou, Jingkang Yang, Chen Change Loy et al. (2021). *Learning to Prompt for Vision-Language Models*. International Journal of Computer Vision
-16. Wenliang Dai, Junnan Li, Dongxu Li et al. (2023). *InstructBLIP: Towards General-purpose Vision-Language Models with Instruction Tuning*. ArXiv
-17. Deyao Zhu, Jun Chen, Xiaoqian Shen et al. (2023). *MiniGPT-4: Enhancing Vision-Language Understanding with Advanced Large Language Models*. ArXiv
-18. Peng Gao, Shijie Geng, Renrui Zhang et al. (2021). *CLIP-Adapter: Better Vision-Language Models with Feature Adapters*. International Journal of Computer Vision
-19. Yifan Li, Yifan Du, Kun Zhou et al. (2023). *Evaluating Object Hallucination in Large Vision-Language Models*. 
-20. Anas Awadalla, Irena Gao, Josh Gardner et al. (2023). *OpenFlamingo: An Open-Source Framework for Training Large Autoregressive Vision-Language Models*. ArXiv
-

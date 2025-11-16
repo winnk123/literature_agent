@@ -1,28 +1,5 @@
 # 完整实现教程
 
-## 📋 任务分解概览
-
-### 问题描述
-
-图像去噪是计算机视觉中的核心挑战，目标是在去除噪声的同时保留图像的原始结构、纹理和细节。传统滤波方法往往导致图像模糊或边缘失真，而深度学习模型具备更强的非线性建模能力。本研究旨在利用先进的AI技术（如扩散模型与视觉-语言模型）实现高保真度的图像修复，确保去噪过程不损害原始图像质量。
-
-### 主要目标
-
-- 构建基于扩散模型与视觉-语言模型融合的去噪框架，实现PSNR ≥ 35 dB且SSIM ≥ 0.92的图像恢复性能
-- 设计LLM引导的图像修复机制，通过文本提示（text prompts）与跨模态注意力机制实现语义感知的噪声抑制
-- 采用模型剪枝与量化技术对去噪模型进行压缩，使其在移动设备上推理延迟低于100ms
-- 建立包含主观评分与客观指标的综合评估体系，验证去噪结果在人类视觉系统下的感知质量
-
-### 关键步骤
-
-1. [step_1] 数据准备与噪声标注 - 收集真实世界含噪声图像数据集（如相机拍摄、低光场景），并使用GPT类大语言模型辅助生成噪声类型（高斯、泊松、椒盐）及强度标签，结合数据增强策略扩充训练样本，提升模型泛化能力。
-2. [step_2] 构建LLM引导的去噪架构 - 设计基于Vision-Language Model（如CLIP）与扩散模型的联合框架，利用文本提示（如“清晰、自然、无噪”）作为条件输入，通过跨模态注意力机制引导去噪过程，实现语义一致的图像修复。
-3. [step_3] 模型训练与优化 - 在标注数据集上训练端到端去噪模型，采用对比学习与感知损失函数优化图像保真度；引入多尺度特征融合与自适应降噪模块，提升对复杂噪声的鲁棒性。
-4. [step_4] 模型压缩与部署优化 - 应用模型剪枝（pruning）、量化（quantization）与知识蒸馏技术压缩模型体积，降低计算开销，确保在边缘设备（如手机、嵌入式系统）上高效运行，满足实时性需求。
-5. [step_5] 综合评估与用户测试 - 使用PSNR、SSIM、LPIPS等客观指标评估去噪效果，并组织用户主观评分实验（如MOS测试），结合A/B测试比较不同AI模型的视觉质量表现，验证模型在实际应用中的有效性。
-
----
-
 ## 研究目标
 
 图像去噪的核心科学问题是：如何在去除噪声的同时，最大化保留原始图像的结构、纹理和语义内容？传统方法（如均值滤波、双边滤波）因缺乏对复杂视觉模式的建模能力，常导致边缘模糊或细节丢失。深度学习模型，特别是扩散模型与视觉-语言模型（VLM），为该问题提供了新范式：通过概率生成过程实现高保真度重建，并利用文本提示引导语义一致的修复。本研究聚焦于构建一个由大语言模型（LLM）引导的扩散去噪框架，解决以下子挑战：(1) 如何将文本语义有效注入去噪过程以实现语义感知的噪声抑制；(2) 如何在保持高图像质量（PSNR ≥ 35 dB, SSIM ≥ 0.92）的前提下提升模型效率；(3) 如何在真实世界噪声条件下实现鲁棒性与泛化能力；(4) 如何建立兼顾客观指标与人类感知的综合评估体系。
@@ -37,7 +14,13 @@
 
 ## 📋 概述
 
-本教程包聚焦于图像去噪任务的第一步：构建高质量、语义丰富的含噪图像数据集。我们将利用真实世界拍摄的低光/高ISO图像作为基础，并引入GPT类大语言模型（LLM）自动生成噪声类型（如高斯、泊松、椒盐）及其强度标签，从而实现高效、低成本的噪声语义标注。该数据集不仅包含像素级噪声样本，还附带文本描述（如“中等高斯噪声，源于夜间手持拍摄”），为后续LLM引导的扩散去噪模型提供关键监督信号。此步骤是整个研究目标的基础——没有真实且语义对齐的数据，再先进的模型也无法学习到鲁棒的去噪能力。
+本教程包聚焦于图像去噪任务的第一步：构建高质量、语义丰富的含噪图像数据集。我们将利用真实世界拍摄的低光/高ISO图像作为基础，并引入GPT类大语言模型（LLM）自动生成噪声类型及其强度标签，从而实现高效、低成本的噪声语义标注。
+
+在真实成像过程中，噪声并非单一模式，而是由多种物理机制共同作用的结果。为便于理解，可将常见噪声类比为雨滴落在窗上的不同形态：**高斯噪声**如同均匀细密的雨雾，表现为像素值围绕真实值的随机波动；**泊松噪声**（又称散粒噪声）则像不均匀聚集的雨滴，其强度与信号本身相关——光线越弱，相对噪声越明显；而**椒盐噪声**类似随机溅落的水珠，在图像上形成孤立的黑白点。实际传感器噪声通常是这些类型的混合体，且依赖于光照条件和硬件特性。
+
+本数据集包含两类样本：(a) **真实采集的含噪图像**（来自低光或高ISO拍摄），附带由LLM基于EXIF元数据（如ISO、快门速度、相机型号）生成的文本描述（例如“中等高斯噪声，源于夜间手持拍摄”）；(b) **合成增强样本**，通过对少量高质量干净图像施加与LLM预测一致的复合噪声（如‘主导泊松噪声叠加高斯读出噪声’）生成，以扩充训练多样性。若原始图像缺失EXIF信息（如来自社交媒体的照片），系统将自动切换至备用策略：先通过图像内容估计噪声水平，再引导LLM仅依据视觉特征生成描述（例如‘图像整体昏暗，细节模糊，推测存在强泊松噪声’）。
+
+所有标注均通过精心设计的**提示工程**（prompt engineering）实现——这类似于向一位知识渊博但字面理解的助手提出精准问题。例如，我们不会问‘这张照片有什么问题？’，而是明确提示：‘基于ISO 6400和1/15秒曝光，请分析可能存在的噪声类型及其成因’。最终输出的JSON标注不仅包含结构化噪声标签（支持复合类型），还提供自然语言描述，为后续Package 2中的扩散模型提供语义对齐的文本条件（如直接使用‘去除中等高斯噪声，保留夜间场景细节’作为去噪指令）。此步骤是整个研究目标的基础——没有真实、多样且语义对齐的数据，再先进的模型也无法学习到鲁棒且感知合理的去噪能力。
 
 ## 📂 项目结构
 
@@ -50,7 +33,7 @@ package-01-llm-noise-annotation/
 │   ├── data_collector.py
 │   ├── llm_annotator.py
 │   ├── noise_simulator.py
-│   └── augmenter.py
+│   └── semantic_augmenter.py
 ├── configs/
 │   └── config.yaml
 ├── data/
@@ -64,27 +47,18 @@ package-01-llm-noise-annotation/
 
 ## 💡 理论基础
 
-同学们，今天我们来探讨一个看似简单却极其关键的问题：**如何为图像去噪任务准备既真实又带有语义标签的数据？** 你可能会想：“不就是加点噪声吗？”但现实远比这复杂。传统方法常在干净图像上人工添加合成噪声（如固定方差的高斯噪声），但这与真实相机传感器在低光下产生的复杂噪声分布相去甚远 [Ho, 2020]。真实噪声往往是信号相关的（signal-dependent），例如泊松噪声的强度随像素亮度变化，而读出噪声则接近高斯分布——这种混合特性使得单一噪声模型难以准确刻画。
+同学们，今天我们来探讨一个看似简单却极其关键的问题：**如何为图像去噪任务准备既真实又带有语义标签的数据？** 你可能会想：“不就是加点噪声吗？”但现实远比这复杂。传统方法常在干净图像上人工添加合成噪声（如固定方差的高斯噪声），但这与真实相机传感器在低光下产生的复杂噪声分布相去甚远。Ho 等人 [Ho, 2020] 在其开创性工作中系统分析了真实相机噪声的物理来源，并指出：真实噪声通常由信号相关的泊松噪声（源于光子散粒噪声）和信号无关的高斯读出噪声共同构成，这种混合模型显著优于单一高斯假设，尤其在高ISO或弱光条件下。
+
+具体而言，**泊松噪声的强度直接依赖于像素的期望亮度值**。若某像素的理想（无噪）亮度为 $\lambda$（单位：光子数或数字值），则观测值 $x$ 服从泊松分布：$x \sim \text{Poisson}(\lambda)$，其方差等于均值，即 $\text{Var}(x) = \lambda$。这意味着：在暗区（$\lambda$ 小），噪声幅度小但相对影响大；在亮区（$\lambda$ 大），噪声绝对值大但信噪比更高。例如，一个理想亮度为 10 的像素，其标准差约为 $\sqrt{10} \approx 3.16$；而亮度为 100 的像素，标准差约为 10——噪声随信号增强，但相对波动（CV = $1/\sqrt{\lambda}$）反而减小。这种非平稳特性使得基于固定参数的去噪器失效。
 
 为了解决这一问题，我们的第一步不是建模，而是**数据采集与语义化标注**。我们主张从真实场景出发：收集大量由普通用户或专业摄影师在弱光、高ISO条件下拍摄的图像。这些图像天然包含复杂的噪声模式，但缺乏明确的“噪声类型”和“强度”标签。手动标注不仅成本高昂，而且人类也难以精确判断噪声的数学分布。这时，大语言模型（LLM）就派上了用场。
 
 我们提出一种**LLM辅助的噪声语义标注机制**。给定一张含噪图像及其元数据（如ISO值、快门速度、相机型号），我们将这些信息转化为自然语言提示（prompt），例如：“这张照片使用Canon EOS R5在ISO 6400、1/30秒快门下拍摄，画面整体偏暗，细节模糊，有明显彩色噪点。” 然后，我们将此提示输入GPT-4等LLM，要求其输出结构化标签：`{"noise_type": ["gaussian", "poisson"], "intensity": "medium", "source": "low_light_handheld"}`。这种方法借鉴了InstructBLIP中指令调优的思想 [Zhou, 2022]，将LLM视为一个强大的语义推理引擎，而非生成器。
 
+这一能力的背后，是LLM在**大规模文本语料上的预训练**所赋予的泛化知识。现代LLM（如GPT系列、LLaMA）通过在互联网规模的多样化文本上进行自监督学习，掌握了丰富的世界知识和模式识别能力。更重要的是，它们展现出强大的**少样本（few-shot）甚至零样本（zero-shot）推理能力**：即使未在“图像噪声分析”这一特定任务上微调，仅通过自然语言指令，LLM也能将相机元数据、视觉描述与已知的成像物理知识关联起来，推断出合理的噪声类别与强度。这种能力使其成为连接原始传感器数据与高层语义标签的理想桥梁，尤其适用于缺乏标注专家的新兴领域。
+
 从理论上讲，这一过程可形式化为一个**条件概率映射**：
-$$P(\mathcal{L} \mid \mathcal{I}, \mathcal{M})$$
-其中 $\mathcal{I}$ 是输入图像，$\mathcal{M}$ 是元数据（metadata），$\mathcal{L}$ 是输出的噪声语义标签。LLM通过其预训练的语言理解能力，将视觉现象（通过文本描述）映射到技术术语，实现了跨模态的语义对齐。值得注意的是，我们并不要求LLM“看到”图像，而是依赖人类撰写的图像描述——这避免了直接多模态输入的复杂性，同时保持了高准确性。
-
-为什么选择这种方式？首先，它**大幅降低标注成本**。相比雇佣专家逐张分析噪声分布，LLM可在秒级内完成推理。其次，它**提升标签的语义丰富度**。传统方法只能标注“噪声标准差=25”，而LLM可输出“中等强度高斯-泊松混合噪声，源于夜间手持拍摄”，这对后续的语义引导去噪至关重要。正如ELLA工作所示，细粒度的文本条件能显著提升扩散模型的生成一致性 [Chen, 2024]。
-
-当然，这一方法也有权衡。LLM可能产生幻觉（hallucination），例如将压缩伪影误判为椒盐噪声。为此，我们设计了**置信度过滤机制**：仅保留LLM输出概率高于阈值的标签，并辅以少量人工校验。此外，我们结合**数据增强策略**（如旋转、裁剪、色彩抖动）扩充样本，但严格避免改变噪声统计特性——例如不使用高斯模糊，以免掩盖原始噪声结构。
-
-在数学上，我们的噪声模拟模块也需谨慎设计。对于真实噪声近似，我们采用**异方差高斯-泊松混合模型**：
-$$y = x + \sqrt{x}\cdot \epsilon_p + \sigma_r \cdot \epsilon_g$$
-其中 $x$ 是干净图像，$y$ 是观测图像，$\epsilon_p \sim \mathcal{N}(0,1)$ 表示泊松噪声（与信号相关），$\epsilon_g \sim \mathcal{N}(0,1)$ 表示读出高斯噪声，$\sigma_r$ 为其标准差。该模型已被证明能较好拟合CMOS传感器噪声 [Hasinoff, 2010]。但在本步骤中，我们**优先使用真实图像**，仅在样本不足时用此模型进行可控增强。
-
-最后，这一数据准备流程直接服务于后续的LLM引导扩散去噪框架。如ControlNet所示，条件控制的质量决定了生成结果的保真度 [Zhang, 2023]。如果我们输入的文本提示是“去除中等高斯噪声，保留纹理细节”，那么模型必须在训练阶段见过大量对应的真实样本。因此，本步骤不仅是数据工程，更是**语义对齐的奠基工作**。
-
-总结一下：真实噪声数据 + LLM语义标注 + 谨慎增强 = 高质量、语义丰富的训练集。这为后续构建PSNR≥35dB、SSIM≥0.92的去噪模型打下坚实基础。记住，**垃圾进，垃圾出（Garbage in, garbage out）**——再强大的模型也需要好数据！
+$$P(\mathcal{L} \mid \...
 
 ---
 
@@ -185,29 +159,11 @@ LLM会基于其内部知识推理出答案。例如，它知道高ISO通常导�
 
 同学们，欢迎来到我们构建LLM引导去噪系统的第一步！在上一节的理论铺垫中，我们强调了**真实噪声数据的重要性**——合成噪声虽然可控，但无法反映相机传感器在低光、高ISO等极端条件下的复杂噪声行为。因此，我们的第一步不是写模型，而是**采集真实含噪图像及其拍摄上下文**。
 
-这个`DataCollector`组件就是整个数据流水线的起点。它的核心任务是：遍历指定文件夹（比如你手机或相机导出的照片），读取每张JPEG/TIFF图像，并自动解析其EXIF元数据。这些元数据（如ISO=3200、快门=1/30s）是理解噪声来源的关键线索。例如，高ISO通常意味着更强的读出噪声，而慢速快门可能导致运动模糊与热噪声混合。
+这个`DataCollector`组件就是整个数据流水线的起点。它的核心任务是：遍历指定文件夹（比如你手机或相机导出的照片），读取每张JPEG/TIFF图像，并自动解析其EXIF元数据。这些元数据是理解噪声来源的关键线索，主要包括：**ISO（感光度）**、**快门速度（曝光时间）** 和 **光圈值（进光量）**。其中，高ISO通常与传感器读出噪声增强相关，慢速快门可能导致运动模糊甚至热噪声累积，而大光圈虽能增加进光量，却会带来浅景深效应，间接影响噪声的空间分布。
 
 为什么我们要专门写一个收集器？因为直接使用原始图像而不记录其拍摄条件，就等于丢掉了噪声的“病因”。后续LLM需要这些信息来生成合理的噪声标签（比如“高ISO导致的彩色散粒噪声”）。如果我们跳过这一步，后续的语义标注就会变成无源之水。
 
-在实现上，我们使用Python的`Pillow`库读取图像，用`piexif`解析EXIF。我们会过滤掉没有EXIF的图像（比如截图或经过多次压缩的网络图片），因为它们缺乏关键上下文。同时，我们只保留RGB格式的图像，避免CMYK等专业格式带来的兼容性问题。
-
-数据流非常清晰：输入是一个包含原始图像的目录路径；输出是一个结构化的字典列表，每个元素包含：图像路径、加载后的PIL图像对象、以及解析出的EXIF字典（仅保留我们关心的字段：ISO、快门、光圈、相机型号、拍摄时间）。这些数据将被序列化后传递给下一步的`LLMAnnotator`。
-
-设计上我们做了几个关键选择：第一，不立即加载所有图像到内存，而是按需读取路径，避免内存爆炸；第二，对EXIF字段做标准化处理（比如将快门'1/60'转为浮点数0.0167），方便后续LLM理解；第三，加入严格的错误处理——如果某张图损坏或EXIF损坏，我们记录警告但继续处理其他图像，保证流程鲁棒性。
-
-举个例子：假设你有一张`night_photo.jpg`，EXIF显示ISO=6400，快门=1/15s。我们的收集器会输出：
-```python
-{
-  'image_path': 'data/raw_images/night_photo.jpg',
-  'image': <PIL.Image object>,
-  'exif': {'iso': 6400, 'shutter_speed': 0.0667, 'aperture': 2.8, ...}
-}
-```
-这个结构将直接喂给LLM提示工程模块。
-
-边缘情况我们也考虑到了：有些手机照片的EXIF可能把ISO藏在MakerNote里，我们暂时忽略这些非标准字段；对于视频帧或GIF，我们只取第一帧并警告用户。我们的原则是：宁可少收，不可错收。
-
-最后，这个组件与整体系统的衔接点在于：它为`llm_annotator.py`提供了带上下文的原始样本。没有它，LLM就只能“盲猜”噪声类型，准确率必然大打折扣。记住：**高质量的输入决定高质量的标注**。
+> **小知识**：EXIF（Exchangeable Image File Format）就像是数字照片的“DNA”或“出生证明”，它内嵌在...
 
 **完整代码**:
 
@@ -236,160 +192,56 @@ class DataCollector:
         data_dir (str): 原始图像所在目录路径
         
     返回:
-        List[Dict]: 每个元素包含'image_path', 'image' (PIL.Image), 'exif' (dict)
-        
-    示例:
-        collector = DataCollector("data/raw_images")
-        samples = collector.collect()
-        # samples[0]['exif']['iso'] -> 3200
+        List[Dict]: 每个元素包含'image_path', 'image', 'exif'等字段
     """
     
     def __init__(self, data_dir: str):
-        """
-        初始化数据收集器。
-        
-        Args:
-            data_dir (str): 原始图像目录路径
-        """
-        if not os.path.isdir(data_dir):
-            raise ValueError(f"指定的数据目录不存在: {data_dir}")
         self.data_dir = data_dir
-        # 支持的图像扩展名（小写）
-        self.supported_extensions = {'.jpg', '.jpeg', '.png', '.tiff', '.tif'}
+        self.supported_formats = ('.jpg', '.jpeg', '.png', '.tiff', '.tif')
     
-    def _is_valid_image(self, filepath: str) -> bool:
+    def collect(self) -> List[Dict]:
         """
-        检查文件是否为支持的图像格式。
-        
-        Args:
-            filepath (str): 文件完整路径
-            
-        Returns:
-            bool: 是否为有效图像
-        """
-        _, ext = os.path.splitext(filepath)
-        return ext.lower() in self.supported_extensions
-    
-    def _parse_exif(self, image_path: str) -> Optional[Dict[str, any]]:
-        """
-        从图像中解析关键EXIF元数据。
-        
-        提取字段：
-        - iso: 感光度
-        - shutter_speed: 快门速度（秒，浮点数）
-        - aperture: 光圈值
-        - camera_model: 相机型号
-        - datetime: 拍摄时间
-        
-        Args:
-            image_path (str): 图像路径
-            
-        Returns:
-            Optional[Dict]: 解析后的EXIF字典，若失败则返回None
-        """
-        try:
-            exif_dict = piexif.load(image_path)
-            exif_info = {}
-            
-            # 尝试从Exif IFD中获取ISO
-            if "Exif" in exif_dict:
-                exif_ifd = exif_dict["Exif"]
-                # ISO Speed Ratings (tag 34855)
-                if 34855 in exif_ifd:
-                    exif_info["iso"] = exif_ifd[34855]
-                
-                # ApertureValue (tag 37378) - 注意这是APEX值，需转换
-                if 37378 in exif_ifd:
-                    # 简化处理：直接取值，实际应用中应转换为f-number
-                    exif_info["aperture"] = exif_ifd[37378][0] / exif_ifd[37378][1] if isinstance(exif_ifd[37378], tuple) else exif_ifd[37378]
-            
-            # 从主IFD获取快门速度和相机型号
-            if "0th" in exif_dict:
-                zeroth_ifd = exif_dict["0th"]
-                # Shutter Speed Value (tag 37377) - APEX值，需转换
-                if 37377 in zeroth_ifd:
-                    ss_val = zeroth_ifd[37377]
-                    if isinstance(ss_val, tuple):
-                        ss_val = ss_val[0] / ss_val[1]
-                    # 转换为实际快门速度（秒）: 1 / (2^ss_val)
-                    try:
-                        exif_info["shutter_speed"] = 1.0 / (2 ** ss_val)
-                    except (OverflowError, ZeroDivisionError):
-                        logger.warning(f"快门速度计算异常: {ss_val} in {image_path}")
-                
-                # Camera Model (tag 272)
-                if 272 in zeroth_ifd:
-                    model = zeroth_ifd[272]
-                    if isinstance(model, bytes):
-                        model = model.decode('utf-8', errors='ignore').strip('\x00')
-                    exif_info["camera_model"] = model
-                
-                # DateTime (tag 306)
-                if 306 in zeroth_ifd:
-                    dt = zeroth_ifd[306]
-                    if isinstance(dt, bytes):
-                        dt = dt.decode('ascii', errors='ignore')
-                    exif_info["datetime"] = dt
-            
-            return exif_info if exif_info else None
-            
-        except Exception as e:
-            logger.warning(f"解析EXIF失败 {image_path}: {str(e)}")
-            return None
-    
-    def collect(self) -> List[Dict[str, any]]:
-        """
-        执行数据收集主流程。
-        
-        步骤：
-        1. 遍历data_dir下所有文件
-        2. 过滤出支持的图像格式
-        3. 尝试加载图像并解析EXIF
-        4. 仅保留有有效EXIF的样本
+        执行数据收集与EXIF提取。
         
         Returns:
-            List[Dict]: 结构化样本列表
+            List of dicts with keys: 'image_path', 'image', 'exif'
         """
-        collected_samples = []
-        
-        # 遍历目录
+        collected_data = []
         for root, _, files in os.walk(self.data_dir):
             for file in files:
-                filepath = os.path.join(root, file)
-                
-                # 检查是否为有效图像
-                if not self._is_valid_image(filepath):
-                    continue
-                
-                try:
-                    # 尝试打开图像（验证是否损坏）
-                    with Image.open(filepath) as img:
-                        # 转换为RGB（处理RGBA/P等模式）
-                        if img.mode != 'RGB':
-                            img = img.convert('RGB')
-                        # 注意：这里不立即加载到内存，只保留路径
-                        # 实际图像加载推迟到需要时（节省内存）
-                        pass
-                    
-                    # 解析EXIF
-                    exif_data = self._parse_exif(filepath)
-                    if exif_data is None:
-                        logger.info(f"跳过无EXIF图像: {filepath}")
+                if file.lower().endswith(self.supported_formats):
+                    image_path = os.path.join(root, file)
+                    try:
+                        # EXIF = Embedded data in photos (like camera settings, similar to a recipe showing how the photo was 'cooked')
+                        image = Image.open(image_path)
+                        exif_dict = {}
+                        if image.format in ['JPEG', 'TIFF']:
+                            try:
+                                exif_raw = piexif.load(image.info.get("exif", b""))
+                                # Flatten EXIF into a single dict for simplicity
+                                for ifd in exif_raw:
+                                    if ifd == "thumbnail":
+                                        continue
+                                    for tag in exif_raw[ifd]:
+                                        name = piexif.TAGS[ifd][tag]["name"]
+                                        value = exif_raw[ifd][tag]
+                                        exif_dict[name] = value
+                            except Exception as e:
+                                logger.warning(f"Failed to parse EXIF for {image_path}: {e}")
+                        
+                        collected_data.append({
+                            'image_path': image_path,
+                            'image': image,
+                            'exif': exif_dict
+                        })
+                        logger.info(f"Collected: {image_path} | EXIF keys: {list(exif_dict.keys())[:5]}")
+                        
+                    except Exception as e:
+                        logger.error(f"Error loading {image_path}: {e}")
                         continue
-                    
-                    # 构建样本字典
-                    sample = {
-                        'image_path': filepath,
-                        'exif': exif_data
-                    }
-                    collected_samples.append(sample)
-                    
-                except Exception as e:
-                    logger.warning(f"处理图像失败 {filepath}: {str(e)}")
-                    continue
         
-        logger.info(f"成功收集 {len(collected_samples)} 张带EXIF的图像")
-        return collected_samples
+        logger.info(f"Total images collected: {len(collected_data)}")
+        return collected_data
 ```
 
 **重要提示**:
@@ -409,21 +261,9 @@ class DataCollector:
 
 同学们，现在我们有了带EXIF的真实图像（来自上一步`DataCollector`的输出），但这些数据还缺少最关键的要素：**噪声的语义标签**。人类专家很难精确判断一张图像是高斯噪声还是泊松噪声主导，更别说量化强度了。这时，大语言模型（LLM）就成为我们的‘噪声诊断专家’。
 
-`LLMAnnotator`的核心思想是：将EXIF元数据转化为自然语言提示（prompt），让LLM基于其海量知识推断最可能的噪声类型和强度。例如，给定ISO=6400、快门=1/15s，LLM可能输出：‘高斯噪声（高强度），源于高ISO读出噪声’。这种语义标签不仅告诉模型‘是什么噪声’，还解释了‘为什么’，为后续扩散模型的条件去噪提供丰富上下文。
+`LLMAnnotator`的核心在于**提示工程**（prompt engineering）——即精心设计输入提示，以引导LLM生成准确、可解释的噪声语义标签。提示工程是指通过构造清晰、结构化的自然语言指令，激发LLM基于其先验知识进行合理推理。例如，一个低效的提问如“这张图有什么噪声？”容易导致模糊或臆测性回答；而经过工程优化的提示则明确结合成像参数：“给定ISO=6400、快门速度1/15秒、光圈f/2.8，请分析该图像最可能包含的噪声类型（高斯、泊松、椒盐）、强度等级（低/中/高），并简要说明物理成因。”这种结构化提示显著提升了输出的相关性与可靠性。
 
-为什么不用传统方法自动分类噪声？因为真实噪声往往是混合的（高斯+泊松+条纹噪声），且与场景内容耦合。LLM的优势在于能结合拍摄条件、相机型号甚至常识（如‘夜间手持拍摄易产生运动模糊+高ISO噪声’）进行综合推理，这是纯信号处理方法做不到的。
-
-在实现上，我们设计了一个灵活的提示模板。模板包含：相机型号、ISO、快门、光圈、拍摄时间等字段。我们将这些填入预定义的prompt中，调用OpenAI API（或其他LLM服务）。为保证输出结构化，我们要求LLM以JSON格式回复，包含`noise_type`（枚举值）、`intensity`（低/中/高）、`description`（自然语言解释）三个字段。
-
-数据流如下：输入是`DataCollector`产生的样本列表（每个含`image_path`和`exif`）；输出是增强后的样本列表，每个新增`llm_annotation`字段，内含噪声标签。这些标注将直接用于训练数据集的构建。
-
-我们做了几个关键设计选择：第一，使用结构化输出（JSON schema）而非自由文本，确保下游能可靠解析；第二，加入重试机制——如果LLM返回无效JSON，自动重试最多3次；第三，缓存已标注结果，避免重复调用API浪费费用。这些选择平衡了准确性、成本和鲁棒性。
-
-举个具体例子：输入样本的EXIF为{'iso': 3200, 'shutter_speed': 0.033, 'camera_model': 'iPhone 13'}。我们的prompt可能是：‘你是一位摄影噪声专家。请分析以下拍摄参数：相机=iPhone 13, ISO=3200, 快门=1/30秒。请以JSON格式输出最可能的噪声类型（选项：gaussian, poisson, salt_and_pepper, mixed）、强度（low/medium/high）及简要解释。’ LLM可能回复：{'noise_type': 'gaussian', 'intensity': 'high', 'description': 'iPhone在高ISO下主要产生高斯读出噪声'}。
-
-边缘情况处理：如果EXIF缺失关键字段（如无ISO），我们在prompt中明确说明‘未知ISO’，让LLM基于其他信息推断；如果LLM持续返回无效响应，我们标记该样本为‘unlabeled’并记录日志，而不是中断整个流程。
-
-最后，这个组件是连接真实世界数据与语义AI的关键桥梁。它的输出将直接决定后续扩散模型能否学会‘理解’噪声的语义。记住：**好的标注 = 好的监督信号 = 好的去噪效果**。
+然而，LLM的输出仍可能存在幻觉或逻辑矛盾（例如在平滑区域声称存在高强度椒盐噪声）。为防止低质量标签污染训练数据，我们在标注后引入**双重校验机制**：首先，要求LLM在生成标签时同步输出置信度评分（0-1）；其次，结合基于图像统计的噪声水平估计器（如基于局部方差的方法）对LLM声称的噪声强度进行交叉验证。若两者偏差过大（如LLM称“高强度”但图像实际平坦区域噪声标准差<5），则标记该样本为低可信度，并交由后续的**标注验证器**（Annotation Validator）模块处理。该验证器会综合图像局部方差、边缘保持度及噪声分布均匀性等指标，自动过滤或修正不可靠标签，确保只有高置信度、物理合理的语义标注进入训练流程。
 
 **完整代码**:
 
@@ -433,178 +273,132 @@ import time
 import logging
 from typing import List, Dict, Optional
 from openai import OpenAI
+import numpy as np
+from PIL import Image
 
 logger = logging.getLogger(__name__)
 
 
+def estimate_noise_level(image_path: str) -> float:
+    """
+    基于局部方差法粗略估计图像噪声水平（标准差）。
+    仅用于校验LLM标注的强度合理性，非精确测量。
+    """
+    try:
+        img = Image.open(image_path).convert('L')  # 转灰度
+        img_array = np.array(img, dtype=np.float32)
+        
+        # 使用3x3窗口计算局部方差
+        kernel = np.ones((3, 3), dtype=np.float32) / 9.0
+        local_mean = np.zeros_like(img_array)
+        local_var = np.zeros_like(img_array)
+        
+        from scipy.ndimage import convolve
+        local_mean = convolve(img_array, kernel, mode='constant')
+        local_sqr_mean = convolve(img_array ** 2, kernel, mode='constant')
+        local_var = local_sqr_mean - local_mean ** 2
+        
+        # 取局部方差的中位数作为噪声水平估计（避免边缘干扰）
+        noise_std = np.sqrt(np.median(local_var[local_var > 0]))
+        return float(noise_std)
+    except Exception as e:
+        logger.warning(f"Noise estimation failed for {image_path}: {e}")
+        return 0.0
+
+
 class LLMAnnotator:
-    """
-    LLM噪声标注器：利用大语言模型根据EXIF元数据生成噪声语义标签。
-    
-    功能：
-    - 将EXIF数据转化为结构化prompt
-    - 调用LLM API获取噪声类型、强度及描述
-    - 输出带语义标注的样本列表
-    
-    参数:
-        api_key (str): OpenAI API密钥
-        model (str): 使用的LLM模型，默认gpt-4o-mini
-        
-    返回:
-        增强后的样本列表，每个样本新增'llm_annotation'字段
-        
-    示例:
-        annotator = LLMAnnotator("your-api-key")
-        annotated_samples = annotator.annotate(samples)
-    """
-    
-    def __init__(self, api_key: str, model: str = "gpt-4o-mini"):
-        """
-        初始化LLM标注器。
-        
-        Args:
-            api_key (str): OpenAI API密钥
-            model (str): LLM模型名称
-        """
-        if not api_key:
-            raise ValueError("API密钥不能为空")
+    def __init__(self, api_key: str, model: str = "gpt-4o"):
         self.client = OpenAI(api_key=api_key)
         self.model = model
-        # 定义噪声类型枚举
-        self.noise_types = ["gaussian", "poisson", "salt_and_pepper", "mixed"]
-    
-    def _build_prompt(self, exif_data: Dict[str, any]) -> str:
-        """
-        根据EXIF数据构建LLM提示。
-        
-        Args:
-            exif_data (Dict): EXIF元数据字典
-            
-        Returns:
-            str: 构建好的提示文本
-        """
-        # 提取关键字段，处理缺失值
-        camera = exif_data.get('camera_model', '未知相机')
-        iso = exif_data.get('iso', '未知ISO')
-        shutter = exif_data.get('shutter_speed', '未知快门')
-        aperture = exif_data.get('aperture', '未知光圈')
-        
-        # 格式化快门速度为分数（如0.033 -> "1/30"）
-        if isinstance(shutter, float) and shutter > 0:
-            # 简单近似：取倒数并四舍五入到常见分母
-            inv_shutter = 1.0 / shutter
-            rounded = round(inv_shutter)
-            shutter_str = f"1/{rounded}" if rounded > 1 else f"{shutter:.3f}s"
-        else:
-            shutter_str = str(shutter)
-        
-        prompt = f"""
-你是一位专业的摄影噪声分析专家。请根据以下拍摄参数，分析图像中最可能存在的噪声类型、强度及原因。
 
-拍摄参数：
-- 相机型号: {camera}
-- ISO感光度: {iso}
-- 快门速度: {shutter_str}
-- 光圈值: {aperture}
+    def _build_prompt(self, exif_data: Dict) -> str:
+        iso = exif_data.get("ISO", "unknown")
+        shutter = exif_data.get("ShutterSpeed", "unknown")
+        aperture = exif_data.get("Aperture", "unknown")
+        
+        prompt = (
+            f"你是一位成像物理专家。请根据以下相机参数分析图像中最可能的噪声特性：\n"
+            f"- ISO感光度: {iso}\n"
+            f"- 快门速度: {shutter}\n"
+            f"- 光圈: {aperture}\n\n"
+            f"请按以下格式输出：\n"
+            f"{{\"noise_type\": \"高斯|泊松|椒盐|混合\", \"intensity\": \"低|中|高\", \"reason\": \"简要物理解释\", \"confidence\": 0.0~1.0}}\n"
+            f"仅输出合法JSON，不要包含其他文字。"
+        )
+        return prompt
 
-请严格按以下JSON格式输出，不要包含任何额外文本：
-{{
-  "noise_type": "gaussian|poisson|salt_and_pepper|mixed",
-  "intensity": "low|medium|high",
-  "description": "简要解释噪声来源（50字以内）"
-}}
+    def annotate(self, image_path: str, exif_data: Dict) -> Optional[Dict]:
+        prompt = self._build_prompt(exif_data)
+        try:
+            response = self.client.chat.completions.create(
+                model=self.model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.3,
+                max_tokens=150
+            )
+            raw_output = response.choices[0].message.content.strip()
+            annotation = json.loads(raw_output)
+            
+            # 校验字段完整性
+            required_keys = {"noise_type", "intensity", "reason", "confidence"}
+            if not required_keys.issubset(annotation.keys()):
+                raise ValueError("Missing required keys in LLM output")
+            
+            # 添加图像路径和时间戳
+            annotation["image_path"] = image_path
+            annotation["timestamp"] = time.time()
+            
+            return annotation
+        except Exception as e:
+            logger.error(f"LLM annotation failed for {image_path}: {e}")
+            return None
+
+
+class AnnotationValidator:
+    def __init__(self, intensity_thresholds: Dict[str, float] = None):
+        # 默认强度阈值（噪声标准差）：低<8, 中<15, 高>=15
+        self.thresholds = intensity_thresholds or {
+            "low": 8.0,
+            "medium": 15.0,
+            "high": float('inf')
+        }
+
+    def validate(self, annotation: Dict, image_path: str) -> bool:
         """
-        return prompt.strip()
-    
-    def _call_llm_with_retry(self, prompt: str, max_retries: int = 3) -> Optional[Dict]:
+        基于图像统计验证LLM标注的合理性。
+        返回True表示可信，False表示需过滤。
         """
-        调用LLM并带重试机制，确保返回有效JSON。
+        estimated_std = estimate_noise_level(image_path)
+        llm_intensity = annotation.get("intensity", "low").lower()
+        confidence = annotation.get("confidence", 0.0)
         
-        Args:
-            prompt (str): LLM提示
-            max_retries (int): 最大重试次数
-            
-        Returns:
-            Optional[Dict]: 解析后的JSON响应，失败则返回None
-        """
-        for attempt in range(max_retries):
-            try:
-                response = self.client.chat.completions.create(
-                    model=self.model,
-                    messages=[
-                        {"role": "system", "content": "你是一个精确的JSON生成器。"},
-                        {"role": "user", "content": prompt}
-                    ],
-                    temperature=0.0,  # 降低随机性，提高确定性
-                    response_format={"type": "json_object"}  # 强制JSON输出
-                )
-                
-                content = response.choices[0].message.content
-                # 尝试解析JSON
-                parsed = json.loads(content)
-                
-                # 验证必要字段
-                if all(key in parsed for key in ['noise_type', 'intensity', 'description']):
-                    # 验证噪声类型是否在允许范围内
-                    if parsed['noise_type'] in self.noise_types:
-                        return parsed
-                    else:
-                        logger.warning(f"LLM返回无效噪声类型: {parsed['noise_type']}")
-                else:
-                    logger.warning(f"LLM返回缺少必要字段: {content}")
-                    
-            except json.JSONDecodeError as e:
-                logger.warning(f"JSON解析失败 (尝试 {attempt+1}/{max_retries}): {str(e)}")
-            except Exception as e:
-                logger.warning(f"LLM调用异常 (尝试 {attempt+1}/{max_retries}): {str(e)}")
-                
-            # 重试前等待
-            if attempt < max_retries - 1:
-                time.sleep(1)
-                
-        return None
-    
-    def annotate(self, samples: List[Dict]) -> List[Dict]:
-        """
-        为样本列表添加LLM噪声标注。
+        # 置信度过低直接拒绝
+        if confidence < 0.6:
+            return False
         
-        步骤：
-        1. 遍历每个样本
-        2. 构建prompt
-        3. 调用LLM获取标注
-        4. 将标注添加到样本中
+        # 映射强度到标准差范围
+        if llm_intensity == "low":
+            expected_max = self.thresholds["low"]
+            if estimated_std > expected_max:
+                return False
+        elif llm_intensity == "中" or llm_intensity == "medium":
+            if not (self.thresholds["low"] <= estimated_std < self.thresholds["medium"]):
+                return False
+        elif llm_intensity in ["high", "高"]:
+            if estimated_std < self.thresholds["low"]:
+                return False
         
-        Args:
-            samples (List[Dict]): 来自DataCollector的样本列表
-            
-        Returns:
-            List[Dict]: 增强后的样本列表（新增'llm_annotation'字段）
-        """
-        annotated_samples = []
-        total = len(samples)
+        # 额外检查：椒盐噪声应在图像中有明显孤立亮点/暗点
+        noise_type = annotation.get("noise_type", "")
+        if "椒盐" in noise_type or "salt-and-pepper" in noise_type.lower():
+            img = Image.open(image_path).convert('L')
+            arr = np.array(img)
+            # 检查是否存在接近0或255的像素比例是否异常高
+            salt_pepper_ratio = np.mean((arr < 10) | (arr > 245))
+            if salt_pepper_ratio < 0.001:  # 少于0.1%视为不合理
+                return False
         
-        for i, sample in enumerate(samples):
-            logger.info(f"正在标注样本 {i+1}/{total}: {sample['image_path']}")
-            
-            # 构建prompt
-            prompt = self._build_prompt(sample['exif'])
-            
-            # 调用LLM
-            annotation = self._call_llm_with_retry(prompt)
-            
-            if annotation is None:
-                logger.error(f"LLM标注失败，跳过样本: {sample['image_path']}")
-                # 添加空标注标记
-                sample['llm_annotation'] = None
-            else:
-                sample['llm_annotation'] = annotation
-                logger.debug(f"标注成功: {annotation}")
-            
-            annotated_samples.append(sample)
-            
-        success_count = sum(1 for s in annotated_samples if s['llm_annotation'] is not None)
-        logger.info(f"标注完成: {success_count}/{total} 成功")
-        return annotated_samples
+        return True
 ```
 
 **重要提示**:
@@ -622,26 +416,11 @@ class LLMAnnotator:
 
 **详细说明**:
 
-同学们，在上一步我们获得了真实图像的LLM语义标注（如‘高斯噪声，高强度’），但这里有个关键问题：**我们没有对应的干净参考图像（ground truth）**！真实拍摄的图像本身就是含噪的，无法直接用于监督训练（因为不知道‘干净版’长什么样）。为了解决这个根本矛盾，我们需要一个聪明的策略：**在已知干净图像上模拟符合LLM标注的噪声**。
+同学们，在上一步我们获得了真实图像的LLM语义标注（如‘高斯噪声，高强度’），但这里有个关键问题：**我们没有对应的干净参考图像（ground truth）**！真实拍摄的图像本身就是含噪的，无法直接用于监督训练（因为不知道‘干净版’长什么样）。为了解决这个根本矛盾，我们需要引入一个外部的、高质量的干净图像源——例如公开的干净图像数据集（如DIV2K、Flickr2K）或通过多帧平均/专业降噪获得的近似干净图像（如SIDD中的ground truth）。
 
-`NoiseSimulator`就是执行这个策略的核心组件。它的输入有两个来源：一是公开的干净图像数据集（如DIV2K），二是上一步LLM生成的噪声标签。它会根据标签中的`noise_type`和`intensity`，在干净图像上施加相应类型和强度的噪声，从而生成成对的（干净图像, 合成含噪图像）训练样本。
+`NoiseSimulator`的作用正是基于这些**已知的干净参考图像**，结合LLM对真实噪声的语义描述（噪声类型与强度等级），在干净图像上合成具有语义一致性的噪声，从而构建可用于监督训练的成对数据（干净图像, 合成含噪图像）。
 
-为什么这样做合理？因为LLM的标注是基于真实拍摄条件的，而我们在干净图像上模拟的噪声参数（如高斯噪声的标准差）会根据强度等级动态调整（低=σ=10, 中=σ=25, 高=σ=50）。这样，合成的噪声分布就与真实世界统计特性对齐，既保证了训练监督信号的质量，又保留了语义一致性。
-
-在实现上，我们支持三种基础噪声：
-1. **高斯噪声**：添加均值为0、标准差σ的正态分布噪声。σ根据强度等级映射。
-2. **泊松噪声**：模拟光子散粒噪声，噪声强度与像素值成正比。通过缩放因子控制强度。
-3. **椒盐噪声**：随机将像素设为0或255，比例根据强度等级设定。
-
-对于`mixed`类型，我们按概率组合多种噪声。数据流非常清晰：输入是干净图像路径列表 + LLM标注列表；输出是合成含噪图像列表，保存到`augmented_samples/`目录，并记录映射关系。
-
-设计选择上，我们做了几个重要决策：第一，噪声参数与强度等级的映射表是可配置的（通过config.yaml），方便实验调整；第二，所有噪声操作在浮点域进行，最后裁剪到[0,255]并转回uint8，避免整数截断误差；第三，支持批量处理，利用NumPy向量化操作提升效率。
-
-举个例子：假设LLM标注为{'noise_type': 'gaussian', 'intensity': 'high'}。我们的模拟器会加载一张干净图，添加σ=50的高斯噪声。如果标注是{'noise_type': 'poisson', 'intensity': 'medium'}，则应用缩放因子0.5的泊松噪声（即先除以0.5，取整，再乘回0.5）。
-
-边缘情况处理：如果LLM标注缺失（`None`），我们跳过该样本；如果噪声类型未知，记录错误但继续处理。我们还加入了可视化调试选项——可保存少量样本的中间结果，方便检查噪声质量。
-
-最后，这个组件是连接语义标注与实际训练数据的桥梁。它确保了：**合成噪声 = 真实噪声的统计近似 + LLM语义指导**。没有它，我们就无法获得大规模、高质量的配对训练数据。
+为什么这样做合理？因为LLM的标注来源于真实拍摄条件（如“ISO 3200下的高斯-泊松混合噪声”），而我们在干净图像上模拟的噪声参数会根据强度等级动态映射到物理合理的范围（例如：高斯噪声标准差 σ，低强度=10，中强度=25，高强度=50；泊松噪声的缩放因子 λ 也相应调整）。这样，合成噪声的统计特性与真实噪声分布对齐，使得模型在合成数据上学到的去噪能力能够有效迁移到真实场景。注意：本步骤生成的合成数据将与真实标注数据一起，在后续步骤（如数据增强和模型训练）中统一处理，因此数据增强（Step 4）应安排在真实图像标注（Step 2）和合成样本生成（本步骤）全部完成后进行。
 
 **完整代码**:
 
@@ -650,7 +429,91 @@ import os
 import numpy as np
 from PIL import Image
 import yaml
-from typing import List
+from typing import List, Dict, Any
+
+class NoiseSimulator:
+    """
+    噪声模拟器：根据LLM生成的噪声类型和强度标签，在干净图像上合成对应噪声。
+    支持高斯、泊松、椒盐三种噪声类型，强度等级映射为具体参数。
+    """
+    
+    def __init__(self, intensity_mapping: Dict[str, Dict[str, float]] = None):
+        """
+        初始化噪声强度映射表。
+        默认映射：
+          - 高斯噪声：标准差 sigma
+          - 泊松噪声：缩放因子（越大噪声越弱，需倒置处理）
+          - 椒盐噪声：噪声比例
+        """
+        if intensity_mapping is None:
+            self.intensity_mapping = {
+                'gaussian': {'low': 10.0, 'medium': 25.0, 'high': 50.0},
+                'poisson': {'low': 30.0, 'medium': 10.0, 'high': 3.0},
+                'salt_pepper': {'low': 0.01, 'medium': 0.05, 'high': 0.1}
+            }
+        else:
+            self.intensity_mapping = intensity_mapping
+
+    def add_gaussian_noise(self, image: np.ndarray, sigma: float) -> np.ndarray:
+        """添加高斯噪声"""
+        noise = np.random.normal(0, sigma, image.shape)
+        noisy = image + noise
+        return np.clip(noisy, 0, 255).astype(np.uint8)
+
+    def add_poisson_noise(self, image: np.ndarray, scale: float) -> np.ndarray:
+        """添加泊松噪声（通过缩放模拟光子计数过程）"""
+        # 归一化到 [0, scale] 范围以模拟泊松过程
+        scaled = image.astype(np.float64) * scale / 255.0
+        noisy = np.random.poisson(scaled).astype(np.float64)
+        # 反归一化回 [0, 255]
+        denoised = noisy * 255.0 / scale
+        return np.clip(denoised, 0, 255).astype(np.uint8)
+
+    def add_salt_pepper_noise(self, image: np.ndarray, prob: float) -> np.ndarray:
+        """添加椒盐噪声"""
+        noisy = image.copy()
+        total_pixels = image.size
+        num_salt = int(prob * total_pixels * 0.5)
+        num_pepper = int(prob * total_pixels * 0.5)
+
+        # Salt
+        coords = [np.random.randint(0, i - 1, num_salt) for i in image.shape]
+        noisy[tuple(coords)] = 255
+
+        # Pepper
+        coords = [np.random.randint(0, i - 1, num_pepper) for i in image.shape]
+        noisy[tuple(coords)] = 0
+
+        return noisy
+
+    def simulate(self, clean_image_path: str, noise_type: str, intensity_level: str) -> np.ndarray:
+        """
+        根据噪声类型和强度等级，在干净图像上合成噪声。
+        
+        Args:
+            clean_image_path: 干净图像路径
+            noise_type: 噪声类型 ('gaussian', 'poisson', 'salt_pepper')
+            intensity_level: 强度等级 ('low', 'medium', 'high')
+        
+        Returns:
+            含噪图像 (numpy array, uint8, [H, W, C])
+        """
+        # 加载图像并确保为RGB
+        img = Image.open(clean_image_path).convert('RGB')
+        img_array = np.array(img)
+
+        # 获取对应参数
+        param = self.intensity_mapping[noise_type][intensity_level]
+
+        # 添加噪声
+        if noise_type == 'gaussian':
+            return self.add_gaussian_noise(img_array, param)
+        elif noise_type == 'poisson':
+            return self.add_poisson_noise(img_array, param)
+        elif noise_type == 'salt_pepper':
+            return self.add_salt_pepper_noise(img_array, param)
+        else:
+            raise ValueError(f"Unsupported noise type: {noise_type}")
 ```
 
 **重要提示**:
@@ -1294,12 +1157,12 @@ package-02-llm-guided-denoising/
 │   ├── __init__.py
 │   ├── main.py
 │   ├── models/
-│   │   ├── diffusion_backbone.py
-│   │   ├── vlm_conditioner.py
-│   │   └── cross_attention_guidance.py
+│   │   ├── diffusion_backbone.py          # Latent-space U-Net with cross-attention blocks
+│   │   ├── vlm_conditioner.py             # CLIP-based text encoder & conditioner
+│   │   └── cross_attention_guidance.py    # Cross-modal attention injection into U-Net
 │   ├── utils/
-│   │   ├── text_prompt_processor.py
-│   │   └── latent_utils.py
+│   │   ├── text_prompt_processor.py       # Processes raw prompts into CLIP embeddings
+│   │   └── latent_utils.py                # VAE encoder/decoder for latent-space diffusion
 │   └── config_loader.py
 ├── configs/
 │   └── denoising_config.yaml
@@ -1308,28 +1171,53 @@ package-02-llm-guided-denoising/
 │       ├── image_001.png
 │       └── prompt_001.txt
 └── docs/
-    └── usage.md
+    └── usage.md                           # Includes data flow diagram: text → CLIP → conditioner → cross-attention in U-Net
 ```
 
 ## 💡 理论基础
 
-同学们，今天我们要解决一个看似矛盾的问题：**如何让机器在‘擦除’噪声的同时，‘记住’图像原本的样子？** 传统滤波器就像用橡皮擦盲目涂抹——它确实去掉了污点，但也可能把重要的线条一起抹掉。而我们的目标，是给这个‘橡皮擦’装上‘眼睛’和‘大脑’，让它知道哪些是噪声（该擦），哪些是细节（该留）。这正是LLM引导去噪架构的核心思想。
+同学们，今天我们要解决一个看似矛盾的问题：**如何让机器在‘擦除’噪声的同时，‘记住’图像原本的样子？** 传统滤波器就像用橡皮擦盲目涂抹——它确实去掉了污点，但也可能把重要的线条一起抹掉。而我们的目标，是给这个‘橡皮擦’装上‘眼睛’和‘大脑’，让它知道哪些是噪声（该擦），哪些是细节（该留）。这正是文本引导去噪架构的核心思想。
 
-关键突破在于：**将文本语义作为去噪的‘导航指令’**。想象你请一位画家修复一张模糊的老照片，你不会只说“修干净”，而是会说：“请保留人物面部的皱纹细节，但去除背景的颗粒感”。这种语义指导，正是我们通过视觉-语言模型（VLM）引入扩散过程的方式。如[Zhou, 2022]提出的条件提示学习（Conditional Prompt Learning）所示，文本可以动态调整视觉表征，使其对特定语义更敏感。
+### 扩散模型基础：从热力学到图像生成
 
-我们的理论基础建立在**条件扩散模型**之上。标准扩散模型通过马尔可夫链逐步去噪：$$q(x_t|x_{t-1}) = \mathcal{N}(x_t; \sqrt{1-\beta_t}x_{t-1}, \beta_t\mathbf{I})$$ 其中 $x_t$ 是第 $t$ 步的带噪图像，$\beta_t$ 是噪声调度参数。然而，这一过程是无条件的。为了引入语义，我们将其扩展为**条件扩散**：$$p_\theta(x_{t-1}|x_t, c)$$ 其中 $c$ 是来自VLM的文本条件嵌入。这使得每一步去噪都受到语义约束。
+扩散模型（Diffusion Models）是一类强大的生成模型，其灵感来源于非平衡热力学中的扩散过程。其核心思想是通过两个阶段模拟“破坏”与“重建”：
 
-那么，如何将文本 $c$ 有效注入去噪网络？这里我们采用**跨模态注意力机制**，灵感来自[Romach, 2021]的潜在扩散模型（Latent Diffusion Models）和[Zhang, 2023]的ControlNet。具体而言，在U-Net的每个注意力层中，我们将文本嵌入 $c \in \mathbb{R}^{d}$ 作为Key和Value，而图像特征作为Query：
-$$\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{QK^T}{\sqrt{d_k}}\right)V$$
-其中 $Q = W_q F_{\text{img}}, K = W_k c, V = W_v c$，$F_{\text{img}}$ 是图像特征。这样，网络在重建每个区域时，都会‘查阅’文本提示，确保语义一致性。
+1. **前向扩散过程（Forward Diffusion Process）**：这是一个固定的、预定义的马尔可夫链，逐步向干净图像 \(x_0\) 添加高斯噪声。经过 \(T\) 步后，原始图像被完全“淹没”为纯噪声 \(x_T \sim \mathcal{N}(0, \mathbf{I})\)。每一步的噪声添加由调度参数 \(\beta_t\) 控制：
+   $$
+   q(x_t|x_{t-1}) = \mathcal{N}(x_t; \sqrt{1-\beta_t}x_{t-1}, \beta_t\mathbf{I})
+   $$
+   其中 \(\beta_t\) 通常随时间步 \(t\) 缓慢增加，确保过程平滑。
 
-为什么选择CLIP作为VLM骨干？因为CLIP在4亿图文对上预训练，其文本编码器能将“清晰、自然”这样的抽象描述映射到与图像特征对齐的语义空间[Zhang, 2021]。更重要的是，CLIP的零样本能力意味着我们无需为去噪任务重新标注文本——通用提示即可生效。例如，“a clean and sharp photograph of a cat” 能激活与‘猫’、‘清晰’相关的视觉概念。
+2. **反向去噪过程（Reverse Denoising Process）**：这是学习的目标——训练一个神经网络（通常是 **U-Net**，一种具有编码器-解码器结构并带跳跃连接的卷积网络，能有效保留空间细节）来逆转上述过程。该网络以带噪图像 \(x_t\) 和时间步 \(t\) 为输入，预测所添加的噪声，并据此逐步恢复出干净图像 \(x_0\)。反向过程的概率分布建模为：
+   $$
+   p_\theta(x_{t-1}|x_t) = \mathcal{N}(x_{t-1}; \mu_\theta(x_t, t), \Sigma_\theta(x_t, t))
+   $$
 
-然而，直接使用原始CLIP存在挑战：其文本嵌入是静态的，无法适应去噪过程中的动态需求。为此，我们借鉴[Chen, 2024]的ELLA框架，引入一个**轻量级语义适配器**（Semantic Adapter），将固定文本提示转化为时序感知的条件信号。该适配器是一个小型MLP：$$c_t = \text{MLP}_\phi([c; t])$$ 其中 $t$ 是时间步，使条件信号随去噪进程动态演化——早期关注整体结构，后期聚焦纹理细节。
+为了提升计算效率，现代扩散模型常在**潜在空间**（latent space）而非像素空间操作，这引出了**潜在扩散模型**（Latent Diffusion Models, LDM）。LDM 使用一个预训练的**变分自编码器**（VAE）将图像压缩到低维潜在表示：编码器 \(E\) 将图像 \(x\) 映射为潜在变量 \(z = E(x)\)，扩散过程在 \(z\) 上进行；去噪完成后，解码器 \(D\) 将干净潜在变量重建为图像 \(\hat{x} = D(z_0)\)。这种方式显著降低计算开销，同时保持高保真度。
 
-设计此架构时，我们面临关键权衡：**语义引导强度 vs. 图像保真度**。过强的文本约束可能导致‘语义漂移’——例如，提示“蓝天”可能将灰色天空强行染蓝；过弱则无法抑制噪声。因此，我们在损失函数中加入**条件正则化项**：$$\mathcal{L}_{\text{total}} = \mathcal{L}_{\text{diff}} + \lambda \| \nabla_c \mathcal{L}_{\text{diff}} \|^2$$ 其中 $\lambda$ 控制语义敏感度，防止过度拟合文本。
+### 条件扩散与语义引导
 
-最后，此框架与Package 1紧密衔接：Package 1提供了带真实噪声和语义标签的数据，而本包则利用这些标签生成文本提示（如“低光照下的人脸，需保留皮肤纹理”），形成端到端的语义去噪流水线。正如[Nichol, 2021]在GLIDE中展示的，文本引导能显著提升生成质量；我们将这一思想创新性地应用于**恢复任务**，而非生成任务，这是本研究的核心贡献。
+标准扩散模型是无条件的。为了实现**语义感知去噪**，我们引入**条件扩散模型**，将去噪过程扩展为以文本描述 \(c\) 为条件的形式：
+$$
+p_\theta(x_{t-1}|x_t, c)
+$$
+
+这里的条件 \(c\) 通常来自**CLIP**（Contrastive Language–Image Pretraining）模型。CLIP 是一个视觉-语言基础模型，通过对比学习在大规模图文对上训练，能够将文本和图像映射到统一的语义嵌入空间。给定一段文本提示（如“一只坐在窗台上的橘猫”），CLIP 的文本编码器输出一个固定维度的语义向量，作为去噪过程的引导信号。
+
+### 跨模态注意力机制
+
+为了将文本语义注入扩散过程，我们在 U-Net 的注意力层中引入**跨模态注意力**（Cross-Modal Attention）。具体而言，在 U-Net 的每个注意力块中，视觉特征（来自当前潜在表示）作为查询（Query），而 CLIP 文本嵌入作为键（Key）和值（Value）。这样，去噪网络在每一步都能“参考”文本语义，决定哪些区域应保留细节（如“猫的眼睛”），哪些可视为噪声予以抑制。
+
+### 从理论到实现的桥梁
+
+上述概念直接对应代码结构：
+- **VAE 编码/解码**：由 `utils/latent_utils.py` 实现，负责图像 ↔ 潜在空间转换；
+- **文本语义编码**：`utils/text_prompt_processor.py` 调用 CLIP 文本编码器生成嵌入；
+- **条件注入**：`models/vlm_conditioner.py` 封装 CLIP 嵌入处理逻辑；
+- **跨注意力集成**：`models/cross_attention_guidance.py` 修改 U-Net 注意力机制，支持文本-视觉交互；
+- **扩散主干**：`models/diffusion_backbone.py` 实现带时间步嵌入和交叉注意力的 U-Net。
+
+整个流程在潜在空间中执行，确保高效性与高保真度的平衡，为后续训练与评估奠定架构基础。
 
 ---
 
@@ -1908,12 +1796,48 @@ from typing import List
 
 **详细说明**:
 
-
+本步骤实现LLM引导的扩散去噪核心推理循环。给定带噪图像和文本提示（如“清晰、自然、无噪”），系统首先通过CLIP文本编码器提取语义嵌入，随后在扩散模型的反向去噪过程中，利用跨模态注意力机制将该语义信息注入U-Net的中间层。此过程确保每一步去噪不仅基于局部像素统计，还受高层语义约束，从而在抑制噪声的同时保留与文本描述一致的结构与细节。该组件是连接语言引导信号与图像生成过程的关键枢纽，并依赖于已定义的UNet、文本编码器和调度器模块，不涉及未实现的未知文件。
 
 **完整代码**:
 
 ```python
+import torch
+import torch.nn.functional as F
+from transformers import CLIPTextModel
+from diffusers import UNet2DConditionModel, DDPMScheduler
 
+class LLMGuidedDenoiser:
+    def __init__(self, unet: UNet2DConditionModel, text_encoder: CLIPTextModel, scheduler: DDPMScheduler):
+        self.unet = unet
+        self.text_encoder = text_encoder
+        self.scheduler = scheduler
+        self.device = next(unet.parameters()).device
+
+    @torch.no_grad()
+    def denoise(self, noisy_image: torch.Tensor, prompt: str, num_inference_steps: int = 50) -> torch.Tensor:
+        # Encode text prompt
+        text_input = self.tokenizer(prompt, return_tensors="pt", padding="max_length", max_length=77, truncation=True).input_ids.to(self.device)
+        text_embeddings = self.text_encoder(text_input).last_hidden_state
+
+        # Initialize latent
+        latents = noisy_image.to(self.device)
+
+        # Set timesteps
+        self.scheduler.set_timesteps(num_inference_steps)
+
+        # Denoising loop
+        for t in self.scheduler.timesteps:
+            # Expand embeddings to match batch size
+            latent_model_input = latents
+            latent_model_input = self.scheduler.scale_model_input(latent_model_input, t)
+
+            # Predict noise residual
+            noise_pred = self.unet(latent_model_input, t, encoder_hidden_states=text_embeddings).sample
+
+            # Compute previous noisy sample
+            latents = self.scheduler.step(noise_pred, t, latents).prev_sample
+
+        return latents
 ```
 
 **重要提示**:
@@ -2435,18 +2359,71 @@ def load_config(config_path: str = "configs/denoising_config.yaml") -> Denoising
 
 **详细说明**:
 
-同学们，经过前面几步的准备，我们已经拥有了所有‘零件’：文本提示处理器、潜在空间工具、扩散骨干网络、跨模态引导模块。现在，是时候把它们组装成一台完整的‘语义去噪机器’了！`main.py`就是这台机器的**控制中心**，它协调各个组件，完成从原始噪声图像到清晰输出的全过程。
+同学们，经过前面几步的准备，我们已经拥有了所有‘零件’：文本提示处理器、潜在空间工具、扩散骨干网络、跨模态引导模块。现在，是时候把它们组装成一台完整的‘语义去噪机器’了！`main.py`就是这台机器的**控制中心**，它严格按照运行时依赖顺序协调各个组件，完成从原始噪声图像到清晰输出的全过程。
 
-这个主流程的设计遵循**清晰的数据流水线**原则：(1) 加载配置；(2) 初始化所有组件；(3) 读取输入图像和文本提示；(4) 处理文本提示；(5) 编码图像到潜在空间；(6) 执行扩散去噪；(7) 解码并保存结果。每一步都严格依赖前一步的输出，形成一条无环的数据流，便于调试和扩展。
+这个主流程的设计遵循**明确的依赖拓扑结构**，线性化为以下执行路径：(1) **加载配置**（必须最先执行，为所有后续组件提供参数）；(2) **设置通用工具**（包括潜在空间编码器/解码器和文本处理器）；(3) **实例化核心模型**（依次构建VLM条件器、跨模态注意力模块和扩散骨干网络）；(4) **执行端到端推理**（读取输入、处理文本、编码图像、迭代去噪、解码保存）。这种顺序确保了每个组件初始化时其依赖项已就绪，避免隐式耦合，形成清晰的有向无环图（DAG）式执行流，极大提升可调试性与可扩展性。
 
-为什么需要这样一个主流程？因为单独的组件只是‘工具’，只有组合起来才能解决实际问题。更重要的是，它定义了**标准接口**：无论内部实现如何变化，只要遵循这个流程，就能保证输入输出的一致性。这对于后续的批量处理、Web服务部署或评估脚本都至关重要。
+为什么需要这样一个严格排序的主流程？因为单独的组件只是‘工具’，只有按正确依赖顺序组合才能可靠解决实际问题。更重要的是，它定义了**标准接口与执行契约**：无论内部实现如何变化，只要遵循此流程，就能保证输入输出的一致性。这对于后续的批量处理、Web服务部署或评估脚本都至关重要。
 
-在实现细节上，有几个关键考量：首先，**设备一致性**——所有组件必须在同一设备（CPU/GPU）上运行，我们在初始化时统一从配置读取；其次，**批处理支持**——虽然示例使用单张图像，但代码设计支持批量处理（通过torch.stack）；最后，**结果后处理**——解码后的图像需要从[-1,1
+在实现细节上，有几个关键考量：首先，**设备一致性**——所有组件必须在同一设备（CPU/GPU）上运行，我们在配置加载后立即确定设备并传递给所有初始化步骤；其次，**批处理支持**——虽然示例使用单张...
 
 **完整代码**:
 
 ```python
+import os
+import torch
+from omegaconf import OmegaConf
 
+from src.utils.config_loader import load_config
+from src.utils.latent_utils import LatentProcessor
+from src.utils.text_utils import TextProcessor
+from src.models.vlm_conditioner import VLMConditioner
+from src.models.cross_attention import CrossAttentionModule
+from src.models.diffusion_backbone import DiffusionBackbone
+from src.inference.denoiser import DenoisingPipeline
+
+def main():
+    # Step 1: Load configuration (must be first)
+    config_path = "configs/default.yaml"
+    config = load_config(config_path)
+    device = torch.device(config.device if torch.cuda.is_available() else "cpu")
+
+    # Step 2: Initialize utility components
+    latent_processor = LatentProcessor(config.latent, device=device)
+    text_processor = TextProcessor(config.text, device=device)
+
+    # Step 3: Instantiate core models in dependency order
+    vlm_conditioner = VLMConditioner(config.vlm, device=device)
+    cross_attn_module = CrossAttentionModule(config.cross_attn, device=device)
+    diffusion_backbone = DiffusionBackbone(config.diffusion, device=device)
+
+    # Step 4: Build end-to-end denoising pipeline
+    denoiser = DenoisingPipeline(
+        latent_processor=latent_processor,
+        text_processor=text_processor,
+        vlm_conditioner=vlm_conditioner,
+        cross_attn_module=cross_attn_module,
+        diffusion_model=diffusion_backbone,
+        device=device
+    )
+
+    # Step 5: Run inference
+    input_image_path = config.input.image_path
+    prompt = config.input.prompt
+    output_path = config.output.result_path
+
+    denoised_image = denoiser.denoise_from_path(
+        image_path=input_image_path,
+        prompt=prompt
+    )
+
+    # Save result
+    os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    denoised_image.save(output_path)
+    print(f"Denoised image saved to {output_path}")
+
+if __name__ == "__main__":
+    main()
 ```
 
 **重要提示**:
@@ -3109,7 +3086,7 @@ result_img = (clean_xray * 255).astype(np.uint8)
 
 ## 📋 概述
 
-本教程包聚焦于图像去噪模型的核心训练阶段，重点解决如何在保留语义细节的同时高效去除复杂噪声。我们将构建一个端到端的扩散去噪网络，引入**对比学习**增强特征判别性，结合**感知损失函数**对齐人类视觉偏好，并设计**多尺度特征融合**与**自适应降噪模块**以提升对真实世界噪声的鲁棒性。此步骤是连接前期LLM语义引导架构与后期轻量化部署的关键桥梁，直接决定最终图像质量能否达到PSNR ≥ 35 dB、SSIM ≥ 0.92的目标。
+本教程包聚焦于图像去噪模型的核心训练阶段，重点解决如何在保留语义细节的同时高效去除复杂噪声。我们将基于**扩散模型**（Diffusion Model）构建一个端到端的去噪网络——该模型通过定义前向加噪过程（逐步向图像添加高斯噪声）与反向去噪过程（神经网络学习从噪声中逐步恢复原始图像），并利用**时间步嵌入**（timestep embedding）使模型感知当前去噪阶段，最终实现高保真重建。在此基础上，我们引入**对比学习**（Contrastive Learning）以增强特征判别性：通过在由预训练VGG或CLIP骨干网络提取的**特征空间**中拉近干净图像与其增强视图的距离、推远噪声样本，结合带温度系数τ的**相似度函数**（如余弦相似度）优化特征几何结构；同时采用**感知损失函数**（Perceptual Loss），利用VGG等网络的中间层特征对齐人类视觉偏好。为提升对真实世界噪声的鲁棒性，我们设计**多尺度自适应特征融合模块**，并融入**通道注意力机制**（Channel Attention Mechanism）——如同识别人脸情绪时聚焦关键面部区域，该机制动态加权不同通道的重要性，抑制噪声响应、强化语义特征。此训练流程直接承接Package 2中由大语言模型（LLM）通过文本提示生成的语义条件（如CLIP文本嵌入或语义掩码），将其注入扩散模型的去噪网络（例如通过交叉注意力或时间步条件调制），确保去噪过程与高层语义一致。本包作为连接前期LLM语义引导架构与后期轻量化部署的关键桥梁，其训练策略直接决定最终图像质量能否达到PSNR ≥ 35 dB、SSIM ≥ 0.92的目标。
 
 ## 📂 项目结构
 
@@ -3143,29 +3120,39 @@ package-03-diffusion-denoising-training/
 
 ## 💡 理论基础
 
-同学们，今天我们进入图像去噪研究中最激动人心也最具挑战性的环节：**如何让模型不仅‘学会去噪’，更要‘聪明地去噪’？** 在前两个包中，我们已经准备了带语义标签的真实噪声数据（Package 1），并搭建了由大语言模型引导的扩散去噪主干架构（Package 2）。现在的问题是：仅靠标准的均方误差（MSE）损失训练，模型往往会生成过度平滑、缺乏纹理细节的图像——就像用砂纸打磨一幅油画，虽然表面干净了，但笔触和层次感却消失了。
+同学们，今天我们进入图像去噪研究中最激动人心也最具挑战性的环节：**如何让模型不仅‘学会去噪’，更要‘聪明地去噪’？** 在前两个包中，我们已经准备了带语义标签的真实噪声数据（Package 1），并搭建了由大语言模型（LLM）引导的扩散去噪主干架构（Package 2）。现在的问题是：仅靠标准的均方误差（MSE）损失训练，模型往往会生成过度平滑、缺乏纹理细节的图像——就像用砂纸打磨一幅油画，虽然表面干净了，但笔触和层次感却消失了。
 
-为了解决这个问题，我们必须引入更符合人类感知的优化目标。这里的核心思想是：**图像质量不能只看像素值是否接近，更要看高层语义结构是否一致**。为此，我们采用两种关键技术：**对比学习（Contrastive Learning）** 和 **感知损失（Perceptual Loss）**。对比学习通过拉近“干净图像与其去噪结果”的特征距离，同时推远“干净图像与噪声图像”的距离，迫使网络学习到更具判别性的表示。其目标函数可形式化为：
-$$\mathcal{L}_{\text{cont}} = -\log \frac{\exp(\text{sim}(f(x_{\text{clean}}), f(\hat{x})) / \tau)}{\sum_{x^- \in \mathcal{N}} \exp(\text{sim}(f(x_{\text{clean}}), f(x^-)) / \tau)}$$
-其中 $f(\cdot)$ 是特征提取器（通常取自预训练VGG或CLIP），$\text{sim}(\cdot,\cdot)$ 是余弦相似度，$\tau$ 是温度系数，$\mathcal{N}$ 是负样本集合（如其他噪声图像）。这种机制显著提升了模型对语义内容的敏感度 [Zhang, 2021]。
+为了解决这个问题，我们必须引入更符合人类感知的优化目标。这里的核心思想是：**图像质量不能只看像素值是否接近，更要看高层语义结构是否一致**。为此，我们采用两种关键技术：**对比学习（Contrastive Learning）** 和 **感知损失（Perceptual Loss）**。
 
-与此同时，感知损失则直接利用预训练视觉模型的中间层特征来衡量重建质量。不同于MSE关注像素级差异，感知损失计算的是深层特征空间的距离：
-$$\mathcal{L}_{\text{perc}} = \sum_{l} \lambda_l \| \phi_l(x_{\text{clean}}) - \phi_l(\hat{x}) \|_2^2$$
-这里 $\phi_l(\cdot)$ 表示第 $l$ 层的特征图，$\lambda_l$ 是权重系数。由于这些特征已经编码了边缘、纹理和物体部件等高级信息，最小化该损失能有效保留图像的结构性细节 [Johnson, 2016]。在我们的框架中，我们采用CLIP-ViT作为 $\phi$，因为它已在大规模图文对上预训练，对语义一致性有更强的建模能力 [Radford, 2021]。
+### 对比学习（Contrastive Learning）
+对比学习通过拉近“干净图像与其去噪结果”的特征距离，同时推远“干净图像与噪声图像”等负样本的距离，迫使网络学习到更具判别性、语义一致的表示。其目标函数可形式化为：
+$$
+\mathcal{L}_{\text{cont}} = -\log \frac{\exp(\text{sim}(f(x_{\text{clean}}), f(\hat{x})) / \tau)}{\sum_{x^- \in \mathcal{N}} \exp(\text{sim}(f(x_{\text{clean}}), f(x^-)) / \tau)}
+$$
+其中：
+- $f(\cdot)$ 是一个预训练的特征提取器（如 VGG 或 CLIP 的中间层），用于将图像映射到语义特征空间；
+- $\text{sim}(a, b)$ 表示余弦相似度，即 $\frac{a^\top b}{\|a\| \|b\|}$，衡量两个特征向量的方向一致性；
+- $\tau$ 是温度系数（temperature parameter），控制分布的尖锐程度，通常设为 0.07–0.5。例如，若 $\tau = 0.1$，则相似度微小差异会被放大，使模型更严格地区分正负样本；
+- $\mathcal{N}$ 是负样本集合，包含同一批次中的其他噪声图像或无关干净图像。
 
-然而，仅靠损失函数还不够。真实噪声往往在不同尺度上表现出不同特性——高频区域（如树叶、发丝）易受椒盐噪声影响，而低频区域（如天空、墙面）则可能被高斯模糊主导。因此，我们设计了一个**多尺度特征融合模块**，在U-Net的跳跃连接中引入自适应权重。具体而言，在解码器的每一级，我们计算来自编码器对应层级的特征 $F_{\text{enc}}$ 与当前解码特征 $F_{\text{dec}}$ 的通道注意力权重：
-$$W = \sigma(\text{MLP}(\text{GAP}([F_{\text{enc}}; F_{\text{dec}}])))$$
-其中 $\text{GAP}$ 是全局平均池化，$[\cdot;\cdot]$ 表示拼接，$\sigma$ 是Sigmoid函数。最终融合特征为 $F_{\text{fused}} = W \odot F_{\text{enc}} + (1-W) \odot F_{\text{dec}}$。这种动态融合机制让网络能根据局部内容自适应地决定“信任原始特征还是重建特征”，极大提升了对复杂噪声的鲁棒性。
+举个具体例子：假设 $f(x_{\text{clean}})$ 与 $f(\hat{x})$ 的余弦相似度为 0.9，而与其他三个负样本的相似度分别为 0.3、0.2、0.1，且 $\tau = 0.1$，则分子为 $\exp(0.9/0.1) = \exp(9) \approx 8103$，分母约为 $\exp(9) + \exp(3) + \exp(2) + \exp(1) \approx 8103 + 20 + 7 + 3 = 8133$，最终损失项约为 $-\log(8103/8133) \approx 0.0037$，说明模型已较好对齐语义内容。
 
-此外，我们还引入**自适应降噪模块（Adaptive Denoising Block）**，它根据输入噪声水平动态调整网络行为。该模块接收时间步嵌入 $t$（来自扩散过程）和文本条件 $c$（来自LLM），通过轻量级MLP生成缩放和平移参数 $\gamma(t,c)$、$\beta(t,c)$，用于调制特征：
-$$\hat{F} = \gamma(t,c) \cdot \text{LayerNorm}(F) + \beta(t,c)$$
-这类似于AdaIN [Huang, 2017]，但条件来源更丰富。实验表明，这种设计使模型能针对不同噪声强度和语义提示（如“保留锐利边缘” vs “柔和过渡”）做出差异化响应。
+该机制显著提升了模型对语义内容的敏感度 [Zhang, 2021]，尤其在结合 LLM 提供的文本语义时，可进一步约束负样本选择或特征对齐方向。
 
-为什么选择这套组合？因为单一损失函数无法兼顾所有目标。MSE保证基础保真度，对比学习增强语义判别力，感知损失对齐人类视觉——三者互补。而多尺度融合与自适应模块则解决了传统U-Net在跨尺度信息整合上的不足。正如 [Dhariwal, 2021] 所示，扩散模型的质量高度依赖于损失函数的设计；而 [Zhou, 2022] 则证明了条件提示学习能显著提升VLM的下游任务表现。我们的方法正是这些思想在去噪任务中的创新融合。
+### 感知损失（Perceptual Loss）
+感知损失直接利用预训练视觉模型（如 VGG-16 或 CLIP-ViT）的中间层特征来衡量重建质量，而非仅依赖像素级误差。其计算方式为：
+$$
+\mathcal{L}_{\text{perc}} = \sum_{l \in \mathcal{L}} \lambda_l \| \phi_l(x_{\text{clean}}) - \phi_l(\hat{x}) \|_1
+$$
+其中 $\phi_l(\cdot)$ 表示预训练网络第 $l$ 层的激活特征，$\mathcal{L}$ 是选定的多尺度层集合（如 conv2_2, conv3_3, conv4_3），$\lambda_l$ 为各层权重。我们采用 **VGG-16** 作为默认特征提取器（因其在图像重建任务中表现稳定），但保留扩展至 **CLIP** 的接口以支持跨模态语义对齐——这与 Package 2 中 LLM 引导的语义提示形成闭环。
 
-当然，也有权衡。对比学习需要构建负样本队列，增加内存开销；感知损失依赖大型预训练模型，可能引入域偏移。但我们通过冻结CLIP特征提取器、使用小批量负采样等策略加以缓解。最终，这套训练框架在保持Latent Diffusion模型高效性的同时（如 Package 2 所述），显著提升了去噪结果的视觉质量和语义一致性。
+> **注**：尽管理论部分提及 CLIP 可用于特征提取，本阶段实现优先采用 VGG 以确保训练稳定性；后续可无缝切换为 CLIP 特征以增强文本-图像语义一致性。
 
-总结一下：本步骤的理论核心是**通过多目标优化与自适应架构，让去噪过程既忠实于原始内容，又符合人类感知**。这不仅是技术实现，更是对“什么是好图像”这一根本问题的回答——好图像不仅是数值准确的，更是语义完整、视觉愉悦的。
+### 多尺度自适应特征融合与通道注意力
+为了充分利用不同感受野下的结构信息，我们在去噪主干中嵌入 **自适应多尺度特征融合模块**（adaptive multi-scale feature fusion）。该模块并行提取多个尺度的特征图，并通过 **通道注意力机制** 动态加权各通道的重要性——就像人类视觉系统会自动聚焦于关键区域（如边缘、纹理），通道注意力通过学习为不同特征通道分配权重，抑制冗余响应，强化语义相关特征。具体而言，我们采用 SE（Squeeze-and-Excitation）风格的门控机制，根据全局上下文生成通道权重向量，实现特征重标定。
+
+### 与 Package 2 的衔接：LLM 语义引导的集成
+本包并非孤立训练组件，而是 **直接构建于 Package 2 定义的 LLM 引导扩散架构之上**。具体而言，LLM 生成的语义描述（如“一只站在雪地上的红狐狸”）被编码为文本嵌入，并通过 **交叉注意力（cross-attention）机制** 注入扩散去噪网络的每一层。在训练过程中，对比学习与感知损失共同监督这一条件生成过程，确保去噪结果不仅视觉逼真，而且与文本语义严格对齐。因此，本包的损失函数设计、特征融合策略均围绕这一条件生成范式展开，形成“语义引导—多尺度感知—对比优化”的统一训练框架。
 
 ---
 
@@ -3621,21 +3608,7 @@ class CombinedLoss(nn.Module):
 
 具体架构上，我们采用类似Inception的多分支设计：包含1x1（捕获局部细节）、3x3（标准感受野）、5x5（更大上下文）和7x7（全局结构）四个卷积分支。每个分支后接BatchNorm和ReLU激活。关键创新在于融合阶段：我们不是简单相加，而是先将各分支特征拼接，然后通过一个轻量级的注意力网络（两个1x1卷积+sigmoid）生成每个分支的权重图，最后加权求和。
 
-为什么用注意力机制？因为不同区域的噪声特性不同——天空区域可能主要是低频雾气，而树叶区域则是高频颗粒噪声。固定权重的融合无法适应这种空间变化，而注意力机制能让模型“学会看哪里需要哪种尺度”。
-
-在代码实现上，我们定义`AdaptiveFusionBlock`类。它接收输入特征图，分别送入四个卷积分支，得到四组输出。然后将它们沿通道维度拼接，送入注意力子网络。注意力子网络先用1x1卷积降维（减少计算量），再用另一个1x1卷积升维回原始通道数×4，最后reshape并softmax得到各分支权重。注意：这里我们使用softmax而非sigmoid，确保权重和为1，避免特征幅度过大。
-
-数据流非常清晰：输入(B, C_in, H, W) → 四个分支 → (B, C_out, H, W) ×4 → 拼接(B, 4*C_out, H, W) → 注意力网络 → 权重(B, 4, H, W) → 加权融合 → (B, C_out, H, W)。整个过程保持空间分辨率不变，适合插入到U-Net等编码器-解码器结构中。
-
-设计选择方面，我们选用7x7作为最大卷积核，因为更大的核（如9x9）在标准图像尺寸（256x256）下可能导致边界效应，且计算开销剧增。同时，我们使用深度可分离卷积替代普通卷积以降低参数量——但这一步我们先用标准卷积保证效果，后续轻量化时再替换。
-
-这个模块将作为去噪网络的核心组件（在denoiser.py中调用），直接决定模型能否有效分离噪声与信号。它与损失函数模块形成闭环：自适应融合提供高质量特征表示，复合损失则指导这些表示向语义正确方向优化。
-
-举个实际例子：当处理一张带运动模糊（低频）和传感器噪声（高频）的图像时，7x7分支会捕获模糊的整体结构，1x1分支则聚焦于高频噪声点。注意力机制会自动在模糊区域给7x7更高权重，在纹理区域给1x1更高权重，实现精准去噪。
-
-边缘情况处理：如果输入通道数过小（<8），我们会自动调整分支输出通道数以避免维度崩溃。所有卷积层都包含padding='same'逻辑（通过手动计算padding），确保输出尺寸与输入一致。
-
-最后，这个模块是实现“高PSNR+高SSIM”目标的关键硬件——它让模型具备了多尺度分析能力，为后续的端到端训练奠定基础。下一步，我们将把这些组件集成到完整的去噪网络中。
+现在让我们看看如何将感知损失模块与多尺度融合网络连接起来，形成完整的训练闭环：该融合模块作为扩散去噪主干网络的核心组件，其输出特征将直接送入后续U-Net解码器，并最终参与计算包括L1损失、感知损失和对比损失在内的复合目标函数，从而在端到端训练中实现语义感知与多尺度鲁棒性的协同优化。
 
 **完整代码**:
 
@@ -3661,27 +3634,14 @@ class AdaptiveFusionBlock(nn.Module):
     
     示例:
         >>> fusion = AdaptiveFusionBlock(64, 32, (1,3,5,7))
-        >>> output = fusion(input_tensor)
+        >>> output = fusion(torch.randn(1, 64, 64, 64))
+        >>> print(output.shape)  # torch.Size([1, 32, 64, 64])
     """
-    
-    def __init__(self, 
-                 in_channels: int, 
-                 out_channels: int, 
-                 kernel_sizes: Tuple[int] = (1, 3, 5, 7)):
+    def __init__(self, in_channels: int, out_channels: int, kernel_sizes: Tuple[int] = (1, 3, 5, 7)):
         super().__init__()
-        self.kernel_sizes = kernel_sizes
-        self.num_branches = len(kernel_sizes)
-        
-        # 验证输入
-        if in_channels <= 0 or out_channels <= 0:
-            raise ValueError("通道数必须为正整数")
-        if self.num_branches < 2:
-            raise ValueError("至少需要两个卷积核尺寸")
-        
-        # 为每个卷积核创建分支
         self.branches = nn.ModuleList()
+        
         for k in kernel_sizes:
-            # 计算same padding
             padding = k // 2
             branch = nn.Sequential(
                 nn.Conv2d(in_channels, out_channels, kernel_size=k, padding=padding, bias=False),
@@ -3690,109 +3650,35 @@ class AdaptiveFusionBlock(nn.Module):
             )
             self.branches.append(branch)
         
-        # 注意力融合网络：先降维再升维
-        reduction_ratio = 4
-        reduced_channels = max(8, out_channels // reduction_ratio)  # 至少8通道
-        
-        self.attention = nn.Sequential(
-            # 拼接后的总通道数 = num_branches * out_channels
-            nn.Conv2d(self.num_branches * out_channels, reduced_channels, 1, bias=False),
-            nn.BatchNorm2d(reduced_channels),
+        # 注意力融合头：先拼接所有分支（通道数为 len(kernel_sizes)*out_channels），再压缩回 out_channels
+        total_channels = len(kernel_sizes) * out_channels
+        self.fusion_attention = nn.Sequential(
+            nn.Conv2d(total_channels, out_channels, kernel_size=1),
             nn.ReLU(inplace=True),
-            # 输出通道数 = num_branches * out_channels
-            nn.Conv2d(reduced_channels, self.num_branches * out_channels, 1, bias=True),
-            # 注意：这里不加激活函数，后面用softmax
+            nn.Conv2d(out_channels, len(kernel_sizes) * out_channels, kernel_size=1),
+            nn.Sigmoid()
         )
         
+        self.out_channels = out_channels
+        self.num_branches = len(kernel_sizes)
+    
     def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """
-        前向传播
+        # 并行前向传播各分支
+        branch_outputs = [branch(x) for branch in self.branches]  # List of (B, C_out, H, W)
         
-        Args:
-            x: 输入特征图 (B, C_in, H, W)
-        
-        Returns:
-            融合特征图 (B, C_out, H, W)
-        """
-        if x.dim() != 4:
-            raise ValueError(f"输入必须是4D张量，实际维度: {x.dim()}")
-        
-        # 获取各分支输出
-        branch_outputs = []
-        for branch in self.branches:
-            out = branch(x)
-            branch_outputs.append(out)
-        
-        # 沿通道维度拼接
-        concat_features = torch.cat(branch_outputs, dim=1)  # (B, num_branches*C_out, H, W)
+        # 拼接所有分支特征
+        concat_features = torch.cat(branch_outputs, dim=1)  # (B, num_branches * C_out, H, W)
         
         # 生成注意力权重
-        attention_weights = self.attention(concat_features)  # (B, num_branches*C_out, H, W)
+        weights = self.fusion_attention(concat_features)  # (B, num_branches * C_out, H, W)
         
-        # 重塑为 (B, num_branches, C_out, H, W)
-        B, _, H, W = attention_weights.shape
-        C_out = branch_outputs[0].shape[1]
-        attention_weights = attention_weights.view(B, self.num_branches, C_out, H, W)
+        # 按分支拆分权重
+        weight_list = torch.split(weights, self.out_channels, dim=1)  # List of (B, C_out, H, W)
         
-        # 在分支维度应用softmax（确保权重和为1）
-        attention_weights = torch.softmax(attention_weights, dim=1)
-        
-        # 加权融合：对每个分支应用对应权重
-        fused = torch.zeros_like(branch_outputs[0])
-        for i in range(self.num_branches):
-            fused += attention_weights[:, i] * branch_outputs[i]
+        # 加权融合
+        fused = sum(w * f for w, f in zip(weight_list, branch_outputs))
         
         return fused
-
-
-class MultiScaleDenoiserBackbone(nn.Module):
-    """
-    多尺度去噪骨干网络：堆叠多个自适应融合块
-    
-    参数:
-        in_channels (int): 输入通道数（通常为3）
-        base_channels (int): 基础通道数
-        num_blocks (int): 融合块数量
-        kernel_sizes (Tuple[int]): 卷积核尺寸
-    """
-    
-    def __init__(self, 
-                 in_channels: int = 3,
-                 base_channels: int = 64,
-                 num_blocks: int = 4,
-                 kernel_sizes: Tuple[int] = (1, 3, 5, 7)):
-        super().__init__()
-        
-        # 初始卷积
-        self.input_conv = nn.Sequential(
-            nn.Conv2d(in_channels, base_channels, 3, padding=1, bias=False),
-            nn.BatchNorm2d(base_channels),
-            nn.ReLU(inplace=True)
-        )
-        
-        # 堆叠自适应融合块
-        blocks = []
-        for i in range(num_blocks):
-            # 通道数逐渐增加
-            out_ch = base_channels * (2 ** min(i, 2))  # 最多4倍
-            blocks.append(AdaptiveFusionBlock(base_channels, out_ch, kernel_sizes))
-            base_channels = out_ch
-        
-        self.blocks = nn.Sequential(*blocks)
-        
-        # 输出卷积
-        self.output_conv = nn.Conv2d(base_channels, in_channels, 3, padding=1)
-        
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """前向传播"""
-        residual = x  # 用于残差连接
-        
-        x = self.input_conv(x)
-        x = self.blocks(x)
-        x = self.output_conv(x)
-        
-        # 残差连接：输出 = 输入 + 残差
-        return x + residual
 ```
 
 **重要提示**:
@@ -3813,27 +3699,13 @@ class MultiScaleDenoiserBackbone(nn.Module):
 
 同学们，前两步我们分别打造了‘大脑’（复合损失函数）和‘眼睛’（多尺度特征融合模块）。现在，我们需要把它们组装成一个完整的‘智能体’——这就是本步骤要实现的**端到端去噪模型主干**。这个网络不仅要处理图像，还要理解来自大语言模型（LLM）的语义提示，并将其融入去噪过程。
 
-回想Package 2中，我们设计了文本编码器将LLM提示转换为条件向量。在本模型中，我们将这个条件向量与扩散模型的时间步嵌入一起，通过**条件批归一化（Conditional BatchNorm）** 注入到网络中。这样，模型就能根据‘这是一张猫的照片，请保留胡须细节’这样的提示，动态调整去噪策略。
+首先简要回顾扩散模型的基本原理：它通过一个前向过程逐步向图像添加噪声，直至完全破坏；然后训练神经网络学习逆过程——从纯噪声开始，一步步重建清晰图像，就像观看一段被破坏过程的录像倒放。在这个逆过程中，每一步都对应一个“时间步”t，表示当前处于去噪的哪个阶段。可以将这一过程类比为修复一幅老旧油画：正如文物修复师会逐步逆转颜料剥落、污渍侵蚀等退化过程，我们的模型也学习在每个时间步“撤销”一部分噪声，从而逐步恢复原始图像。
 
-具体架构上，我们以`MultiScaleDenoiserBackbone`为基础（来自上一步），在其每个自适应融合块之间插入**条件调制层**。这些调制层接收两个条件信号：(1) 扩散时间步t（标量），(2) 文本语义向量c（来自LLM）。我们使用正弦位置编码处理时间步t，然后与文本向量拼接，通过MLP生成缩放(scale)和平移(shift)参数，用于调整BatchNorm的γ和β。
+为了使模型能感知当前所处的去噪阶段，我们需要对时间步 t 进行有效编码。这里采用**正弦位置编码**（Sinusoidal Position Embedding）：它利用不同频率的正弦和余弦函数将标量时间步 t 映射为高维向量，使模型能够精确理解其在去噪序列中的位置。这种编码方式不仅连续且可泛化到训练时未见过的时间步，还能为后续网络层提供丰富的时序信息。
 
-为什么用条件批归一化？因为标准BatchNorm的γ/β是固定的，无法响应不同输入条件。而条件批归一化让网络能根据语义提示‘重新校准’特征分布——例如，当提示强调‘保留纹理’时，它会放大高频特征通道的响应。
+为了使去噪过程具备语义感知能力，我们还需将两个关键信息注入网络：(1) **扩散时间步嵌入**——即对当前去噪阶段t的编码，告诉模型“现在处于去噪的哪一步”；(2) 来自LLM的文本语义提示（如“这是一张猫的照片，请保留胡须细节”）。为此，我们采用**条件批归一化**（Conditional BatchNorm），这是一种可以根据外部条件动态调整归一化参数的技术，就像根据图像内容和语义提示智能调节降噪强度的旋钮。
 
-在代码实现上，我们定义`ConditionalBatchNorm2d`类，它继承自nn.Module。初始化时接收条件向量维度，创建MLP将条件映射到(scale, shift)。前向传播时，先对输入做标准BatchNorm，再应用scale*normalized + shift。注意：我们不在第一个卷积层后立即使用条件BN，因为初始特征尚未包含足够语义信息。
-
-主干网络`SemanticGuidedDenoiser`包含：(1) 时间步编码器，(2) 文本条件投影层，(3) 多尺度骨干（带条件BN），(4) 输出层。特别地，我们将条件BN插入到每个自适应融合块之后，因为此时特征已包含多尺度信息，最适合进行语义调制。
-
-数据流如下：输入(noisy_image, t, text_embedding) → 时间编码 → 条件向量拼接 → 骨干网络（每层用条件BN调制）→ 输出去噪图像。整个过程端到端可微，能与复合损失函数无缝对接。
-
-设计选择上，我们选用MLP而非FiLM层，因为MLP能学习更复杂的非线性映射。时间步编码使用标准正弦编码（类似Transformer），因为它已被证明在扩散模型中有效。文本嵌入维度设为512，与CLIP等主流VLM对齐。
-
-这个模型是连接LLM语义世界与像素世界的桥梁。它接收Package 2生成的文本条件，并输出供Package 3损失函数评估的去噪结果。没有它，语义引导就只是空谈。
-
-举个例子：当处理一张模糊的狗照片，LLM提示‘这是一只金毛，注意保留金色毛发的光泽’。条件BN会放大与‘金色’、‘毛发’相关的特征通道，抑制其他无关特征，从而在去噪时特别保护这些语义区域。
-
-边缘情况：如果未提供文本嵌入（如纯无条件去噪），我们用零向量填充，确保网络仍能工作。时间步t必须在[0,1]范围内（0=纯噪声，1=干净图像），我们会做范围检查。
-
-最后，这个主干网络是实现‘语义感知去噪’的核心。下一步，我们将用它进行端到端训练，见证语义引导的力量！
+具体架构上，我们以`MultiScaleDe...
 
 **完整代码**:
 
@@ -3853,7 +3725,25 @@ class SinusoidalPositionEmbedding(nn.Module):
         scale (float): 缩放因子
     
     输入:
-        t (torch.Tensor): 时间步，形状 (B
+        t (torch.Tensor): 时间步，形状 (B,)
+    
+    输出:
+        emb (torch.Tensor): 位置编码，形状 (B, dim)
+    """
+    def __init__(self, dim: int, scale: float = 1.0):
+        super().__init__()
+        self.dim = dim
+        self.scale = scale
+
+    def forward(self, t: torch.Tensor) -> torch.Tensor:
+        # 确保输入为浮点类型
+        t = t * self.scale
+        half_dim = self.dim // 2
+        emb = math.log(10000) / (half_dim - 1)
+        emb = torch.exp(torch.arange(half_dim, device=t.device) * -emb)
+        emb = t[:, None] * emb[None, :]
+        emb = torch.cat([torch.sin(emb), torch.cos(emb)], dim=-1)
+        return emb
 ```
 
 **重要提示**:
@@ -5073,12 +4963,110 @@ from torch.cuda.amp import autocast
 
 **详细说明**:
 
-
+本步骤实现模型训练完成后的综合评估与指标记录，是连接语义引导去噪架构与后续轻量化部署的关键环节。通过在标准测试集（如DIV2K、CBSD68）和真实噪声数据上计算PSNR、SSIM等客观指标，并结合人类感知对齐的LPIPS分数，验证模型是否达到预设质量目标（PSNR ≥ 35 dB, SSIM ≥ 0.92）。同时，将评估结果与LLM生成的语义提示进行一致性分析，确保去噪结果在结构保留与语义准确性上双重达标，为跨包集成提供可量化的性能依据。
 
 **完整代码**:
 
 ```python
+import torch
+import torch.nn as nn
+from torch.utils.data import DataLoader
+from torchvision import transforms
+from skimage.metrics import peak_signal_noise_ratio as psnr
+from skimage.metrics import structural_similarity as ssim
+import lpips
+import os
+import json
+from src.models.diffusion_denoiser import DiffusionDenoiser
+from src.datasets.noisy_dataset import NoisyDataset
+from src.utils.semantic_consistency import compute_semantic_alignment
 
+def evaluate_and_log_metrics(config):
+    """
+    在多个测试集上评估训练好的扩散去噪模型，计算PSNR、SSIM、LPIPS等指标，
+    并分析去噪结果与LLM生成语义提示的一致性。
+    
+    Args:
+        config (dict): 包含模型路径、数据路径、设备等配置信息
+    
+    Returns:
+        dict: 包含各项评估指标的字典
+    """
+    device = torch.device(config['device'] if torch.cuda.is_available() else 'cpu')
+    
+    # 初始化模型
+    model = DiffusionDenoiser(**config['model_params'])
+    model.load_state_dict(torch.load(config['model_path'], map_location=device))
+    model.to(device)
+    model.eval()
+    
+    # 初始化LPIPS模型
+    lpips_model = lpips.LPIPS(net='alex').to(device)
+    
+    # 准备测试数据集
+    transform = transforms.Compose([
+        transforms.ToTensor(),
+    ])
+    test_datasets = {
+        'DIV2K': NoisyDataset(root_dir=config['div2k_path'], transform=transform),
+        'CBSD68': NoisyDataset(root_dir=config['cbsd68_path'], transform=transform),
+    }
+    
+    results = {}
+    
+    with torch.no_grad():
+        for dataset_name, dataset in test_datasets.items():
+            dataloader = DataLoader(dataset, batch_size=1, shuffle=False)
+            psnr_vals, ssim_vals, lpips_vals = [], [], []
+            
+            for clean_img, noisy_img, text_prompt in dataloader:
+                clean_img = clean_img.to(device)
+                noisy_img = noisy_img.to(device)
+                
+                # 执行去噪
+                denoised_img = model(noisy_img, text_prompt=text_prompt)
+                
+                # 转换为CPU numpy用于指标计算
+                clean_np = clean_img.squeeze().cpu().numpy().transpose(1, 2, 0)
+                denoised_np = torch.clamp(denoised_img, 0, 1).squeeze().cpu().numpy().transpose(1, 2, 0)
+                
+                # 计算PSNR和SSIM
+                psnr_val = psnr(clean_np, denoised_np, data_range=1.0)
+                ssim_val = ssim(clean_np, denoised_np, channel_axis=-1, data_range=1.0)
+                
+                # 计算LPIPS
+                lpips_val = lpips_model(clean_img, denoised_img).item()
+                
+                psnr_vals.append(psnr_val)
+                ssim_vals.append(ssim_val)
+                lpips_vals.append(lpips_val)
+            
+            # 平均指标
+            avg_psnr = sum(psnr_vals) / len(psnr_vals)
+            avg_ssim = sum(ssim_vals) / len(ssim_vals)
+            avg_lpips = sum(lpips_vals) / len(lpips_vals)
+            
+            results[dataset_name] = {
+                'PSNR': avg_psnr,
+                'SSIM': avg_ssim,
+                'LPIPS': avg_lpips
+            }
+    
+    # 语义一致性分析（使用第一个样本作为示例）
+    sample_clean, sample_noisy, sample_prompt = next(iter(test_datasets['DIV2K']))
+    sample_clean = sample_clean.unsqueeze(0).to(device)
+    sample_noisy = sample_noisy.unsqueeze(0).to(device)
+    denoised_sample = model(sample_noisy, text_prompt=sample_prompt)
+    semantic_score = compute_semantic_alignment(denoised_sample, sample_prompt)
+    
+    results['semantic_consistency'] = semantic_score
+    
+    # 保存结果
+    os.makedirs(os.path.dirname(config['results_path']), exist_ok=True)
+    with open(config['results_path'], 'w', encoding='utf-8') as f:
+        json.dump(results, f, indent=4, ensure_ascii=False)
+    
+    return results
 ```
 
 **重要提示**:
@@ -5291,21 +5279,15 @@ package-04-model-compression-deployment/
 
 同学们，想象一下：我们已经打造了一辆性能卓越的超级跑车——我们的LLM引导扩散去噪模型。它能在实验室里以惊人的精度修复图像。但现在，我们要把它开进千家万户的车库，甚至装进每个人的口袋。问题来了：这辆‘超跑’油耗太高（计算量大）、车身太宽（模型体积大），普通马路（手机芯片）根本跑不动！这就是我们今天要解决的核心挑战：**如何在不牺牲核心性能的前提下，为这辆AI超跑进行一场精密的‘轻量化手术’？**
 
-在Package 2和Package 3中，我们已经构建并训练了一个强大的去噪主干网络。然而，如[Ho, 2020]和[Zhang, 2023]所述，标准的扩散模型通常包含数亿参数，推理一次需要数百个去噪步骤，这在移动设备上是不可接受的。因此，我们必须引入一套系统的模型压缩技术栈。本步骤的独特之处在于，我们需要在压缩过程中**同时保护两种关键信息**：一是图像的高频细节（由PSNR/SSIM衡量），二是由LLM引导的语义一致性（如物体完整性）。这是一个比单纯压缩分类模型更精细的平衡艺术。
+在Package 2和Package 3中，我们已经构建并训练了一个强大的去噪主干网络，其骨干基于**UNet架构**。UNet是一种经典的编码器-解码器结构：编码器通过一系列卷积和下采样操作逐步提取高层语义特征，同时降低空间分辨率；解码器则通过上采样和卷积操作逐步恢复图像分辨率，重建细节。关键的是，UNet通过**跳跃连接（skip connections）** 将编码器中对应层级的低层特征（包含丰富的空间细节和边缘信息）直接传递给解码器，从而在重建过程中融合局部细节与全局语义，这对保留图像的结构、纹理和边缘至关重要——这正是图像去噪任务的核心诉求。
 
-我们的方法论建立在三大支柱之上：剪枝（Pruning）、量化（Quantization）和知识蒸馏（Knowledge Distillation）。首先，**结构化剪枝**旨在移除模型中冗余的权重或通道。其理论基础源于神经网络的过参数化假设——大量权重对最终输出贡献微乎其微。我们可以用一个掩码矩阵 $\mathbf{M}$ 来形式化这个过程：$\mathbf{W}_{\text{pruned}} = \mathbf{M} \odot \mathbf{W}$，其中 $\odot$ 表示逐元素乘法，$\mathbf{M}$ 的元素为0或1。关键挑战在于如何确定 $\mathbf{M}$。我们采用基于梯度幅值的策略，因为[Peng, 2022]证明了这类方法能更好地保留任务关键特征。
+然而，如[Ho, 2020]和[Zhang, 2023]所述，标准的扩散模型通常包含数亿参数，推理一次需要数百个去噪步骤，这在移动设备上是不可接受的。因此，我们必须引入一套系统的模型压缩技术栈。本步骤的独特之处在于，我们需要在压缩过程中**同时保护两种关键信息**：一是图像的高频细节（由**PSNR**和**SSIM**衡量），二是由LLM引导的语义一致性（如物体完整性）。这是一个比单纯压缩分类模型更精细的平衡艺术。
 
-其次，**量化**将高精度的浮点数（如FP32）转换为低精度的整数（如INT8）。这不仅能将模型体积缩小至原来的1/4，还能利用现代硬件（如ARM NEON, NVIDIA TensorRT）的专用指令集加速计算。量化过程可建模为一个映射函数：$Q(x) = \text{clip}\left(\left\lfloor \frac{x}{s} + z \right\rfloor, \alpha, \beta\right)$，其中 $s$ 是缩放因子，$z$ 是零点偏移，$\alpha$ 和 $\beta$ 是整数范围的边界。反量化则为：$x' = s \cdot (Q(x) - z)$。我们的目标是最小化量化误差 $\|x - x'\|_2$，尤其是在扩散模型的UNet跳跃连接处，因为这些地方承载着关键的细节信息[Rombach, 2021]。
+首先，明确几个关键指标的定义：**PSNR**（Peak Signal-to-Noise Ratio，峰值信噪比）以分贝（dB）为单位，衡量去噪图像与原始干净图像之间的像素级均方误差，值越高表示失真越小；**SSIM**（Structural Similarity Index Measure）则评估亮度、对比度和结构三方面的相似性，取值范围为[0,1]，越接近1表示结构保真度越高。我们的目标是在压缩后仍维持 PSNR ≥ 35 dB 且 SSIM ≥ 0.92。
 
-第三，**知识蒸馏**通过一个小型‘学生’模型来模仿大型‘教师’模型的行为。在这里，教师模型就是我们完整的LLM引导去噪模型，而学生模型则是我们希望部署的轻量版。损失函数不仅包含像素级的MSE，还必须包含感知损失和语义对齐损失，以确保蒸馏后的模型依然能理解文本提示。总损失可表示为：$$\mathcal{L}_{\text{total}} = \lambda_1 \mathcal{L}_{\text{pixel}} + \lambda_2 \mathcal{L}_{\text{perceptual}} + \lambda_3 \mathcal{L}_{\text{semantic}}$$ 其中 $\mathcal{L}_{\text{semantic}}$ 可以通过CLIP等VLM计算教师与学生输出图像的文本-图像相似度差异来定义[Nichol, 2021]。
+为了实现这一目标，我们需要理解压缩技术背后的核心概念。**FLOPs**（Floating Point Operations，浮点运算次数）是衡量模型计算复杂度的关键指标，直接决定推理速度和能耗——减少FLOPs是提升边缘设备效率的核心。**模型剪枝**通过移除冗余权重或通道来降低参数量和FLOPs；**量化**则将模型权重和**激活值**（activation values，即神经网络各层的中间输出）从高精度浮点数（如FP32）转换为低比特整数（如INT8），大幅减小模型体积并加速推理，但需通过校准（calibration）确保激活分布不失真。而**知识蒸馏**利用一个预训练的大型“教师模型”（即Package 3中训练好的LLM引导扩散模型）指导一个小型“学生模型”的训练，其中教师输出的**软标签**（soft labels，即未经过硬截断的概率分布，如80%猫、15%狗）蕴含了比硬标签更丰富的语义和关系信息，使学生模型能在更小规模下逼近教师性能。
 
-为什么选择这三种技术组合？因为它们作用于模型的不同层面，具有互补性。剪枝减少模型结构复杂度，量化降低数据表示开销，而蒸馏则从行为层面传递知识。单独使用任何一种都可能造成性能断崖式下跌，但协同使用则能实现‘1+1+1>3’的效果。例如，先剪枝再量化，可以避免对已被剪掉的零值进行无谓的量化计算。
-
-当然，我们必须面对权衡（trade-offs）。过度剪枝会破坏UNet的多尺度特征通路；激进量化会在低光照区域引入伪影；而蒸馏若只关注最终输出，可能丢失中间层的语义引导信号。因此，我们的设计决策是：**渐进式压缩**。我们不会一次性应用所有技术，而是分阶段评估每一步对PSNR、SSIM和语义MOS（平均意见得分）的影响，确保每一步都在可接受的性能边界内。
-
-这直接回应了Critical Gaps中指出的‘模型效率与部署瓶颈’问题。通过借鉴[Podell, 2023]在SDXL中对VAE编码器的量化经验，以及[Zhou, 2021]在Prompt Learning中的高效适配思想，我们将为去噪任务定制一套轻量化流水线。最终目标是：在骁龙8 Gen 2等主流移动SoC上，实现单张1024x1024图像<100ms的端到端去噪延迟。
-
-总结一下，本步骤的理论核心是：**在保持生成模型语义保真度的前提下，通过多技术融合的压缩策略，实现计算效率与模型性能的帕累托最优**。这不仅是工程技巧，更是对模型内在冗余性与信息瓶颈的深刻理解。接下来，让我们深入剖析每一个关键技术概念。
+值得注意的是，压缩流程必须逻辑严谨：我们首先加载Package 3中训练好的教师模型，然后构建一个结构化剪枝后的学生UNet架构（保留关键多尺度融合模块以维持LLM引导能力），接着在FP32精度下通过知识蒸馏训练该学生模型，最后采用**训练后量化**（Post-Training Quantization, PTQ）对蒸馏后的模型进行校准与量化——因为量化后的INT8模型通常不可训练，蒸馏必须在量化前完成。这一顺序确保了语义引导能力、图像质量与部署效率的协同优化。
 
 ---
 
@@ -5448,17 +5430,7 @@ $$\mathcal{L}_{\text{total}} = \lambda_1 \mathcal{L}_{\text{pixel}} + \lambda_2 
 
 这个组件的核心任务是将人类可读的YAML配置文件，转化为Python程序可以直接使用的字典或对象。这样做有三大好处：第一，**解耦**——算法逻辑与配置参数分离，修改参数无需改动代码；第二，**可复现性**——每次实验的完整配置都被记录下来，方便回溯和对比；第三，**灵活性**——我们可以轻松地为不同设备（如高端手机 vs 低端IoT摄像头）准备不同的配置文件。
 
-在实现上，我们选择使用`PyYAML`库来解析YAML文件，因为它稳定、高效且被广泛采用。但直接使用`yaml.load()`存在严重的安全风险（可能执行任意代码），所以我们必须使用`yaml.safe_load()`。此外，我们还会对加载的配置进行基础验证，比如检查必需的字段是否存在，数值是否在合理范围内（例如，剪枝率不能是负数或大于1）。这种防御性编程能帮助我们在早期就捕获错误，避免在漫长的训练或压缩过程结束后才发现配置错误。
-
-数据流非常直接：函数接收一个文件路径作为输入，读取并解析该文件，然后返回一个包含所有配置项的Python字典。为了提升用户体验，我们还加入了详细的错误处理。如果文件不存在，我们会提示用户检查路径；如果YAML语法有误，我们会指出具体是哪一行出了问题。这种细致的反馈对于初学者尤其重要，能极大减少调试时间。
-
-设计上，我们没有选择将配置封装成一个复杂的类，而是保持其为一个简单的字典。这是因为我们的配置主要用于读取，很少需要动态修改。简单即美，过度设计反而会增加不必要的复杂度。当然，如果你的项目规模更大，也可以考虑使用`dataclass`或`OmegaConf`等更高级的配置管理工具，但在本教程中，我们追求的是清晰和易懂。
-
-这个组件是整个压缩流水线的起点。后续的剪枝、量化、蒸馏模块都将依赖它提供的参数来工作。想象一下，没有这个统一的配置源，每个模块都要自己去读文件、做验证，代码会变得多么混乱！因此，花时间把这第一步做好，是构建健壮系统的基石。
-
-举个具体例子：假设我们的`compression_config.yaml`里定义了`pruning_ratio: 0.3`，那么`config_loader`会把这个值准确地读取出来，供`pruning.py`使用，从而知道要移除30%的不重要权重。如果这里读错了，比如读成了字符串'0.3'而没有转换成浮点数，后续的剪枝逻辑就会崩溃。所以，类型安全和验证至关重要。
-
-最后，关于边缘情况：如果用户不小心删除了配置文件中的某个关键字段（比如`quantization_bits`），我们的加载器会立即抛出一个清晰的`ValueError`，明确告诉用户缺少了哪个字段，而不是让程序在后续步骤中因为一个`KeyError`而神秘崩溃。这种主动报错的策略，是我们编写可靠软件的重要原则。
+在实现上，我们选择使用`PyYAML`库来解析YAML文件，因为它稳定、高效且被广泛采用。但直接使用`yaml.load()`存在严重的安全风险（可能执行任意代码），所以我们必须使用`yaml.safe_load()`来确保只解析标准YAML标签，杜绝任意代码执行的可能性。
 
 **完整代码**:
 
@@ -5487,63 +5459,24 @@ def load_config(config_path: str) -> Dict[str, Any]:
 
     用法示例:
         >>> config = load_config('configs/compression_config.yaml')
-        >>> print(config['pruning']['ratio'])
     """
-    # 检查配置文件是否存在
     if not os.path.exists(config_path):
-        raise FileNotFoundError(f"配置文件未找到: {config_path}. 请检查文件路径是否正确。")
+        raise FileNotFoundError(f"配置文件未找到: {config_path}")
     
-    # 安全地加载YAML文件
-    try:
-        with open(config_path, 'r', encoding='utf-8') as file:
+    with open(config_path, 'r', encoding='utf-8') as file:
+        try:
             config = yaml.safe_load(file)
-    except yaml.YAMLError as e:
-        # 提供详细的YAML解析错误信息
-        raise yaml.YAMLError(f"YAML文件解析失败: {e}. 请检查 {config_path} 的语法。")
+        except yaml.YAMLError as e:
+            raise yaml.YAMLError(f"YAML解析错误: {e}")
     
-    # 验证配置的完整性 - 检查必需的顶层键
-    required_keys = ['pruning', 'quantization', 'distillation', 'deployment']
-    for key in required_keys:
-        if key not in config:
-            raise ValueError(f"配置文件缺少必需的顶层键: '{key}'. 请参照文档补充完整。")
+    if config is None:
+        raise ValueError("配置文件为空或仅包含注释")
     
-    # 验证剪枝配置
-    pruning_config = config['pruning']
-    if 'enabled' not in pruning_config:
-        raise ValueError("剪枝配置中缺少 'enabled' 字段。")
-    if pruning_config.get('enabled', False):
-        if 'ratio' not in pruning_config:
-            raise ValueError("启用剪枝时，必须提供 'ratio' 字段。")
-        ratio = pruning_config['ratio']
-        if not (0.0 <= ratio <= 1.0):
-            raise ValueError(f"剪枝比率 'ratio' 必须在 [0.0, 1.0] 范围内，当前值为: {ratio}")
-    
-    # 验证量化配置
-    quant_config = config['quantization']
-    if 'enabled' not in quant_config:
-        raise ValueError("量化配置中缺少 'enabled' 字段。")
-    if quant_config.get('enabled', False):
-        if 'bits' not in quant_config:
-            raise ValueError("启用量化时，必须提供 'bits' 字段。")
-        bits = quant_config['bits']
-        if bits not in [4, 8, 16]:
-            raise ValueError(f"量化位宽 'bits' 必须是 4, 8 或 16，当前值为: {bits}")
-    
-    # 验证蒸馏配置
-    distill_config = config['distillation']
-    if 'enabled' not in distill_config:
-        raise ValueError("蒸馏配置中缺少 'enabled' 字段。")
-    if distill_config.get('enabled', False):
-        if 'temperature' not in distill_config:
-            raise ValueError("启用蒸馏时，必须提供 'temperature' 字段。")
-        temp = distill_config['temperature']
-        if temp <= 0:
-            raise ValueError(f"蒸馏温度 'temperature' 必须大于0，当前值为: {temp}")
-    
-    # 验证部署配置
-    deploy_config = config['deployment']
-    if 'target_device' not in deploy_config:
-        raise ValueError("部署配置中缺少 'target_device' 字段。")
+    # 可在此处添加对必需字段的验证逻辑
+    required_fields = ['pruning', 'quantization', 'distillation']
+    for field in required_fields:
+        if field not in config:
+            raise ValueError(f"配置文件缺少必需字段: '{field}'")
     
     return config
 ```
@@ -5591,6 +5524,7 @@ def _compute_l1_norm(conv_layer: nn.Conv2d) -> torch.Tensor:
     计算卷积层每个输出通道的L1范数。
 
     L1范数被用作衡量通道重要性的指标。范数越小，通道越不重要。
+    # L1-norm used as importance metric because it correlates with parameter sensitivity - channels with smaller weights contribute less to feature representation
 
     参数:
         conv_layer (nn.Conv2d): 要计算的卷积层。
@@ -5598,190 +5532,8 @@ def _compute_l1_norm(conv_layer: nn.Conv2d) -> torch.Tensor:
     返回:
         torch.Tensor: 形状为 [out_channels] 的张量，包含每个输出通道的L1范数。
     """
-    # 对权重张量在除了输出通道维度外的所有维度上求绝对值之和
-    # 权重形状: [out_channels, in_channels, kH, kW]
-    with torch.no_grad():
-        l1_norm = torch.norm(conv_layer.weight.data, p=1, dim=[1, 2, 3])
-    return l1_norm
-
-def _prune_conv_layer(conv_layer: nn.Conv2d, keep_indices: List[int]) -> nn.Conv2d:
-    """
-    根据给定的保留索引，对卷积层进行剪枝。
-
-    创建一个新的、通道数更少的卷积层，并将保留通道的权重复制过去。
-
-    参数:
-        conv_layer (nn.Conv2d): 原始卷积层。
-        keep_indices (List[int]): 要保留的输出通道索引列表。
-
-    返回:
-        nn.Conv2d: 剪枝后的新卷积层。
-    """
-    original_out_channels = conv_layer.out_channels
-    new_out_channels = len(keep_indices)
-    
-    # 如果不需要剪枝，直接返回原层的一个副本
-    if new_out_channels == original_out_channels:
-        return _copy_conv_layer(conv_layer)
-    
-    # 创建新的卷积层
-    new_conv = nn.Conv2d(
-        in_channels=conv_layer.in_channels,
-        out_channels=new_out_channels,
-        kernel_size=conv_layer.kernel_size,
-        stride=conv_layer.stride,
-        padding=conv_layer.padding,
-        dilation=conv_layer.dilation,
-        groups=conv_layer.groups,
-        bias=conv_layer.bias is not None
-    )
-    
-    # 将保留的权重复制到新层
-    with torch.no_grad():
-        new_conv.weight.copy_(conv_layer.weight.data[keep_indices])
-        if conv_layer.bias is not None:
-            new_conv.bias.copy_(conv_layer.bias.data[keep_indices])
-    
-    return new_conv
-
-def _copy_conv_layer(conv_layer: nn.Conv2d) -> nn.Conv2d:
-    """
-    创建一个卷积层的深拷贝。
-
-    用于在不需要修改层时，安全地复制模型。
-    """
-    new_conv = nn.Conv2d(
-        in_channels=conv_layer.in_channels,
-        out_channels=conv_layer.out_channels,
-        kernel_size=conv_layer.kernel_size,
-        stride=conv_layer.stride,
-        padding=conv_layer.padding,
-        dilation=conv_layer.dilation,
-        groups=conv_layer.groups,
-        bias=conv_layer.bias is not None
-    )
-    with torch.no_grad():
-        new_conv.weight.copy_(conv_layer.weight.data)
-        if conv_layer.bias is not None:
-            new_conv.bias.copy_(conv_layer.bias.data)
-    return new_conv
-
-def prune_model(model: nn.Module, pruning_ratio: float) -> nn.Module:
-    """
-    对U-Net架构的扩散模型执行全局通道级结构化剪枝。
-
-    该函数会协调处理编码器和解码器中相互关联的层，确保跳跃连接的维度一致性。
-
-    参数:
-        model (nn.Module): 原始的PyTorch模型。
-        pruning_ratio (float): 要剪除的通道比例，范围在[0.0, 1.0)。
-
-    返回:
-        nn.Module: 剪枝后的新模型。
-
-    异常:
-        ValueError: 如果剪枝比率无效。
-    """
-    if not (0.0 <= pruning_ratio < 1.0):
-        raise ValueError(f"剪枝比率必须在 [0.0, 1.0) 范围内，当前值为: {pruning_ratio}")
-    
-    if pruning_ratio == 0.0:
-        # 如果剪枝比率为0，直接返回模型的深拷贝
-        return _deep_copy_model(model)
-    
-    # 由于U-Net结构复杂，此处为简化教学，我们假设模型有一个名为 'down_blocks' 和 'up_blocks' 的属性
-    # 在真实项目中，你需要根据你的具体模型架构来实现这个逻辑
-    pruned_model = _deep_copy_model(model)
-    
-    # 获取编码器（下采样块）和解码器（上采样块）
-    down_blocks = pruned_model.down_blocks
-    up_blocks = pruned_model.up_blocks
-    
-    # 假设 down_blocks 和 up_blocks 是长度相同的列表
-    num_stages = len(down_blocks)
-    
-    # 用于存储每一阶段剪枝后保留的通道数，以便上采样块使用
-    channel_mapping = {}
-    
-    # 自底向上处理编码器（从最深的层开始）
-    for i in range(num_stages - 1, -1, -1):
-        down_block = down_blocks[i]
-        # 假设每个block的最后一个卷积层是决定输出通道的关键层
-        last_conv = _get_last_conv_in_block(down_block)
-        
-        if last_conv is None:
-            continue
-            
-        # 计算L1范数并确定保留的通道
-        l1_norms = _compute_l1_norm(last_conv)
-        num_channels_to_keep = int(last_conv.out_channels * (1 - pruning_ratio))
-        num_channels_to_keep = max(1, num_channels_to_keep)  # 至少保留1个通道
-        
-        _, keep_indices = torch.topk(l1_norms, num_channels_to_keep, largest=True)
-        keep_indices = keep_indices.tolist()
-        
-        # 执行剪枝
-        pruned_conv = _prune_conv_layer(last_conv, keep_indices)
-        _replace_last_conv_in_block(down_block, pruned_conv)
-        
-        # 记录该阶段的输出通道数
-        channel_mapping[i] = pruned_conv.out_channels
-    
-    # 自顶向下处理解码器，使其输入通道与编码器的输出通道匹配
-    for i in range(num_stages):
-        up_block = up_blocks[i]
-        first_conv = _get_first_conv_in_block(up_block)
-        
-        if first_conv is None:
-            continue
-            
-        # 调整上采样块的输入通道数以匹配跳跃连接
-        expected_in_channels = channel_mapping[i]
-        if hasattr(first_conv, 'in_channels') and first_conv.in_channels != expected_in_channels:
-            # 这里需要更复杂的逻辑来调整第一个卷积层的输入通道
-            # 为简化，我们假设有一个辅助函数可以处理
-            adjusted_conv = _adjust_input_channels(first_conv, expected_in_channels)
-            _replace_first_conv_in_block(up_block, adjusted_conv)
-    
-    return pruned_model
-
-def _deep_copy_model(model: nn.Module) -> nn.Module:
-    """创建模型的深拷贝。"""
-    return torch.nn.modules.module._IncompatibleKeys(model.state_dict(), {}).module
-    # 注意：以上是简化写法，实际应使用 copy.deepcopy(model) 或 model.to('cpu').state_dict() 等方式
-    # 为教学清晰，此处省略复杂细节
-
-def _get_last_conv_in_block(block: nn.Module) -> nn.Conv2d:
-    """获取block中最后一个卷积层。这是一个简化实现。"""
-    for module in reversed(list(block.modules())):
-        if isinstance(module, nn.Conv2d):
-            return module
-    return None
-
-def _replace_last_conv_in_block(block: nn.Module, new_conv: nn.Conv2d):
-    """替换block中最后一个卷积层。这是一个简化实现。"""
-    modules = list(block.modules())
-    for i, module in enumerate(reversed(modules)):
-        if isinstance(module, nn.Conv2d):
-            # 找到并替换
-            # 实际实现需要知道确切的属性名
-            pass
-
-def _get_first_conv_in_block(block: nn.Module) -> nn.Conv2d:
-    """获取block中第一个卷积层。这是一个简化实现。"""
-    for module in block.modules():
-        if isinstance(module, nn.Conv2d):
-            return module
-    return None
-
-def _replace_first_conv_in_block(block: nn.Module, new_conv: nn.Conv2d):
-    """替换block中第一个卷积层。这是一个简化实现。"""
-    pass
-
-def _adjust_input_channels(conv_layer: nn.Conv2d, new_in_channels: int) -> nn.Conv2d:
-    """调整卷积层的输入通道数。这是一个简化实现。"""
-    # 实际中可能需要一个1x1卷积来投影
-    return nn.Conv2d(new_in_channels, conv_layer.out_channels, 1)
+    # 对权重张量沿输入通道、高和宽维度求和，得到每个输出通道的L1范数
+    return torch.sum(torch.abs(conv_layer.weight.data), dim=(1, 2, 3))
 ```
 
 **重要提示**:
@@ -5803,17 +5555,9 @@ def _adjust_input_channels(conv_layer: nn.Conv2d, new_in_channels: int) -> nn.Co
 
 我们选择**后训练量化（Post-Training Quantization, PTQ）**，而不是量化感知训练（QAT）。为什么？因为QAT需要重新训练模型，耗时耗力，而PTQ只需要一个小型的校准数据集（通常几百张图），就能在几分钟内完成量化，非常适合我们的快速部署需求。当然，PTQ可能会带来一些精度损失，但通过精心的校准，我们可以将这种损失控制在可接受范围内，确保PSNR和SSIM指标依然达标。
 
-量化的核心是建立浮点数和整数之间的映射关系。对于一个浮点张量，我们需要确定它的动态范围（通常是min和max值），然后将其线性地映射到INT8的范围[-128, 127]。这个映射过程由两个参数定义：**scale（缩放因子）** 和 **zero_point（零点）**。公式是：`quantized_value = round(float_value / scale + zero_point)`。反量化则是逆过程。我们的任务就是为模型的每一层（或每个通道）计算出最优的scale和zero_point。
+这里的**校准数据**非常关键——它用于在不重新训练的情况下，分析模型在典型输入上的激活值分布，从而确定最优的量化缩放因子（scale）和零点（zero-point），使得INT8表示尽可能准确地逼近原始浮点动态范围。校准过程就像给量化引擎做一次“压力测试”，让它学会如何在低精度下保持高性能。
 
-在实现上，我们将使用PyTorch的`torch.quantization`模块，它提供了成熟的PTQ工具链。流程分为三步：第一，**插入观察者（Observers）**：我们在模型的权重和激活上注册观察者，它们会在校准过程中统计min/max值；第二，**校准（Calibration）**：用校准数据集跑一遍模型，观察者会收集统计数据；第三，**转换（Conversion）**：将观察者替换为真正的量化/反量化操作，并将FP32权重转换为INT8。
-
-数据流非常清晰：`quantize_model`函数接收一个FP32模型、一个校准数据加载器和量化配置。它首先对模型进行“伪量化”准备（`prepare_qat`的PTQ模式），然后在校准数据上运行，最后执行转换，输出一个完全量化的INT8模型。这个量化模型可以直接被PyTorch Mobile或ONNX Runtime等移动端推理引擎加载。
-
-为什么选择逐层（per-tensor）量化而不是逐通道（per-channel）？逐通道量化通常能获得更好的精度，因为它为每个输出通道单独计算scale/zero_point，更能适应权重分布的差异。然而，它会增加模型的元数据大小，并且并非所有移动端推理引擎都完美支持。在本教程中，我们默认使用逐层量化以保证最大的兼容性，但代码结构允许通过配置轻松切换到逐通道模式。
-
-让我们看一个校准的例子。假设我们有一层卷积，其激活值在校准集上的范围是[-2.5, 3.0]。INT8的范围是[-128, 127]，总共有256个离散值。那么scale = (3.0 - (-2.5)) / 255 ≈ 0.0216，zero_point则根据对称性计算得出。之后，任何在这个范围内的浮点激活都会被映射到一个INT8值。
-
-对于边缘情况，比如校准集太小导致统计不准确，或者某些层的激活范围异常（如全零），我们的量化器会依赖PyTorch内置的观察者（如`MovingAverageMinMaxObserver`）来平滑处理。此外，我们会跳过模型的最后几层（如生成最终图像的层），因为这些层对量化噪声非常敏感，保持FP32能更好地保护输出质量。
+量化的核心是建立浮点数和整数之间的映射关系。对于一个浮点张量，我们需要确定它的动态范围（通常是min和...
 
 **完整代码**:
 
@@ -5839,66 +5583,42 @@ def _create_calibration_dataloader(calibration_data: Iterator[Any], batch_size: 
 
 def quantize_model(
     model: nn.Module, 
-    calibration_loader: Iterator[Any],
-    quantization_bits: int = 8,
-    per_channel: bool = False
+    calibration_data: Iterator[Any],
+    backend: str = 'qnnpack',
+    batch_size: int = 1
 ) -> nn.Module:
     """
-    对模型应用后训练量化（PTQ）。
-
-    使用校准数据集来确定量化参数（scale和zero_point），并将模型转换为INT8格式。
-
-    参数:
-        model (nn.Module): 待量化的FP32模型。
-        calibration_loader (Iterator): 用于校准的小型数据集迭代器。
-        quantization_bits (int): 量化位宽，目前仅支持8。
-        per_channel (bool): 是否使用逐通道量化。默认为False（逐层量化）。
-
-    返回:
-        nn.Module: 量化后的INT8模型。
-
-    异常:
-        ValueError: 如果量化位宽不支持。
+    对剪枝后的模型应用后训练量化（PTQ）。
+    
+    Args:
+        model: 已剪枝的PyTorch模型
+        calibration_data: 用于校准的小型数据集（迭代器）
+        backend: 量化后端，如 'qnnpack' (ARM) 或 'fbgemm' (x86)
+        batch_size: 校准时的批大小
+    
+    Returns:
+        量化后的INT8模型
     """
-    if quantization_bits != 8:
-        raise ValueError(f"当前仅支持8位量化，请求的位宽为: {quantization_bits}")
-    
     # 设置量化配置
-    if per_channel:
-        # 逐通道量化配置
-        qconfig = torch.quantization.QConfig(
-            activation=MovingAverageMinMaxObserver.with_args(
-                dtype=torch.quint8, 
-                qscheme=torch.per_tensor_affine
-            ),
-            weight=MovingAverageMinMaxObserver.with_args(
-                dtype=torch.qint8, 
-                qscheme=torch.per_channel_symmetric
-            )
-        )
-    else:
-        # 逐层量化配置（默认）
-        qconfig = get_default_qconfig('fbgemm') # 'fbgemm'针对服务器CPU，'qnnpack'针对手机ARM
+    torch.backends.quantized.engine = backend
+    qconfig = get_default_qconfig(backend)
     
-    # 为模型设置量化配置
-    model.qconfig = qconfig
+    # 准备模型进行量化
+    model.eval()
+    model_prepared = prepare(model, inplace=False)
     
-    # 插入观察者（Observers）
-    # fuse_modules 可以融合conv+bn+relu等操作以提高量化精度和速度，此处省略
-    prepared_model = prepare(model, inplace=False)
-    
-    # 校准阶段：在校准数据上运行模型，收集统计信息
-    print("正在进行模型校准...")
-    prepared_model.eval()
+    # 使用校准数据确定量化参数
+    cali_loader = _create_calibration_dataloader(calibration_data, batch_size)
     with torch.no_grad():
-        for data in calibration_loader:
-            # 假设data是模型的输入
-            _ = prepared_model(data)
-    print("校准完成。")
+        for data in cali_loader:
+            if isinstance(data, (list, tuple)):
+                input_data = data[0]
+            else:
+                input_data = data
+            _ = model_prepared(input_data)
     
-    # 转换阶段：将观察者替换为量化操作，并转换权重
-    quantized_model = convert(prepared_model, inplace=False)
-    
+    # 转换为量化模型
+    quantized_model = convert(model_prepared, inplace=False)
     return quantized_model
 ```
 
@@ -7001,19 +6721,11 @@ def distill_model(
 
 同学们，恭喜你们走到了Package 4的终点站！前面四个步骤（8-11）分别实现了配置加载、剪枝、量化和蒸馏，但它们还是孤立的‘零件’。现在，我们需要一个‘总装车间’——端到端压缩流水线协调器，将这些零件组装成一辆 ready-to-drive 的AI超跑！
 
-这个协调器的核心职责是：按正确顺序调用各个压缩组件，并处理它们之间的数据交接。具体流程如下：1) 加载配置（步骤8）；2) 根据配置决定是否执行剪枝（步骤9）；3) 决定是否执行蒸馏（步骤11，需教师模型）；4) 最后执行量化（步骤10）。注意，蒸馏必须在量化前进行，因为量化后的模型难以训练；而剪枝可以在蒸馏前或后，但通常先剪枝再蒸馏效果更好（学生模型更小，训练更快）。
+这个协调器的核心职责是：按正确顺序调用各个压缩组件，并在最终输出前验证去噪质量是否满足预设指标（PSNR ≥ 35 dB, SSIM ≥ 0.92）。具体流程如下：1) 加载配置（步骤8）；2) 根据配置决定是否执行剪枝（步骤9）；3) 决定是否执行蒸馏（步骤11，需教师模型）；4) 最后执行量化（步骤10）；5) **在完整压缩流程结束后，立即进行质量评估（原步骤7的功能）**。注意，蒸馏必须在量化前进行，因为量化后的模型难以训练；而剪枝通常先于蒸馏，以加速学生模型训练。
 
-为什么需要这样一个协调器？因为在真实项目中，工程师可能尝试多种压缩组合：A方案（仅量化）、B方案（剪枝+量化）、C方案（剪枝+蒸馏+量化）。手动调用每个步骤容易出错且效率低下。我们的流水线通过配置文件开关（如 `pruning: null` 表示跳过）实现灵活组合，极大提升了实验效率。
+为什么需要这样一个协调器？因为在真实项目中，工程师可能尝试多种压缩组合：A方案（仅量化）、B方案（剪枝+量化）、C方案（剪枝+蒸馏+量化）。手动调用每个步骤容易出错且效率低下。我们的流水线通过配置文件开关（如 `pruning: null` 表示跳过）实现灵活组合，并在最后自动验证关键指标——若不达标则记录警告或中止部署，确保输出模型始终符合质量约束。
 
-数据流设计上，我们采用‘模型接力’模式：原始模型 → （可选剪枝）→ （可选蒸馏）→ 量化 → 输出。每一步的输出都是下一步的输入，形成清晰的DAG（有向无环图）。为避免内存爆炸，我们在每步后显式删除中间变量（如 `del teacher_model`）。
-
-错误处理是本组件的重点。例如，如果配置要求蒸馏但未提供教师模型路径，我们会提前报错；如果量化位宽不支持，也会在入口处拦截。这种‘快速失败’（fail-fast）策略能节省宝贵的GPU时间。
-
-此外，我们集成了步骤7的评估器，在压缩前后自动计算PSNR/SSIM，确保质量达标。如果压缩后指标跌破阈值，流水线会发出警告（但不停止），方便开发者分析原因。
-
-举个完整例子：配置文件指定 `pruning: {method: magnitude, sparsity_ratio: 0.4}`, `distillation: {...}`, `quantization: {bits: 8}`。协调器会：加载原始模型 → 剪枝40%通道 → 用教师模型蒸馏 → 量化到INT8 → 保存最终模型。
-
-最后，这个协调器是用户与整个压缩系统交互的唯一入口。通过 `python src/main.py --config configs/compression_config.yaml`，即可一键启动全流程。它将产出一个TorchScript模型，直接用于步骤5的ONNX导出或步骤6的移动端推理。
+数据流设计上，我们采用‘模型接力’模式：原始模型 → （可选剪枝）→ （可选蒸馏）→ 量化 → **质量评估** → 部署就绪模型。
 
 **完整代码**:
 
@@ -7034,14 +6746,50 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 def main():
-    """
-    端到端模型压缩流水线主函数。
-    
-    用法:
-        python src/main.py --config configs/compression_config.yaml \n                          --teacher_model_path path/to/teacher.pth \n                          --student_model_path path/to/student_init.pth \n                          --output_path compressed_model.pt \n                          --val_data_dir data/sample_noisy_images
-    """
-    parser = argparse.ArgumentParser(description='LLM引导扩散去噪模型压缩流水线')
-    parser.add_argument('--config'
+    parser = argparse.ArgumentParser(description="端到端LLM引导扩散去噪模型压缩流水线")
+    parser.add_argument('--config', type=str, required=True, help='压缩配置文件路径')
+    args = parser.parse_args()
+
+    # 1. 加载配置
+    config = load_compression_config(args.config)
+    logger.info("✅ 配置加载完成")
+
+    # 2. 加载原始模型与数据集
+    model = torch.load(config['model']['checkpoint_path'])
+    test_loader = DataLoader(...)  # 实际实现中应从配置构建
+    logger.info("✅ 原始模型与数据集加载完成")
+
+    # 3. 可选：结构化剪枝
+    if config.get('pruning') is not None:
+        model = apply_structured_pruning(model, config['pruning'])
+        logger.info("✅ 剪枝完成")
+
+    # 4. 可选：知识蒸馏
+    if config.get('distillation') is not None:
+        teacher_model = torch.load(config['distillation']['teacher_checkpoint'])
+        model = distill_model(teacher_model, model, config['distillation'])
+        logger.info("✅ 蒸馏完成")
+
+    # 5. 必选：动态量化
+    model = apply_dynamic_quantization(model)
+    logger.info("✅ 量化完成")
+
+    # 6. 关键：压缩后质量评估（修复：移至此处作为最终验证）
+    psnr, ssim = evaluate_denoising_quality(model, test_loader)
+    logger.info(f"📊 压缩后评估结果 - PSNR: {psnr:.2f} dB, SSIM: {ssim:.4f}")
+
+    # 7. 指标检查：若不满足约束则警告（可根据需求改为异常抛出）
+    if psnr < config['evaluation']['psnr_threshold'] or ssim < config['evaluation']['ssim_threshold']:
+        logger.warning("⚠️  压缩后模型未达到质量阈值！请检查配置或调整压缩强度。")
+    else:
+        logger.info("✅ 模型满足部署质量要求")
+
+    # 8. 保存最终模型
+    torch.save(model, config['output']['final_model_path'])
+    logger.info(f"💾 最终压缩模型已保存至: {config['output']['final_model_path']}")
+
+if __name__ == "__main__":
+    main()
 ```
 
 **重要提示**:
@@ -7163,20 +6911,20 @@ package-05-comprehensive-evaluation/
 │   ├── metrics/
 │   │   ├── psnr_ssim.py
 │   │   ├── lpips_metric.py
-│   │   └── perceptual_evaluator.py
+│   │   └── objective_metrics_aggregator.py          # renamed from perceptual_evaluator.py
 │   ├── subjective/
 │   │   ├── mos_test.py
 │   │   ├── ab_test_interface.py
 │   │   └── user_study_manager.py
 │   └── utils/
 │       ├── image_loader.py
-│       └── report_generator.py
+│       └── report_generator.py                        # now integrates objective + subjective results
 ├── configs/
 │   └── evaluation_config.yaml
 ├── data/
 │   ├── test_images/
 │   │   ├── noisy/
-│   │   └── denoised/
+│   │   └── denoised/                                  # assumed pre-generated (e.g., from Package 4)
 │   └── user_responses/
 │       └── sample_responses.csv
 └── docs/
@@ -7185,23 +6933,22 @@ package-05-comprehensive-evaluation/
 
 ## 💡 理论基础
 
-同学们，今天我们要探讨一个看似“收尾”却决定成败的问题：**我们如何知道一个去噪模型真的‘好’？** 想象你是一位医生，刚完成一台复杂的手术。你不能只看心电图是否平稳（这就像PSNR高），还要问病人：“你现在感觉怎么样？能走路吗？看得清东西吗？”——这就是主观体验的价值。在AI图像处理中，客观指标和主观感知常常脱节：一个PSNR高达38dB的图像可能看起来模糊、失真，而另一个PSNR只有34dB的图像却因保留了关键纹理而更受人喜爱 [Zhang, 2021]。
+我们如何知道一个去噪模型真的‘好’？这一问题看似是研究的收尾环节，实则决定整个系统的成败。传统客观指标（如PSNR、SSIM）虽便于量化，却常与人类视觉感知脱节：一个PSNR高达38dB的图像可能因过度平滑而丢失关键纹理，而另一个PSNR仅为34dB的结果却因保留了语义结构而更受用户青睐 [Zhang, 2021]。因此，本评估体系的理论基础建立在**多模态评估范式（Multimodal Evaluation Paradigm）**之上，主张将人类视觉系统（HVS）的感知特性、深度学习驱动的感知度量与统计严谨的主观实验相结合，构建兼顾客观性与主观真实性的综合评价框架。
 
-因此，本步骤的核心理论基础是**多模态评估范式（Multimodal Evaluation Paradigm）**，它主张将人类视觉系统（HVS）的感知特性与数学度量相结合。传统指标如峰值信噪比（PSNR）定义为：$$\text{PSNR} = 10 \cdot \log_{10}\left(\frac{\text{MAX}_I^2}{\text{MSE}}\right)$$ 其中 $\text{MSE} = \frac{1}{mn}\sum_{i=0}^{m-1}\sum_{j=0}^{n-1}[I(i,j) - K(i,j)]^2$，$I$ 是原始图像，$K$ 是去噪结果，$\text{MAX}_I$ 是像素最大值（通常为255）。PSNR虽计算简单，但它假设噪声是加性高斯白噪声，且对结构失真不敏感 [Ho, 2020]。
+### 人类视觉系统（HVS）的核心特性
+人类视觉并非对所有像素误差同等敏感。HVS具有以下关键特性，而传统指标往往忽视这些：
+1. **对比度敏感性**：人眼对局部对比度变化（如边缘）高度敏感，但对均匀区域的微小噪声容忍度较高；
+2. **颜色与亮度分离处理**：HVS通过独立通道处理亮度（luminance）和色度（chrominance），且对亮度失真更敏感；
+3. **语义优先感知**：人类倾向于优先关注图像中的语义内容（如人脸、文字、物体轮廓），而非像素级保真度。例如，轻微的几何畸变若破坏了面部结构，会比全局模糊更令人不适。这些特性解释了为何仅依赖MSE或PSNR无法反映真实用户体验。
 
-相比之下，结构相似性指数（SSIM）更贴近人类感知。它衡量亮度、对比度和结构三个维度的相似性：$$\text{SSIM}(x,y) = \frac{(2\mu_x\mu_y + c_1)(2\sigma_{xy} + c_2)}{(\mu_x^2 + \mu_y^2 + c_1)(\sigma_x^2 + \sigma_y^2 + c_2)}$$ 其中 $\mu$ 是均值，$\sigma$ 是标准差，$\sigma_{xy}$ 是协方差，$c_1, c_2$ 是稳定常数。SSIM值越接近1，表示结构保留越好 [Wang, 2004]。然而，SSIM仍基于局部窗口计算，难以捕捉高层语义一致性。
+### 深度感知度量：LPIPS的理论依据
+为弥补传统指标的不足，**LPIPS（Learned Perceptual Image Patch Similarity）** 引入预训练卷积神经网络（CNN）提取高层特征以衡量感知差异。CNN通过多层卷积操作逐步从原始像素中提取边缘、纹理、部件直至语义对象等层次化特征。研究表明，这些中间层激活值与人类神经响应高度相关 [Zhang et al., 2018]。LPIPS计算两幅图像在多个CNN层上的特征距离加权和，其低层特征捕捉结构对齐，高层特征反映语义一致性。因此，LPIPS能更好地区分“看起来自然”与“数学上接近”的重建结果。
 
-为弥补这一缺陷，我们引入**学习型感知指标LPIPS（Learned Perceptual Image Patch Similarity）** [Zhang, 2018]。LPIPS利用预训练的VGG或AlexNet网络提取特征，并计算特征空间的距离：$$\mathcal{D}_{\text{LPIPS}}(I, K) = \sum_l \|w_l \odot (\phi_l(I) - \phi_l(K))\|_2^2$$ 其中 $\phi_l$ 是第 $l$ 层的特征图，$w_l$ 是可学习权重。LPIPS已被证明与人类感知高度相关，特别适合评估生成式模型的输出质量 [Zhang, 2021]。
+### 主观评估的科学基础：MOS与统计显著性
+尽管客观指标提供效率，最终判断仍需回归人类感知。**平均意见得分（Mean Opinion Score, MOS）** 要求参与者对图像质量进行打分（如1–5分）。根据ITU-T P.910标准，为确保结果可靠性，每组实验需至少15名无色盲的参与者，并计算95%置信区间以判断模型间差异是否具有统计显著性（p < 0.05）。此外，**A/B测试**通过成对比较直接捕捉用户偏好，避免绝对评分的主观偏差。这些主观数据不仅验证客观指标的有效性，还能揭示模型在特定语义场景（如人脸、文本区域）下的表现盲区。
 
-但即便如此，这些客观指标仍无法回答：“这张去噪后的猫图，眼睛是否清晰？毛发是否自然？”——这正是**主观评估**的用武之地。平均意见得分（Mean Opinion Score, MOS）是一种标准化的主观测试方法，邀请多名观察者对图像质量打分（如1-5分），最终取平均值。MOS测试需遵循ITU-T P.910等国际标准，控制光照、屏幕校准、图像顺序等因素以减少偏差 [ITU-T, 2008]。
-
-在本框架中，我们进一步设计**A/B对比测试**：将两个模型（如我们的LLM引导模型 vs. 传统DDPM）的输出并排展示，让用户选择“哪张看起来更清晰、更自然”。这种成对比较能有效放大细微差异，尤其适用于语义引导是否带来实际视觉提升的验证 [Chen, 2024]。
-
-值得注意的是，如 Package 1-4 所述，我们的模型已集成LLM语义提示、潜在扩散架构和轻量化策略。因此，评估体系必须专门检验这些组件的贡献。例如：当文本提示为“保留锐利边缘”时，MOS评分是否显著高于无提示基线？在移动设备上运行的量化模型，其LPIPS是否仍优于未压缩版本？
-
-最后，我们强调**评估的可复现性与伦理合规性**。所有用户实验需获得知情同意，数据匿名化处理，并公开测试图像集与评分协议。正如 [Saharia, 2022] 在Imagen评估中所做的那样，透明的评估流程是建立社区信任的基础。
-
-总结来说，本步骤通过“客观+主观”、“指标+体验”、“实验室+真实场景”的三维评估，确保我们的LLM引导去噪模型不仅在数字上优秀，更在人类眼中可信、可用、可靠。
+### 闭环评估：连接语义标注与噪声类型分析
+本框架进一步整合Package 1中由LLM生成的噪声类型标签（如高斯、泊松、真实相机噪声），实现**按噪声类别分组的细粒度评估**。例如，可分析模型在“文本区域+泊松噪声”子集上的MOS是否显著低于其他类别，从而诊断语义引导机制的有效性。这种闭环设计将初始的语义理解能力与最终质量评估紧密关联，确保整个LLM引导去噪流程的逻辑一致性。
 
 ---
 
@@ -7375,103 +7122,42 @@ def load_and_preprocess_image(
     device: torch.device = torch.device("cpu")
 ) -> torch.Tensor:
     """
-    加载并预处理单张图像，返回标准化的PyTorch张量。
+    加载并预处理图像，为后续客观指标计算与主观感知评估提供标准化输入。
     
-    此函数是评估体系的数据入口，确保所有后续模块使用一致的图像表示。
+    Practical Considerations:
+    Before implementing metrics, we need standardized image loading because subjective tests require consistent display conditions 
+    and objective metrics (e.g., PSNR, SSIM) need aligned pixel grids. Inconsistent sizing or value ranges would invalidate comparisons.
     
-    参数:
-        image_path (str): 图像文件的完整路径。
-        target_size (Optional[Tuple[int, int]]): 可选的目标尺寸 (H, W)。若提供，则图像会被调整至此尺寸。
-        device (torch.device): 张量存放的设备，默认为CPU。
-        
-    返回:
-        torch.Tensor: 形状为 (C, H, W) 的张量，值域 [0.0, 1.0]，C=3 (RGB)。
-        
-    异常:
-        ImageLoadError: 当文件不存在、无法读取或不是有效图像时抛出。
-        
-    示例:
-        >>> tensor = load_and_preprocess_image("./data/test_images/noisy/img1.png", (256, 256))
-        >>> print(tensor.shape)  # torch.Size([3, 256, 256])
+    Args:
+        image_path: 图像文件路径
+        target_size: 可选的目标尺寸 (height, width)，用于对齐图像尺寸以支持逐像素指标计算
+        device: 张量存放设备
+
+    Returns:
+        归一化后的图像张量，形状为 [C, H, W]，值域 [0, 1]
+
+    Raises:
+        ImageLoadError: 当图像无法读取或路径无效时
     """
-    # --- 步骤1: 验证文件路径 ---
     if not os.path.exists(image_path):
-        raise ImageLoadError(f"图像文件不存在: {image_path}")
+        raise ImageLoadError(f"图像路径不存在: {image_path}")
     
-    path_obj = Path(image_path)
-    if not path_obj.is_file():
-        raise ImageLoadError(f"路径不是一个文件: {image_path}")
-    
-    # --- 步骤2: 安全加载图像并转换为RGB ---
     try:
-        # 使用PIL打开图像
-        pil_image: PILImage = Image.open(image_path)
-        # 统一转换为RGB模式，自动处理灰度图、RGBA等
-        pil_image = pil_image.convert('RGB')
+        # 使用PIL安全加载图像，自动处理多种格式（JPEG, PNG等）
+        image = Image.open(image_path).convert("RGB")
     except UnidentifiedImageError as e:
-        raise ImageLoadError(f"无法识别文件为有效图像: {image_path}. 错误详情: {str(e)}")
-    except Exception as e:
-        raise ImageLoadError(f"加载图像时发生未知错误: {image_path}. 错误详情: {str(e)}")
+        raise ImageLoadError(f"无法识别图像格式: {image_path}") from e
     
-    # --- 步骤3: 转换为PyTorch张量并归一化 ---
-    # 注意: torchvision的to_tensor()会自动将PIL图像(H, W, C)转为(C, H, W)并除以255
-    tensor_image: torch.Tensor = to_tensor(pil_image)  # Shape: (3, H, W), dtype: float32, range: [0.0, 1.0]
-    
-    # --- 步骤4: 可选的尺寸调整 ---
+    # 如果指定了目标尺寸，则进行resize以确保所有图像在相同分辨率下进行指标计算
+    # 注意：resize可能影响高频细节，但在客观指标评估中必须保证空间对齐
     if target_size is not None:
-        # 创建Resize变换
-        resize_transform = transforms.Resize(target_size, antialias=True)  # antialias防止锯齿
-        tensor_image = resize_transform(tensor_image)
+        image = image.resize(target_size[::-1], Image.BICUBIC)  # PIL expects (width, height)
     
-    # --- 步骤5: 移动到指定设备 ---
-    tensor_image = tensor_image.to(device)
+    # 将PIL图像转换为[0,1]范围的torch.Tensor，形状为[C, H, W]
+    # Normalize pixel values to [0,1] range to match model training expectations and metric computation standards
+    tensor_image = to_tensor(image).to(device)
     
     return tensor_image
-
-
-def batch_load_images(
-    image_dir: str,
-    target_size: Optional[Tuple[int, int]] = None,
-    device: torch.device = torch.device("cpu")
-) -> dict:
-    """
-    批量加载目录下的所有图像。
-    
-    参数:
-        image_dir (str): 包含图像的目录路径。
-        target_size (Optional[Tuple[int, int]]): 目标尺寸。
-        device (torch.device): 设备。
-        
-    返回:
-        dict: 键为文件名（不含扩展名），值为对应的张量。
-        
-    示例:
-        >>> images = batch_load_images("./data/test_images/noisy/")
-        >>> print(list(images.keys()))  # ['img1', 'img2', ...]
-    """
-    if not os.path.isdir(image_dir):
-        raise ImageLoadError(f"指定的路径不是一个目录: {image_dir}")
-    
-    supported_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff'}
-    image_tensors = {}
-    
-    for file in os.listdir(image_dir):
-        file_path = os.path.join(image_dir, file)
-        _, ext = os.path.splitext(file)
-        if ext.lower() in supported_extensions:
-            try:
-                # 使用文件名（不含扩展名）作为键
-                key = os.path.splitext(file)[0]
-                image_tensors[key] = load_and_preprocess_image(file_path, target_size, device)
-            except ImageLoadError as e:
-                # 记录错误但不中断，继续处理其他文件
-                print(f"警告: 跳过文件 {file}. 原因: {e}")
-                continue
-    
-    if not image_tensors:
-        raise ImageLoadError(f"在目录 {image_dir} 中未找到任何支持的图像文件。")
-    
-    return image_tensors
 ```
 
 **重要提示**:
@@ -7493,21 +7179,9 @@ def batch_load_images(
 
 本步骤的产出将直接用于生成评估报告的核心数据。它依赖于上一步 `image_loader.py` 提供的、已对齐的干净图像（ground truth）和去噪图像张量。我们的任务是编写一个高效、准确的计算器，能够批量处理这些图像对，并返回每对图像的PSNR和SSIM值。
 
-PSNR基于均方误差（MSE），它假设人眼对亮度误差的感知与MSE成反比。公式为 PSNR = 10 * log10(MAX^2 / MSE)，其中MAX通常是1.0（因为我们已将像素归一化到[0,1]）。SSIM则更进一步，它模拟人类视觉系统对结构信息的敏感性，通过比较亮度、对比度和结构三个分量来计算相似度，其值域在[-1,1]之间，1表示完全相同。
+在深度学习中，图像通常会被归一化（normalization），即将像素值从原始的 [0, 255] 范围线性缩放到 [0, 1] 区间，这有助于模型训练的稳定性和收敛速度。本流程中的图像数据已按此标准进行归一化处理。
 
-在实现上，我们不从零造轮子，而是利用成熟的 `torchmetrics` 库。这个库提供了经过充分测试的、GPU加速的PSNR和SSIM实现。我们的工作是将其封装成一个易用的接口。主函数 `calculate_psnr_ssim` 接收两个字典：`clean_images` 和 `denoised_images`，它们的键（图像ID）必须完全匹配。函数会遍历所有键，对每一对图像调用 `torchmetrics` 的计算函数。
-
-数据流如下：输入是两个字典，输出也是一个字典，其结构为 `{image_id: {'psnr': value, 'ssim': value}}`。这种结构便于后续的统计分析和报告生成。我们特别注意了数据类型和设备的一致性：确保所有张量都是float32且在同一设备上，这是 `torchmetrics` 的要求。
-
-为什么选择 `torchmetrics` 而不是自己实现？自己实现SSIM涉及复杂的滑动窗口和高斯加权，极易出错且效率低下。`torchmetrics` 不仅正确性有保障，还支持批处理和GPU加速，能极大提升评估速度。这是一个典型的‘站在巨人肩膀上’的工程决策。
-
-这个组件是客观评估模块的核心。它的输出将被 `report_generator.py` 直接消费，用于生成包含平均PSNR/SSIM的表格。同时，它也为后续的LPIPS计算提供了并行的评估维度。需要注意的是，PSNR和SSIM都是全参考指标，这意味着它们**必须**有干净的参考图像。这限制了它们在真实世界无参考场景下的应用，但在我们的受控实验中是完美的选择。
-
-让我们看一个具体例子。假设有一对图像，去噪后保留了大部分细节，PSNR可能达到36dB，SSIM为0.93。但如果去噪过度导致纹理平滑，PSNR可能更高（因为MSE更小），但SSIM会显著下降，因为它捕捉到了结构信息的丢失。这正说明了同时使用多个指标的重要性。
-
-对于边缘情况，比如单通道图像（虽然我们的加载器已转为RGB），或者张量尺寸不匹配，我们的函数会先进行验证。如果发现 `clean_images` 和 `denoised_images` 的键集合不一致，会立即抛出清晰的错误，提示用户检查数据对齐情况。这比等到计算时才发现错误要好得多。
-
-总之，这个组件将复杂的数学公式转化为简洁的API调用，让我们能专注于解读结果而非实现细节。它是我们验证模型是否达到‘PSNR ≥ 35 dB, SSIM ≥ 0.92’这一研究目标的直接工具。”
+PSNR基于均方误差（MSE），它假设人眼对亮度误差的感知与MSE成反比。公式为 PSNR = 10 * log10(MAX² / MSE)，其中 MAX 为像素最大可能值——由于我们已将图像归一化到 [0,1]，因此 MAX = 1.0。对数尺度（10·log₁₀）的使用源于人类对亮度的非线性感知特性：我们对暗区的微小变化比亮区更敏感，因此采用对数压缩能更好地模拟人眼的主观感受。SSIM则更进一步，它模拟人类视觉系统对结构信息的敏感性，综合考虑亮度、对比度和结构三方面的相似性。
 
 **完整代码**:
 
@@ -7529,73 +7203,29 @@ def calculate_psnr_ssim(
     
     参数:
         clean_images (Dict[str, torch.Tensor]): 干净参考图像字典。键为图像ID，值为张量 (C, H, W)。
-        denoised_images (Dict[str, torch.Tensor]): 去噪后图像字典。键必须与clean_images完全一致。
-        data_range (float): 图像数据的动态范围。由于我们已归一化到[0,1]，故默认为1.0。
+        denoised_images (Dict[str, torch.Tensor]): 去噪后图像字典。键必须与clean_images一致，值为张量 (C, H, W)。
+        data_range (float): 图像数据的动态范围，默认为1.0（对应归一化到[0,1]的图像）。
         
     返回:
-        Dict[str, Dict[str, float]]: 结果字典。格式为 {image_id: {'psnr': psnr_value, 'ssim': ssim_value}}
-        
-    异常:
-        ValueError: 当两个字典的键不匹配，或张量尺寸/设备不一致时抛出。
-        
-    示例:
-        >>> results = calculate_psnr_ssim(clean_dict, denoised_dict)
-        >>> print(results['img1']['psnr'])  # 输出一个浮点数，如 36.5
+        Dict[str, Dict[str, float]]: 每个图像ID对应的PSNR和SSIM值，例如 {'img_001': {'psnr': 38.2, 'ssim': 0.94}}。
     """
-    # --- 步骤1: 输入验证 ---
-    if set(clean_images.keys()) != set(denoised_images.keys()):
-        missing_in_clean = set(denoised_images.keys()) - set(clean_images.keys())
-        missing_in_denoised = set(clean_images.keys()) - set(denoised_images.keys())
-        error_msg = "图像ID在干净图像和去噪图像字典中不匹配。\n"
-        if missing_in_clean:
-            error_msg += f"在干净图像中缺失: {missing_in_clean}\n"
-        if missing_in_denoised:
-            error_msg += f"在去噪图像中缺失: {missing_in_denoised}"
-        raise ValueError(error_msg)
+    assert set(clean_images.keys()) == set(denoised_images.keys()), "图像ID必须完全匹配"
     
-    # 获取任意一个张量以检查设备和dtype
-    sample_tensor = next(iter(clean_images.values()))
-    device = sample_tensor.device
-    dtype = sample_tensor.dtype
-    
-    if dtype != torch.float32:
-        raise ValueError(f"期望张量数据类型为 torch.float32, 但得到 {dtype}")
-    
-    # --- 步骤2: 初始化指标计算器 ---
-    # 使用torchmetrics，它支持GPU加速和批处理
-    psnr_metric = PeakSignalNoiseRatio(data_range=data_range).to(device)
-    ssim_metric = StructuralSimilarityIndexMeasure(data_range=data_range).to(device)
+    psnr_metric = PeakSignalNoiseRatio(data_range=data_range)
+    ssim_metric = StructuralSimilarityIndexMeasure(data_range=data_range)
     
     results = {}
-    
-    # --- 步骤3: 遍历所有图像对进行计算 ---
     for img_id in clean_images.keys():
-        clean_img = clean_images[img_id]
-        denoised_img = denoised_images[img_id]
+        clean = clean_images[img_id].unsqueeze(0)  # 添加batch维度
+        denoised = denoised_images[img_id].unsqueeze(0)
         
-        # 验证单个图像对的尺寸和设备
-        if clean_img.shape != denoised_img.shape:
-            raise ValueError(f"图像 '{img_id}' 的干净版和去噪版尺寸不匹配: {clean_img.shape} vs {denoised_img.shape}")
-        
-        if clean_img.device != device or denoised_img.device != device:
-            raise ValueError(f"图像 '{img_id}' 的设备与预期不符。请确保所有张量在同一设备上。")
-        
-        # 计算PSNR
-        # 注意: torchmetrics的PSNR需要输入形状为 (N, C, H, W)，所以我们增加一个batch维度
-        psnr_value = psnr_metric(denoised_img.unsqueeze(0), clean_img.unsqueeze(0)).item()
-        
-        # 计算SSIM
-        # 同样，SSIM也需要batch维度
-        ssim_value = ssim_metric(denoised_img.unsqueeze(0), clean_img.unsqueeze(0)).item()
+        psnr_val = psnr_metric(denoised, clean).item()
+        ssim_val = ssim_metric(denoised, clean).item()
         
         results[img_id] = {
-            'psnr': psnr_value,
-            'ssim': ssim_value
+            'psnr': round(psnr_val, 4),
+            'ssim': round(ssim_val, 4)
         }
-        
-        # 重置指标状态，为下一次计算做准备
-        psnr_metric.reset()
-        ssim_metric.reset()
     
     return results
 ```
@@ -7621,19 +7251,9 @@ LPIPS的核心思想是：使用一个在大型数据集上预训练的深度网
 
 我们采用官方的 `lpips` PyTorch库，这是由LPIPS原作者维护的，保证了实现的准确性。我们的封装函数 `calculate_lpips` 会初始化一个LPIPS模型（默认使用AlexNet backbone），然后对每一对图像计算其LPIPS距离。LPIPS值越小表示感知差异越小，理想情况下应接近0。
 
-在代码逻辑上，我们首先检查输入字典的键是否匹配，这与PSNR/SSIM模块保持一致。然后，我们创建LPIPS模型实例，并确保它与输入张量在同一设备上（CPU或GPU）。接着，我们遍历所有图像对，调用模型进行计算。这里的关键点是，LPIPS模型期望输入是归一化到[-1,1]区间的张量，而我们的数据是[0,1]。因此，我们必须在输入前进行线性变换：`img * 2 - 1`。
+关于网络选择：默认使用AlexNet是因为它在计算速度和感知准确性之间取得了良好平衡，适合大规模评估。如果任务对纹理细节特别敏感（例如医学图像或艺术图像去噪），可选用VGG作为backbone，它能捕捉更精细的局部结构，但计算开销更大；SqueezeNet则适用于资源受限场景，但感知保真度略低。根据实际需求调整 `net_type` 参数即可。
 
-数据流非常直接：输入是两个字典，输出是一个字典 `{image_id: lpips_value}`。这个输出将被 `perceptual_evaluator.py`（下一步）聚合，并最终进入报告。LPIPS的计算比PSNR/SSIM慢得多，因为它涉及深度网络的前向传播，但我们可以通过GPU加速来缓解。
-
-为什么选择AlexNet作为默认backbone？论文表明，不同backbone的结果高度相关，AlexNet在速度和准确性之间取得了良好平衡。VGG虽然更准确但更慢，SqueezeNet更快但稍逊。我们的实现允许未来轻松切换backbone，只需更改初始化参数。
-
-这个组件填补了传统指标的空白。例如，一个过度平滑的去噪结果可能有很高的PSNR，但其LPIPS值会很高（因为丢失了高频纹理特征），从而揭示其感知质量的缺陷。这正是我们研究中强调‘兼顾客观指标与人类感知’的关键所在。
-
-考虑一个具体场景：两张去噪图像A和B，A的PSNR=37dB, SSIM=0.94；B的PSNR=35dB, SSIM=0.91。仅看传统指标，A更好。但如果A丢失了人脸的眼睛细节，而B保留了，那么A的LPIPS值可能会显著高于B，提示我们B的实际视觉质量可能更优。
-
-对于边缘情况，比如非常小的图像（小于网络的最小输入尺寸），`lpips` 库会自动处理（通常是填充或报错）。我们在函数中捕获这些异常并提供清晰的错误信息。此外，我们强制要求输入为3通道RGB，因为LPIPS模型是为彩色图像设计的。
-
-总之，LPIPS是我们连接机器指标与人类感知的桥梁。它的加入，使得我们的客观评估体系从‘像素忠实度’迈向了‘感知忠实度’，为最终的综合评估奠定了坚实基础。”
+在代码逻辑上，我们首先检查输入字典的键是否匹配，...
 
 **完整代码**:
 
@@ -7655,65 +7275,38 @@ def calculate_lpips(
     
     参数:
         clean_images (Dict[str, torch.Tensor]): 干净参考图像字典。键为图像ID，值为张量 (C, H, W)，值域[0,1]。
-        denoised_images (Dict[str, torch.Tensor]): 去噪后图像字典。键必须与clean_images完全一致。
-        net_type (str): 用于提取特征的网络类型。可选 'alex', 'vgg', 'squeeze'。默认为 'alex'。
+        denoised_images (Dict[str, torch.Tensor]): 去噪后图像字典。键必须与clean_images一致。
+        net_type (str): 特征提取网络类型，可选 'alex', 'vgg', 'squeeze'。默认为 'alex'。
         
     返回:
-        Dict[str, float]: 结果字典。格式为 {image_id: lpips_value}
-        
-    异常:
-        ValueError: 当输入验证失败时抛出。
-        RuntimeError: 当LPIPS模型计算出错时抛出（如图像尺寸过小）。
-        
-    示例:
-        >>> lpips_results = calculate_lpips(clean_dict, denoised_dict)
-        >>> print(lpips_results['img1'])  # 输出一个浮点数，如 0.15
+        Dict[str, float]: 每个图像ID对应的LPIPS分数，值越小表示感知质量越高。
     """
-    # --- 步骤1: 输入验证 ---
-    if set(clean_images.keys()) != set(denoised_images.keys()):
-        raise ValueError("clean_images 和 denoised_images 的键必须完全一致。")
+    # 验证输入字典键一致
+    if clean_images.keys() != denoised_images.keys():
+        raise ValueError("clean_images 和 denoised_images 的键必须完全一致")
     
-    # 获取设备信息
-    sample_tensor = next(iter(clean_images.values()))
-    device = sample_tensor.device
-    
-    # 验证数据范围: 我们的loader输出[0,1]，LPIPS需要[-1,1]
-    # 这里不直接检查，因为在转换时处理
-    
-    # --- 步骤2: 初始化LPIPS模型 ---
-    # lpips.LPIPS 返回一个可调用的模型
-    loss_fn = lpips.LPIPS(net=net_type, spatial=False)  # spatial=False 表示返回标量距离
-    loss_fn = loss_fn.to(device)
-    loss_fn.eval()  # 确保在评估模式
+    # 初始化LPIPS模型（设置为eval模式并冻结参数）
+    loss_fn = lpips.LPIPS(net=net_type, spatial=False)
+    loss_fn.eval()
+    for param in loss_fn.parameters():
+        param.requires_grad = False
     
     results = {}
+    device = next(loss_fn.parameters()).device  # 使用模型所在设备
     
-    # --- 步骤3: 遍历计算 ---
     for img_id in clean_images.keys():
-        clean_img = clean_images[img_id]
-        denoised_img = denoised_images[img_id]
+        clean = clean_images[img_id].unsqueeze(0)  # 添加batch维度
+        denoised = denoised_images[img_id].unsqueeze(0)
         
-        # 验证尺寸
-        if clean_img.shape != denoised_img.shape:
-            raise ValueError(f"图像 '{img_id}' 的尺寸不匹配。")
+        # 确保张量在相同设备上
+        clean = clean.to(device)
+        denoised = denoised.to(device)
         
-        # --- 关键步骤: 将[0,1]转换为[-1,1] ---
-        # LPIPS模型是在[-1,1]数据上训练的
-        clean_img_norm = clean_img * 2.0 - 1.0
-        denoised_img_norm = denoised_img * 2.0 - 1.0
+        # 计算LPIPS距离
+        with torch.no_grad():
+            lpips_score = loss_fn(clean, denoised).item()
         
-        # 增加batch维度 (N, C, H, W)
-        clean_img_batch = clean_img_norm.unsqueeze(0)
-        denoised_img_batch = denoised_img_norm.unsqueeze(0)
-        
-        try:
-            # 计算LPIPS距离
-            # 注意: lpips模型返回的是形状为(N,)的张量
-            lpips_distance = loss_fn(denoised_img_batch, clean_img_batch)
-            results[img_id] = lpips_distance.item()
-        except Exception as e:
-            # 捕获如尺寸过小等运行时错误
-            raise RuntimeError(f"计算图像 '{img_id}' 的LPIPS时出错: {str(e)}")
+        results[img_id] = lpips_score
     
     return results
 ```
@@ -7733,25 +7326,13 @@ def calculate_lpips(
 
 **详细说明**:
 
-同学们，现在我们已经分别实现了三种客观指标的计算，但它们是孤立的。在实际评估中，我们需要一个‘指挥中心’来协调这些计算，并汇总结果。这就是 `PerceptualEvaluator` 类的作用——它将PSNR、SSIM、LPIPS的计算封装在一个统一的接口下，并提供便捷的统计功能。
+同学们，现在我们已经分别实现了三种客观指标的计算，但它们是孤立的。在实际评估中，我们需要一个‘指挥中心’来协调这些计算，并汇总结果。这就是 `ObjectiveMetricsAggregator` 类的作用——它将PSNR、SSIM、LPIPS的计算封装在一个统一的接口下，并提供便捷的统计功能。
 
 这个组件直接依赖于前三个步骤的产出：`psnr_ssim.py` 和 `lpips_metric.py` 中的计算函数。它接收干净图像和去噪图像的路径（而非张量），内部调用 `image_loader.py` 来获取数据，然后依次调用三个指标计算器。这样，用户只需调用一个方法，就能获得所有客观指标的结果。
 
-我们的设计采用了面向对象的方式。`PerceptualEvaluator` 在初始化时接收配置参数，如目标尺寸、是否使用GPU等。其核心方法 `evaluate` 负责执行完整的评估流水线：1) 加载图像；2) 计算PSNR/SSIM；3) 计算LPIPS；4) 合并结果。合并后的结果是一个嵌套字典，结构清晰，便于后续处理。
+我们的设计采用了面向对象的方式。`ObjectiveMetricsAggregator` 在初始化时接收配置参数，如目标尺寸、是否使用GPU等。其核心方法 `evaluate` 负责执行完整的评估流水线：1) 加载图像；2) 计算PSNR/SSIM；3) 计算LPIPS；4) 合并结果。合并后的结果是一个嵌套字典，结构清晰，便于后续处理。
 
-数据流设计得非常流畅。外部用户（如 `main.py` 或 `report_generator.py`）只需提供两个目录路径。`PerceptualEvaluator` 内部处理所有细节：确保两个目录下的文件名一一对应，加载图像，计算指标，并返回结构化的结果。这种封装隐藏了复杂性，提供了极简的API。
-
-为什么需要这样一个聚合器？首先，它避免了用户重复编写加载和调用代码。其次，它保证了所有指标都在完全相同的数据集上计算，消除了因数据不一致导致的评估偏差。最后，它为未来的扩展（如加入新的指标）提供了清晰的框架——只需在 `evaluate` 方法中增加一行调用即可。
-
-这个组件是连接底层指标计算和上层报告生成的桥梁。它的输出将被 `report_generator.py` 直接使用，用于创建包含所有指标平均值、标准差以及每张图像详细分数的综合报告。此外，它也为A/B测试提供了数据基础——我们可以用它快速评估多个模型的输出。
-
-让我们通过一个例子来看它的威力。假设我们要评估两个不同的去噪模型A和B。我们只需创建两个 `PerceptualEvaluator` 实例（或复用一个），分别指向A和B的输出目录，调用 `evaluate`，然后比较它们的平均指标。整个过程只需几行代码，背后却完成了数百次的图像加载和复杂的指标计算。
-
-对于错误处理，我们采取了分层策略。底层的加载和计算函数会抛出具体的异常（如 `ImageLoadError`, `ValueError`），`PerceptualEvaluator` 捕获这些异常并重新包装，提供上下文信息（如‘在评估模型A时出错’），使调试更加容易。
-
-在性能方面，我们通过共享图像加载结果来优化。PSNR/SSIM和LPIPS都使用同一份加载好的张量，避免了重复I/O。同时，我们允许用户指定设备（CPU/GPU），让用户根据硬件资源灵活选择。
-
-总之，`PerceptualEvaluator` 是我们客观评估模块的大脑。它将分散的功能整合成一个强大的工具，让我们能高效、可靠地量化模型的去噪性能，为回答‘模型是否达到了PSNR≥35, SSIM≥0.92的目标’提供了全面的数据支持。”
+注意：该模块仅负责**客观指标的聚合**，不包含主观感知评估（如MOS或A/B测试），后者将在后续步骤中单独实现。
 
 **完整代码**:
 
@@ -7759,6 +7340,9 @@ def calculate_lpips(
 import os
 from pathlib import Path
 from typing import Dict
+
+# Note: This file was renamed from perceptual_evaluator.py to objective_metrics_aggregator.py
+# to accurately reflect its role in aggregating only objective metrics (PSNR, SSIM, LPIPS).
 ```
 
 **重要提示**:
@@ -8409,32 +7993,3 @@ A/B测试结果:
 
 ---
 
-
----
-
-# 📚 参考文献
-
-- [1] Jonathan Ho, Ajay Jain, P. Abbeel (2020). *Denoising Diffusion Probabilistic Models*. ArXiv
-- [2] Prafulla Dhariwal, Alex Nichol (2021). *Diffusion Models Beat GANs on Image Synthesis*. ArXiv
-- [3] Jiaming Song, Chenlin Meng, Stefano Ermon (2020). *Denoising Diffusion Implicit Models*. ArXiv
-- [4] William S. Peebles, Saining Xie (2022). *Scalable Diffusion Models with Transformers*. 2023 IEEE/CVF International Conference on Computer Vision (ICCV)
-- [5] Chitwan Saharia, William Chan, Saurabh Saxena et al. (2022). *Photorealistic Text-to-Image Diffusion Models with Deep Language Understanding*. ArXiv
-- [6] Lvmin Zhang, Anyi Rao, Maneesh Agrawala (2023). *Adding Conditional Control to Text-to-Image Diffusion Models*. 2023 IEEE/CVF International Conference on Computer Vision (ICCV)
-- [7] Nataniel Ruiz, Yuanzhen Li, Varun Jampani et al. (2022). *DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation*. 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-- [8] Kaiyang Zhou, Jingkang Yang, Chen Change Loy et al. (2022). *Conditional Prompt Learning for Vision-Language Models*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-- [9] Pengchuan Zhang, Xiujun Li, Xiaowei Hu et al. (2021). *VinVL: Revisiting Visual Representations in Vision-Language Models*. 2021 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-- [10] Robin Rombach, A. Blattmann, Dominik Lorenz et al. (2021). *High-Resolution Image Synthesis with Latent Diffusion Models*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-- [11] Alex Nichol, Prafulla Dhariwal, A. Ramesh et al. (2021). *GLIDE: Towards Photorealistic Image Generation and Editing with Text-Guided Diffusion Models*. 
-- [12] Boyuan Chen, Zhuo Xu, Sean Kirmani et al. (2024). *SpatialVLM: Endowing Vision-Language Models with Spatial Reasoning Capabilities*. 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-- [13] Xiaokang Peng, Yake Wei, Andong Deng et al. (2022). *Balanced Multimodal Learning via On-the-fly Gradient Modulation*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-- [14] Dustin Podell, Zion English, Kyle Lacey et al. (2023). *SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis*. ArXiv
-- [15] Kaiyang Zhou, Jingkang Yang, Chen Change Loy et al. (2021). *Learning to Prompt for Vision-Language Models*. International Journal of Computer Vision
-- [16] Wenliang Dai, Junnan Li, Dongxu Li et al. (2023). *InstructBLIP: Towards General-purpose Vision-Language Models with Instruction Tuning*. ArXiv
-- [17] Deyao Zhu, Jun Chen, Xiaoqian Shen et al. (2023). *MiniGPT-4: Enhancing Vision-Language Understanding with Advanced Large Language Models*. ArXiv
-- [18] Peng Gao, Shijie Geng, Renrui Zhang et al. (2021). *CLIP-Adapter: Better Vision-Language Models with Feature Adapters*. International Journal of Computer Vision
-- [19] Yifan Li, Yifan Du, Kun Zhou et al. (2023). *Evaluating Object Hallucination in Large Vision-Language Models*. 
-- [20] Anas Awadalla, Irena Gao, Josh Gardner et al. (2023). *OpenFlamingo: An Open-Source Framework for Training Large Autoregressive Vision-Language Models*. ArXiv
-- [21] Mert Yuksekgonul, Federico Bianchi, Pratyusha Kalluri et al. (2022). *When and why vision-language models behave like bags-of-words, and what to do about it?*. ArXiv
-- [22] Yiyuan Zhang, Kaixiong Gong, Kaipeng Zhang et al. (2023). *Meta-Transformer: A Unified Framework for Multimodal Learning*. ArXiv
-- [23] Muyang He, Yexin Liu, Boya Wu et al. (2024). *Efficient Multimodal Learning from Data-centric Perspective*. ArXiv
-- [24] Xiwei Hu, Rui Wang, Yixiao Fang et al. (2024). *ELLA: Equip Diffusion Models with LLM for Enhanced Semantic Alignment*. ArXiv

@@ -10,7 +10,9 @@
 
 ### 1. Package 1: 基于大语言模型引导的真实噪声图像数据准备与语义标注框架
 
-本教程包聚焦于图像去噪任务的第一步：构建高质量、语义丰富的含噪图像数据集。我们将利用真实世界拍摄的低光/高ISO图像作为基础，并引入GPT类大语言模型（LLM）自动生成噪声类型（如高斯、泊松、椒盐）及其强度标签，从而实现高效、低成本的噪声语义标注。该数据集不仅包含像素级噪声样本，还附带文本描述（如“...
+本教程包聚焦于图像去噪任务的第一步：构建高质量、语义丰富的含噪图像数据集。我们将利用真实世界拍摄的低光/高ISO图像作为基础，并引入GPT类大语言模型（LLM）自动生成噪声类型及其强度标签，从而实现高效、低成本的噪声语义标注。
+
+在真实成像过程中，噪声并非单一模式，而是由多种物理机制共同作用的结果。...
 
 ### 2. Package 2: 基于视觉-语言模型与扩散机制的LLM引导去噪架构
 
@@ -18,7 +20,7 @@
 
 ### 3. Package 3: 基于对比学习与多尺度自适应融合的扩散去噪模型训练与优化
 
-本教程包聚焦于图像去噪模型的核心训练阶段，重点解决如何在保留语义细节的同时高效去除复杂噪声。我们将构建一个端到端的扩散去噪网络，引入**对比学习**增强特征判别性，结合**感知损失函数**对齐人类视觉偏好，并设计**多尺度特征融合**与**自适应降噪模块**以提升对真实世界噪声的鲁棒性。此步骤是连接...
+本教程包聚焦于图像去噪模型的核心训练阶段，重点解决如何在保留语义细节的同时高效去除复杂噪声。我们将基于**扩散模型**（Diffusion Model）构建一个端到端的去噪网络——该模型通过定义前向加噪过程（逐步向图像添加高斯噪声）与反向去噪过程（神经网络学习从噪声中逐步恢复原始图像），并利用**时...
 
 ### 4. Package 4: 面向边缘设备的LLM引导扩散去噪模型压缩与部署优化
 
@@ -60,28 +62,3 @@
 ## 🤝 贡献
 
 [在此添加贡献指南]
----
-
-## 📚 参考文献
-
-1. Jonathan Ho, Ajay Jain, P. Abbeel (2020). *Denoising Diffusion Probabilistic Models*. ArXiv
-2. Prafulla Dhariwal, Alex Nichol (2021). *Diffusion Models Beat GANs on Image Synthesis*. ArXiv
-3. Jiaming Song, Chenlin Meng, Stefano Ermon (2020). *Denoising Diffusion Implicit Models*. ArXiv
-4. William S. Peebles, Saining Xie (2022). *Scalable Diffusion Models with Transformers*. 2023 IEEE/CVF International Conference on Computer Vision (ICCV)
-5. Chitwan Saharia, William Chan, Saurabh Saxena et al. (2022). *Photorealistic Text-to-Image Diffusion Models with Deep Language Understanding*. ArXiv
-6. Lvmin Zhang, Anyi Rao, Maneesh Agrawala (2023). *Adding Conditional Control to Text-to-Image Diffusion Models*. 2023 IEEE/CVF International Conference on Computer Vision (ICCV)
-7. Nataniel Ruiz, Yuanzhen Li, Varun Jampani et al. (2022). *DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation*. 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-8. Kaiyang Zhou, Jingkang Yang, Chen Change Loy et al. (2022). *Conditional Prompt Learning for Vision-Language Models*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-9. Pengchuan Zhang, Xiujun Li, Xiaowei Hu et al. (2021). *VinVL: Revisiting Visual Representations in Vision-Language Models*. 2021 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-10. Robin Rombach, A. Blattmann, Dominik Lorenz et al. (2021). *High-Resolution Image Synthesis with Latent Diffusion Models*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-11. Alex Nichol, Prafulla Dhariwal, A. Ramesh et al. (2021). *GLIDE: Towards Photorealistic Image Generation and Editing with Text-Guided Diffusion Models*. 
-12. Boyuan Chen, Zhuo Xu, Sean Kirmani et al. (2024). *SpatialVLM: Endowing Vision-Language Models with Spatial Reasoning Capabilities*. 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-13. Xiaokang Peng, Yake Wei, Andong Deng et al. (2022). *Balanced Multimodal Learning via On-the-fly Gradient Modulation*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-14. Dustin Podell, Zion English, Kyle Lacey et al. (2023). *SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis*. ArXiv
-15. Kaiyang Zhou, Jingkang Yang, Chen Change Loy et al. (2021). *Learning to Prompt for Vision-Language Models*. International Journal of Computer Vision
-16. Wenliang Dai, Junnan Li, Dongxu Li et al. (2023). *InstructBLIP: Towards General-purpose Vision-Language Models with Instruction Tuning*. ArXiv
-17. Deyao Zhu, Jun Chen, Xiaoqian Shen et al. (2023). *MiniGPT-4: Enhancing Vision-Language Understanding with Advanced Large Language Models*. ArXiv
-18. Peng Gao, Shijie Geng, Renrui Zhang et al. (2021). *CLIP-Adapter: Better Vision-Language Models with Feature Adapters*. International Journal of Computer Vision
-19. Yifan Li, Yifan Du, Kun Zhou et al. (2023). *Evaluating Object Hallucination in Large Vision-Language Models*. 
-20. Anas Awadalla, Irena Gao, Josh Gardner et al. (2023). *OpenFlamingo: An Open-Source Framework for Training Large Autoregressive Vision-Language Models*. ArXiv
-

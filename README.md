@@ -148,35 +148,42 @@ We benchmark InternAgent-DR (FlowSearch) on a series of benchmarks, including GA
 | [FlowSearch (o4-mini)](https://arxiv.org/abs/2510.08521) | **76.96** | **87.37** | _31.60_ | **30.80** |
 
 
-## 🚀 How to use the InternAgent?
+## 🚀 Quick Start
 
-### Installation
-
-```
-conda create -n InternAgent python=3.11
+```bash
+# 1) Create and activate env
+conda create -n InternAgent python=3.11 -y
 conda activate InternAgent
 
-# Install PyPI requirements
+# 2) Install dependencies
 pip install -r requirements.txt
 
-# Install aider
-python -m pip install -U --upgrade-strategy only-if-needed aider-chat
-```
-### Set your API key
-- Rename `.env.example` to `.env` and fill in your API keys.
-```shell
-mv .env.example .env
-```
+# 3) Configure API keys
+cp .env.example .env   # then edit .env to fill keys
 
-### Start your research project with InternAgent
-```shell
-./scripts/run_pipeline.sh
+# 4) Run planning + survey + engineering (text input)
+python3 launch_planning.py \
+  --text-input "如何利用深度学习算法，为图像去除噪声，在不损害图像原本质量的情况下?" \
+  --max_rounds 2 \
+  --max_papers 30 \
+  --auto_survey \
+  --non_interactive \
+  --verbose \
+  --enable_judger \
+  --min_acceptable_score 8.0 \
+  --enable_review \
+  --max_revision_rounds 5 \
+  --min_clarity_score 7.5 \
+  --min_coherence_score 7.5 \
+  --target_audience "intermediate developers"
+
+# (Optional) Image input
+python3 launch_planning.py \
+  --image Image/your_image.png \
+  --max_rounds 2 --max_papers 30 --auto_survey --non_interactive --verbose \
+  --enable_judger --min_acceptable_score 8.0 --enable_review --max_revision_rounds 5 \
+  --min_clarity_score 7.5 --min_coherence_score 7.5 --target_audience "intermediate developers"
 ```
-- You can modify the configuration in `configs/config.yaml` to customize your research project.
-- The results will be saved in the `results/` directory.
-- You can check the logs in the `logs/` directory.
-- If you want skip the idea generation step, you may refer to `scripts/run_skip-idea.sh`.
-- To visualize the idea evolution process, you can use the `internagent/vis_tree.py` script.
 
 ### About the Research Tasks
 We provide the `tasks` mentioned in our technical report as examples, and each task's code has a different training environment and dataset. Please refer to the code in each task's folder for configuration.

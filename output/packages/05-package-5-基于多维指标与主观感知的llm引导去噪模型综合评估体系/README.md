@@ -15,20 +15,20 @@ package-05-comprehensive-evaluation/
 │   ├── metrics/
 │   │   ├── psnr_ssim.py
 │   │   ├── lpips_metric.py
-│   │   └── perceptual_evaluator.py
+│   │   └── objective_metrics_aggregator.py          # renamed from perceptual_evaluator.py
 │   ├── subjective/
 │   │   ├── mos_test.py
 │   │   ├── ab_test_interface.py
 │   │   └── user_study_manager.py
 │   └── utils/
 │       ├── image_loader.py
-│       └── report_generator.py
+│       └── report_generator.py                        # now integrates objective + subjective results
 ├── configs/
 │   └── evaluation_config.yaml
 ├── data/
 │   ├── test_images/
 │   │   ├── noisy/
-│   │   └── denoised/
+│   │   └── denoised/                                  # assumed pre-generated (e.g., from Package 4)
 │   └── user_responses/
 │       └── sample_responses.csv
 └── docs/
@@ -37,23 +37,22 @@ package-05-comprehensive-evaluation/
 
 ## 💡 理论基础
 
-同学们，今天我们要探讨一个看似“收尾”却决定成败的问题：**我们如何知道一个去噪模型真的‘好’？** 想象你是一位医生，刚完成一台复杂的手术。你不能只看心电图是否平稳（这就像PSNR高），还要问病人：“你现在感觉怎么样？能走路吗？看得清东西吗？”——这就是主观体验的价值。在AI图像处理中，客观指标和主观感知常常脱节：一个PSNR高达38dB的图像可能看起来模糊、失真，而另一个PSNR只有34dB的图像却因保留了关键纹理而更受人喜爱 [Zhang, 2021]。
+我们如何知道一个去噪模型真的‘好’？这一问题看似是研究的收尾环节，实则决定整个系统的成败。传统客观指标（如PSNR、SSIM）虽便于量化，却常与人类视觉感知脱节：一个PSNR高达38dB的图像可能因过度平滑而丢失关键纹理，而另一个PSNR仅为34dB的结果却因保留了语义结构而更受用户青睐 [Zhang, 2021]。因此，本评估体系的理论基础建立在**多模态评估范式（Multimodal Evaluation Paradigm）**之上，主张将人类视觉系统（HVS）的感知特性、深度学习驱动的感知度量与统计严谨的主观实验相结合，构建兼顾客观性与主观真实性的综合评价框架。
 
-因此，本步骤的核心理论基础是**多模态评估范式（Multimodal Evaluation Paradigm）**，它主张将人类视觉系统（HVS）的感知特性与数学度量相结合。传统指标如峰值信噪比（PSNR）定义为：$$\text{PSNR} = 10 \cdot \log_{10}\left(\frac{\text{MAX}_I^2}{\text{MSE}}\right)$$ 其中 $\text{MSE} = \frac{1}{mn}\sum_{i=0}^{m-1}\sum_{j=0}^{n-1}[I(i,j) - K(i,j)]^2$，$I$ 是原始图像，$K$ 是去噪结果，$\text{MAX}_I$ 是像素最大值（通常为255）。PSNR虽计算简单，但它假设噪声是加性高斯白噪声，且对结构失真不敏感 [Ho, 2020]。
+### 人类视觉系统（HVS）的核心特性
+人类视觉并非对所有像素误差同等敏感。HVS具有以下关键特性，而传统指标往往忽视这些：
+1. **对比度敏感性**：人眼对局部对比度变化（如边缘）高度敏感，但对均匀区域的微小噪声容忍度较高；
+2. **颜色与亮度分离处理**：HVS通过独立通道处理亮度（luminance）和色度（chrominance），且对亮度失真更敏感；
+3. **语义优先感知**：人类倾向于优先关注图像中的语义内容（如人脸、文字、物体轮廓），而非像素级保真度。例如，轻微的几何畸变若破坏了面部结构，会比全局模糊更令人不适。这些特性解释了为何仅依赖MSE或PSNR无法反映真实用户体验。
 
-相比之下，结构相似性指数（SSIM）更贴近人类感知。它衡量亮度、对比度和结构三个维度的相似性：$$\text{SSIM}(x,y) = \frac{(2\mu_x\mu_y + c_1)(2\sigma_{xy} + c_2)}{(\mu_x^2 + \mu_y^2 + c_1)(\sigma_x^2 + \sigma_y^2 + c_2)}$$ 其中 $\mu$ 是均值，$\sigma$ 是标准差，$\sigma_{xy}$ 是协方差，$c_1, c_2$ 是稳定常数。SSIM值越接近1，表示结构保留越好 [Wang, 2004]。然而，SSIM仍基于局部窗口计算，难以捕捉高层语义一致性。
+### 深度感知度量：LPIPS的理论依据
+为弥补传统指标的不足，**LPIPS（Learned Perceptual Image Patch Similarity）** 引入预训练卷积神经网络（CNN）提取高层特征以衡量感知差异。CNN通过多层卷积操作逐步从原始像素中提取边缘、纹理、部件直至语义对象等层次化特征。研究表明，这些中间层激活值与人类神经响应高度相关 [Zhang et al., 2018]。LPIPS计算两幅图像在多个CNN层上的特征距离加权和，其低层特征捕捉结构对齐，高层特征反映语义一致性。因此，LPIPS能更好地区分“看起来自然”与“数学上接近”的重建结果。
 
-为弥补这一缺陷，我们引入**学习型感知指标LPIPS（Learned Perceptual Image Patch Similarity）** [Zhang, 2018]。LPIPS利用预训练的VGG或AlexNet网络提取特征，并计算特征空间的距离：$$\mathcal{D}_{\text{LPIPS}}(I, K) = \sum_l \|w_l \odot (\phi_l(I) - \phi_l(K))\|_2^2$$ 其中 $\phi_l$ 是第 $l$ 层的特征图，$w_l$ 是可学习权重。LPIPS已被证明与人类感知高度相关，特别适合评估生成式模型的输出质量 [Zhang, 2021]。
+### 主观评估的科学基础：MOS与统计显著性
+尽管客观指标提供效率，最终判断仍需回归人类感知。**平均意见得分（Mean Opinion Score, MOS）** 要求参与者对图像质量进行打分（如1–5分）。根据ITU-T P.910标准，为确保结果可靠性，每组实验需至少15名无色盲的参与者，并计算95%置信区间以判断模型间差异是否具有统计显著性（p < 0.05）。此外，**A/B测试**通过成对比较直接捕捉用户偏好，避免绝对评分的主观偏差。这些主观数据不仅验证客观指标的有效性，还能揭示模型在特定语义场景（如人脸、文本区域）下的表现盲区。
 
-但即便如此，这些客观指标仍无法回答：“这张去噪后的猫图，眼睛是否清晰？毛发是否自然？”——这正是**主观评估**的用武之地。平均意见得分（Mean Opinion Score, MOS）是一种标准化的主观测试方法，邀请多名观察者对图像质量打分（如1-5分），最终取平均值。MOS测试需遵循ITU-T P.910等国际标准，控制光照、屏幕校准、图像顺序等因素以减少偏差 [ITU-T, 2008]。
-
-在本框架中，我们进一步设计**A/B对比测试**：将两个模型（如我们的LLM引导模型 vs. 传统DDPM）的输出并排展示，让用户选择“哪张看起来更清晰、更自然”。这种成对比较能有效放大细微差异，尤其适用于语义引导是否带来实际视觉提升的验证 [Chen, 2024]。
-
-值得注意的是，如 Package 1-4 所述，我们的模型已集成LLM语义提示、潜在扩散架构和轻量化策略。因此，评估体系必须专门检验这些组件的贡献。例如：当文本提示为“保留锐利边缘”时，MOS评分是否显著高于无提示基线？在移动设备上运行的量化模型，其LPIPS是否仍优于未压缩版本？
-
-最后，我们强调**评估的可复现性与伦理合规性**。所有用户实验需获得知情同意，数据匿名化处理，并公开测试图像集与评分协议。正如 [Saharia, 2022] 在Imagen评估中所做的那样，透明的评估流程是建立社区信任的基础。
-
-总结来说，本步骤通过“客观+主观”、“指标+体验”、“实验室+真实场景”的三维评估，确保我们的LLM引导去噪模型不仅在数字上优秀，更在人类眼中可信、可用、可靠。
+### 闭环评估：连接语义标注与噪声类型分析
+本框架进一步整合Package 1中由LLM生成的噪声类型标签（如高斯、泊松、真实相机噪声），实现**按噪声类别分组的细粒度评估**。例如，可分析模型在“文本区域+泊松噪声”子集上的MOS是否显著低于其他类别，从而诊断语义引导机制的有效性。这种闭环设计将初始的语义理解能力与最终质量评估紧密关联，确保整个LLM引导去噪流程的逻辑一致性。
 
 ---
 
@@ -227,103 +226,42 @@ def load_and_preprocess_image(
     device: torch.device = torch.device("cpu")
 ) -> torch.Tensor:
     """
-    加载并预处理单张图像，返回标准化的PyTorch张量。
+    加载并预处理图像，为后续客观指标计算与主观感知评估提供标准化输入。
     
-    此函数是评估体系的数据入口，确保所有后续模块使用一致的图像表示。
+    Practical Considerations:
+    Before implementing metrics, we need standardized image loading because subjective tests require consistent display conditions 
+    and objective metrics (e.g., PSNR, SSIM) need aligned pixel grids. Inconsistent sizing or value ranges would invalidate comparisons.
     
-    参数:
-        image_path (str): 图像文件的完整路径。
-        target_size (Optional[Tuple[int, int]]): 可选的目标尺寸 (H, W)。若提供，则图像会被调整至此尺寸。
-        device (torch.device): 张量存放的设备，默认为CPU。
-        
-    返回:
-        torch.Tensor: 形状为 (C, H, W) 的张量，值域 [0.0, 1.0]，C=3 (RGB)。
-        
-    异常:
-        ImageLoadError: 当文件不存在、无法读取或不是有效图像时抛出。
-        
-    示例:
-        >>> tensor = load_and_preprocess_image("./data/test_images/noisy/img1.png", (256, 256))
-        >>> print(tensor.shape)  # torch.Size([3, 256, 256])
+    Args:
+        image_path: 图像文件路径
+        target_size: 可选的目标尺寸 (height, width)，用于对齐图像尺寸以支持逐像素指标计算
+        device: 张量存放设备
+
+    Returns:
+        归一化后的图像张量，形状为 [C, H, W]，值域 [0, 1]
+
+    Raises:
+        ImageLoadError: 当图像无法读取或路径无效时
     """
-    # --- 步骤1: 验证文件路径 ---
     if not os.path.exists(image_path):
-        raise ImageLoadError(f"图像文件不存在: {image_path}")
+        raise ImageLoadError(f"图像路径不存在: {image_path}")
     
-    path_obj = Path(image_path)
-    if not path_obj.is_file():
-        raise ImageLoadError(f"路径不是一个文件: {image_path}")
-    
-    # --- 步骤2: 安全加载图像并转换为RGB ---
     try:
-        # 使用PIL打开图像
-        pil_image: PILImage = Image.open(image_path)
-        # 统一转换为RGB模式，自动处理灰度图、RGBA等
-        pil_image = pil_image.convert('RGB')
+        # 使用PIL安全加载图像，自动处理多种格式（JPEG, PNG等）
+        image = Image.open(image_path).convert("RGB")
     except UnidentifiedImageError as e:
-        raise ImageLoadError(f"无法识别文件为有效图像: {image_path}. 错误详情: {str(e)}")
-    except Exception as e:
-        raise ImageLoadError(f"加载图像时发生未知错误: {image_path}. 错误详情: {str(e)}")
+        raise ImageLoadError(f"无法识别图像格式: {image_path}") from e
     
-    # --- 步骤3: 转换为PyTorch张量并归一化 ---
-    # 注意: torchvision的to_tensor()会自动将PIL图像(H, W, C)转为(C, H, W)并除以255
-    tensor_image: torch.Tensor = to_tensor(pil_image)  # Shape: (3, H, W), dtype: float32, range: [0.0, 1.0]
-    
-    # --- 步骤4: 可选的尺寸调整 ---
+    # 如果指定了目标尺寸，则进行resize以确保所有图像在相同分辨率下进行指标计算
+    # 注意：resize可能影响高频细节，但在客观指标评估中必须保证空间对齐
     if target_size is not None:
-        # 创建Resize变换
-        resize_transform = transforms.Resize(target_size, antialias=True)  # antialias防止锯齿
-        tensor_image = resize_transform(tensor_image)
+        image = image.resize(target_size[::-1], Image.BICUBIC)  # PIL expects (width, height)
     
-    # --- 步骤5: 移动到指定设备 ---
-    tensor_image = tensor_image.to(device)
+    # 将PIL图像转换为[0,1]范围的torch.Tensor，形状为[C, H, W]
+    # Normalize pixel values to [0,1] range to match model training expectations and metric computation standards
+    tensor_image = to_tensor(image).to(device)
     
     return tensor_image
-
-
-def batch_load_images(
-    image_dir: str,
-    target_size: Optional[Tuple[int, int]] = None,
-    device: torch.device = torch.device("cpu")
-) -> dict:
-    """
-    批量加载目录下的所有图像。
-    
-    参数:
-        image_dir (str): 包含图像的目录路径。
-        target_size (Optional[Tuple[int, int]]): 目标尺寸。
-        device (torch.device): 设备。
-        
-    返回:
-        dict: 键为文件名（不含扩展名），值为对应的张量。
-        
-    示例:
-        >>> images = batch_load_images("./data/test_images/noisy/")
-        >>> print(list(images.keys()))  # ['img1', 'img2', ...]
-    """
-    if not os.path.isdir(image_dir):
-        raise ImageLoadError(f"指定的路径不是一个目录: {image_dir}")
-    
-    supported_extensions = {'.png', '.jpg', '.jpeg', '.bmp', '.tiff'}
-    image_tensors = {}
-    
-    for file in os.listdir(image_dir):
-        file_path = os.path.join(image_dir, file)
-        _, ext = os.path.splitext(file)
-        if ext.lower() in supported_extensions:
-            try:
-                # 使用文件名（不含扩展名）作为键
-                key = os.path.splitext(file)[0]
-                image_tensors[key] = load_and_preprocess_image(file_path, target_size, device)
-            except ImageLoadError as e:
-                # 记录错误但不中断，继续处理其他文件
-                print(f"警告: 跳过文件 {file}. 原因: {e}")
-                continue
-    
-    if not image_tensors:
-        raise ImageLoadError(f"在目录 {image_dir} 中未找到任何支持的图像文件。")
-    
-    return image_tensors
 ```
 
 #### 重要提示
@@ -345,21 +283,9 @@ def batch_load_images(
 
 本步骤的产出将直接用于生成评估报告的核心数据。它依赖于上一步 `image_loader.py` 提供的、已对齐的干净图像（ground truth）和去噪图像张量。我们的任务是编写一个高效、准确的计算器，能够批量处理这些图像对，并返回每对图像的PSNR和SSIM值。
 
-PSNR基于均方误差（MSE），它假设人眼对亮度误差的感知与MSE成反比。公式为 PSNR = 10 * log10(MAX^2 / MSE)，其中MAX通常是1.0（因为我们已将像素归一化到[0,1]）。SSIM则更进一步，它模拟人类视觉系统对结构信息的敏感性，通过比较亮度、对比度和结构三个分量来计算相似度，其值域在[-1,1]之间，1表示完全相同。
+在深度学习中，图像通常会被归一化（normalization），即将像素值从原始的 [0, 255] 范围线性缩放到 [0, 1] 区间，这有助于模型训练的稳定性和收敛速度。本流程中的图像数据已按此标准进行归一化处理。
 
-在实现上，我们不从零造轮子，而是利用成熟的 `torchmetrics` 库。这个库提供了经过充分测试的、GPU加速的PSNR和SSIM实现。我们的工作是将其封装成一个易用的接口。主函数 `calculate_psnr_ssim` 接收两个字典：`clean_images` 和 `denoised_images`，它们的键（图像ID）必须完全匹配。函数会遍历所有键，对每一对图像调用 `torchmetrics` 的计算函数。
-
-数据流如下：输入是两个字典，输出也是一个字典，其结构为 `{image_id: {'psnr': value, 'ssim': value}}`。这种结构便于后续的统计分析和报告生成。我们特别注意了数据类型和设备的一致性：确保所有张量都是float32且在同一设备上，这是 `torchmetrics` 的要求。
-
-为什么选择 `torchmetrics` 而不是自己实现？自己实现SSIM涉及复杂的滑动窗口和高斯加权，极易出错且效率低下。`torchmetrics` 不仅正确性有保障，还支持批处理和GPU加速，能极大提升评估速度。这是一个典型的‘站在巨人肩膀上’的工程决策。
-
-这个组件是客观评估模块的核心。它的输出将被 `report_generator.py` 直接消费，用于生成包含平均PSNR/SSIM的表格。同时，它也为后续的LPIPS计算提供了并行的评估维度。需要注意的是，PSNR和SSIM都是全参考指标，这意味着它们**必须**有干净的参考图像。这限制了它们在真实世界无参考场景下的应用，但在我们的受控实验中是完美的选择。
-
-让我们看一个具体例子。假设有一对图像，去噪后保留了大部分细节，PSNR可能达到36dB，SSIM为0.93。但如果去噪过度导致纹理平滑，PSNR可能更高（因为MSE更小），但SSIM会显著下降，因为它捕捉到了结构信息的丢失。这正说明了同时使用多个指标的重要性。
-
-对于边缘情况，比如单通道图像（虽然我们的加载器已转为RGB），或者张量尺寸不匹配，我们的函数会先进行验证。如果发现 `clean_images` 和 `denoised_images` 的键集合不一致，会立即抛出清晰的错误，提示用户检查数据对齐情况。这比等到计算时才发现错误要好得多。
-
-总之，这个组件将复杂的数学公式转化为简洁的API调用，让我们能专注于解读结果而非实现细节。它是我们验证模型是否达到‘PSNR ≥ 35 dB, SSIM ≥ 0.92’这一研究目标的直接工具。”
+PSNR基于均方误差（MSE），它假设人眼对亮度误差的感知与MSE成反比。公式为 PSNR = 10 * log10(MAX² / MSE)，其中 MAX 为像素最大可能值——由于我们已将图像归一化到 [0,1]，因此 MAX = 1.0。对数尺度（10·log₁₀）的使用源于人类对亮度的非线性感知特性：我们对暗区的微小变化比亮区更敏感，因此采用对数压缩能更好地模拟人眼的主观感受。SSIM则更进一步，它模拟人类视觉系统对结构信息的敏感性，综合考虑亮度、对比度和结构三方面的相似性。
 
 #### 完整实现
 
@@ -381,73 +307,29 @@ def calculate_psnr_ssim(
     
     参数:
         clean_images (Dict[str, torch.Tensor]): 干净参考图像字典。键为图像ID，值为张量 (C, H, W)。
-        denoised_images (Dict[str, torch.Tensor]): 去噪后图像字典。键必须与clean_images完全一致。
-        data_range (float): 图像数据的动态范围。由于我们已归一化到[0,1]，故默认为1.0。
+        denoised_images (Dict[str, torch.Tensor]): 去噪后图像字典。键必须与clean_images一致，值为张量 (C, H, W)。
+        data_range (float): 图像数据的动态范围，默认为1.0（对应归一化到[0,1]的图像）。
         
     返回:
-        Dict[str, Dict[str, float]]: 结果字典。格式为 {image_id: {'psnr': psnr_value, 'ssim': ssim_value}}
-        
-    异常:
-        ValueError: 当两个字典的键不匹配，或张量尺寸/设备不一致时抛出。
-        
-    示例:
-        >>> results = calculate_psnr_ssim(clean_dict, denoised_dict)
-        >>> print(results['img1']['psnr'])  # 输出一个浮点数，如 36.5
+        Dict[str, Dict[str, float]]: 每个图像ID对应的PSNR和SSIM值，例如 {'img_001': {'psnr': 38.2, 'ssim': 0.94}}。
     """
-    # --- 步骤1: 输入验证 ---
-    if set(clean_images.keys()) != set(denoised_images.keys()):
-        missing_in_clean = set(denoised_images.keys()) - set(clean_images.keys())
-        missing_in_denoised = set(clean_images.keys()) - set(denoised_images.keys())
-        error_msg = "图像ID在干净图像和去噪图像字典中不匹配。\n"
-        if missing_in_clean:
-            error_msg += f"在干净图像中缺失: {missing_in_clean}\n"
-        if missing_in_denoised:
-            error_msg += f"在去噪图像中缺失: {missing_in_denoised}"
-        raise ValueError(error_msg)
+    assert set(clean_images.keys()) == set(denoised_images.keys()), "图像ID必须完全匹配"
     
-    # 获取任意一个张量以检查设备和dtype
-    sample_tensor = next(iter(clean_images.values()))
-    device = sample_tensor.device
-    dtype = sample_tensor.dtype
-    
-    if dtype != torch.float32:
-        raise ValueError(f"期望张量数据类型为 torch.float32, 但得到 {dtype}")
-    
-    # --- 步骤2: 初始化指标计算器 ---
-    # 使用torchmetrics，它支持GPU加速和批处理
-    psnr_metric = PeakSignalNoiseRatio(data_range=data_range).to(device)
-    ssim_metric = StructuralSimilarityIndexMeasure(data_range=data_range).to(device)
+    psnr_metric = PeakSignalNoiseRatio(data_range=data_range)
+    ssim_metric = StructuralSimilarityIndexMeasure(data_range=data_range)
     
     results = {}
-    
-    # --- 步骤3: 遍历所有图像对进行计算 ---
     for img_id in clean_images.keys():
-        clean_img = clean_images[img_id]
-        denoised_img = denoised_images[img_id]
+        clean = clean_images[img_id].unsqueeze(0)  # 添加batch维度
+        denoised = denoised_images[img_id].unsqueeze(0)
         
-        # 验证单个图像对的尺寸和设备
-        if clean_img.shape != denoised_img.shape:
-            raise ValueError(f"图像 '{img_id}' 的干净版和去噪版尺寸不匹配: {clean_img.shape} vs {denoised_img.shape}")
-        
-        if clean_img.device != device or denoised_img.device != device:
-            raise ValueError(f"图像 '{img_id}' 的设备与预期不符。请确保所有张量在同一设备上。")
-        
-        # 计算PSNR
-        # 注意: torchmetrics的PSNR需要输入形状为 (N, C, H, W)，所以我们增加一个batch维度
-        psnr_value = psnr_metric(denoised_img.unsqueeze(0), clean_img.unsqueeze(0)).item()
-        
-        # 计算SSIM
-        # 同样，SSIM也需要batch维度
-        ssim_value = ssim_metric(denoised_img.unsqueeze(0), clean_img.unsqueeze(0)).item()
+        psnr_val = psnr_metric(denoised, clean).item()
+        ssim_val = ssim_metric(denoised, clean).item()
         
         results[img_id] = {
-            'psnr': psnr_value,
-            'ssim': ssim_value
+            'psnr': round(psnr_val, 4),
+            'ssim': round(ssim_val, 4)
         }
-        
-        # 重置指标状态，为下一次计算做准备
-        psnr_metric.reset()
-        ssim_metric.reset()
     
     return results
 ```
@@ -473,19 +355,9 @@ LPIPS的核心思想是：使用一个在大型数据集上预训练的深度网
 
 我们采用官方的 `lpips` PyTorch库，这是由LPIPS原作者维护的，保证了实现的准确性。我们的封装函数 `calculate_lpips` 会初始化一个LPIPS模型（默认使用AlexNet backbone），然后对每一对图像计算其LPIPS距离。LPIPS值越小表示感知差异越小，理想情况下应接近0。
 
-在代码逻辑上，我们首先检查输入字典的键是否匹配，这与PSNR/SSIM模块保持一致。然后，我们创建LPIPS模型实例，并确保它与输入张量在同一设备上（CPU或GPU）。接着，我们遍历所有图像对，调用模型进行计算。这里的关键点是，LPIPS模型期望输入是归一化到[-1,1]区间的张量，而我们的数据是[0,1]。因此，我们必须在输入前进行线性变换：`img * 2 - 1`。
+关于网络选择：默认使用AlexNet是因为它在计算速度和感知准确性之间取得了良好平衡，适合大规模评估。如果任务对纹理细节特别敏感（例如医学图像或艺术图像去噪），可选用VGG作为backbone，它能捕捉更精细的局部结构，但计算开销更大；SqueezeNet则适用于资源受限场景，但感知保真度略低。根据实际需求调整 `net_type` 参数即可。
 
-数据流非常直接：输入是两个字典，输出是一个字典 `{image_id: lpips_value}`。这个输出将被 `perceptual_evaluator.py`（下一步）聚合，并最终进入报告。LPIPS的计算比PSNR/SSIM慢得多，因为它涉及深度网络的前向传播，但我们可以通过GPU加速来缓解。
-
-为什么选择AlexNet作为默认backbone？论文表明，不同backbone的结果高度相关，AlexNet在速度和准确性之间取得了良好平衡。VGG虽然更准确但更慢，SqueezeNet更快但稍逊。我们的实现允许未来轻松切换backbone，只需更改初始化参数。
-
-这个组件填补了传统指标的空白。例如，一个过度平滑的去噪结果可能有很高的PSNR，但其LPIPS值会很高（因为丢失了高频纹理特征），从而揭示其感知质量的缺陷。这正是我们研究中强调‘兼顾客观指标与人类感知’的关键所在。
-
-考虑一个具体场景：两张去噪图像A和B，A的PSNR=37dB, SSIM=0.94；B的PSNR=35dB, SSIM=0.91。仅看传统指标，A更好。但如果A丢失了人脸的眼睛细节，而B保留了，那么A的LPIPS值可能会显著高于B，提示我们B的实际视觉质量可能更优。
-
-对于边缘情况，比如非常小的图像（小于网络的最小输入尺寸），`lpips` 库会自动处理（通常是填充或报错）。我们在函数中捕获这些异常并提供清晰的错误信息。此外，我们强制要求输入为3通道RGB，因为LPIPS模型是为彩色图像设计的。
-
-总之，LPIPS是我们连接机器指标与人类感知的桥梁。它的加入，使得我们的客观评估体系从‘像素忠实度’迈向了‘感知忠实度’，为最终的综合评估奠定了坚实基础。”
+在代码逻辑上，我们首先检查输入字典的键是否匹配，...
 
 #### 完整实现
 
@@ -507,65 +379,38 @@ def calculate_lpips(
     
     参数:
         clean_images (Dict[str, torch.Tensor]): 干净参考图像字典。键为图像ID，值为张量 (C, H, W)，值域[0,1]。
-        denoised_images (Dict[str, torch.Tensor]): 去噪后图像字典。键必须与clean_images完全一致。
-        net_type (str): 用于提取特征的网络类型。可选 'alex', 'vgg', 'squeeze'。默认为 'alex'。
+        denoised_images (Dict[str, torch.Tensor]): 去噪后图像字典。键必须与clean_images一致。
+        net_type (str): 特征提取网络类型，可选 'alex', 'vgg', 'squeeze'。默认为 'alex'。
         
     返回:
-        Dict[str, float]: 结果字典。格式为 {image_id: lpips_value}
-        
-    异常:
-        ValueError: 当输入验证失败时抛出。
-        RuntimeError: 当LPIPS模型计算出错时抛出（如图像尺寸过小）。
-        
-    示例:
-        >>> lpips_results = calculate_lpips(clean_dict, denoised_dict)
-        >>> print(lpips_results['img1'])  # 输出一个浮点数，如 0.15
+        Dict[str, float]: 每个图像ID对应的LPIPS分数，值越小表示感知质量越高。
     """
-    # --- 步骤1: 输入验证 ---
-    if set(clean_images.keys()) != set(denoised_images.keys()):
-        raise ValueError("clean_images 和 denoised_images 的键必须完全一致。")
+    # 验证输入字典键一致
+    if clean_images.keys() != denoised_images.keys():
+        raise ValueError("clean_images 和 denoised_images 的键必须完全一致")
     
-    # 获取设备信息
-    sample_tensor = next(iter(clean_images.values()))
-    device = sample_tensor.device
-    
-    # 验证数据范围: 我们的loader输出[0,1]，LPIPS需要[-1,1]
-    # 这里不直接检查，因为在转换时处理
-    
-    # --- 步骤2: 初始化LPIPS模型 ---
-    # lpips.LPIPS 返回一个可调用的模型
-    loss_fn = lpips.LPIPS(net=net_type, spatial=False)  # spatial=False 表示返回标量距离
-    loss_fn = loss_fn.to(device)
-    loss_fn.eval()  # 确保在评估模式
+    # 初始化LPIPS模型（设置为eval模式并冻结参数）
+    loss_fn = lpips.LPIPS(net=net_type, spatial=False)
+    loss_fn.eval()
+    for param in loss_fn.parameters():
+        param.requires_grad = False
     
     results = {}
+    device = next(loss_fn.parameters()).device  # 使用模型所在设备
     
-    # --- 步骤3: 遍历计算 ---
     for img_id in clean_images.keys():
-        clean_img = clean_images[img_id]
-        denoised_img = denoised_images[img_id]
+        clean = clean_images[img_id].unsqueeze(0)  # 添加batch维度
+        denoised = denoised_images[img_id].unsqueeze(0)
         
-        # 验证尺寸
-        if clean_img.shape != denoised_img.shape:
-            raise ValueError(f"图像 '{img_id}' 的尺寸不匹配。")
+        # 确保张量在相同设备上
+        clean = clean.to(device)
+        denoised = denoised.to(device)
         
-        # --- 关键步骤: 将[0,1]转换为[-1,1] ---
-        # LPIPS模型是在[-1,1]数据上训练的
-        clean_img_norm = clean_img * 2.0 - 1.0
-        denoised_img_norm = denoised_img * 2.0 - 1.0
+        # 计算LPIPS距离
+        with torch.no_grad():
+            lpips_score = loss_fn(clean, denoised).item()
         
-        # 增加batch维度 (N, C, H, W)
-        clean_img_batch = clean_img_norm.unsqueeze(0)
-        denoised_img_batch = denoised_img_norm.unsqueeze(0)
-        
-        try:
-            # 计算LPIPS距离
-            # 注意: lpips模型返回的是形状为(N,)的张量
-            lpips_distance = loss_fn(denoised_img_batch, clean_img_batch)
-            results[img_id] = lpips_distance.item()
-        except Exception as e:
-            # 捕获如尺寸过小等运行时错误
-            raise RuntimeError(f"计算图像 '{img_id}' 的LPIPS时出错: {str(e)}")
+        results[img_id] = lpips_score
     
     return results
 ```
@@ -585,25 +430,13 @@ def calculate_lpips(
 
 #### 详细说明
 
-同学们，现在我们已经分别实现了三种客观指标的计算，但它们是孤立的。在实际评估中，我们需要一个‘指挥中心’来协调这些计算，并汇总结果。这就是 `PerceptualEvaluator` 类的作用——它将PSNR、SSIM、LPIPS的计算封装在一个统一的接口下，并提供便捷的统计功能。
+同学们，现在我们已经分别实现了三种客观指标的计算，但它们是孤立的。在实际评估中，我们需要一个‘指挥中心’来协调这些计算，并汇总结果。这就是 `ObjectiveMetricsAggregator` 类的作用——它将PSNR、SSIM、LPIPS的计算封装在一个统一的接口下，并提供便捷的统计功能。
 
 这个组件直接依赖于前三个步骤的产出：`psnr_ssim.py` 和 `lpips_metric.py` 中的计算函数。它接收干净图像和去噪图像的路径（而非张量），内部调用 `image_loader.py` 来获取数据，然后依次调用三个指标计算器。这样，用户只需调用一个方法，就能获得所有客观指标的结果。
 
-我们的设计采用了面向对象的方式。`PerceptualEvaluator` 在初始化时接收配置参数，如目标尺寸、是否使用GPU等。其核心方法 `evaluate` 负责执行完整的评估流水线：1) 加载图像；2) 计算PSNR/SSIM；3) 计算LPIPS；4) 合并结果。合并后的结果是一个嵌套字典，结构清晰，便于后续处理。
+我们的设计采用了面向对象的方式。`ObjectiveMetricsAggregator` 在初始化时接收配置参数，如目标尺寸、是否使用GPU等。其核心方法 `evaluate` 负责执行完整的评估流水线：1) 加载图像；2) 计算PSNR/SSIM；3) 计算LPIPS；4) 合并结果。合并后的结果是一个嵌套字典，结构清晰，便于后续处理。
 
-数据流设计得非常流畅。外部用户（如 `main.py` 或 `report_generator.py`）只需提供两个目录路径。`PerceptualEvaluator` 内部处理所有细节：确保两个目录下的文件名一一对应，加载图像，计算指标，并返回结构化的结果。这种封装隐藏了复杂性，提供了极简的API。
-
-为什么需要这样一个聚合器？首先，它避免了用户重复编写加载和调用代码。其次，它保证了所有指标都在完全相同的数据集上计算，消除了因数据不一致导致的评估偏差。最后，它为未来的扩展（如加入新的指标）提供了清晰的框架——只需在 `evaluate` 方法中增加一行调用即可。
-
-这个组件是连接底层指标计算和上层报告生成的桥梁。它的输出将被 `report_generator.py` 直接使用，用于创建包含所有指标平均值、标准差以及每张图像详细分数的综合报告。此外，它也为A/B测试提供了数据基础——我们可以用它快速评估多个模型的输出。
-
-让我们通过一个例子来看它的威力。假设我们要评估两个不同的去噪模型A和B。我们只需创建两个 `PerceptualEvaluator` 实例（或复用一个），分别指向A和B的输出目录，调用 `evaluate`，然后比较它们的平均指标。整个过程只需几行代码，背后却完成了数百次的图像加载和复杂的指标计算。
-
-对于错误处理，我们采取了分层策略。底层的加载和计算函数会抛出具体的异常（如 `ImageLoadError`, `ValueError`），`PerceptualEvaluator` 捕获这些异常并重新包装，提供上下文信息（如‘在评估模型A时出错’），使调试更加容易。
-
-在性能方面，我们通过共享图像加载结果来优化。PSNR/SSIM和LPIPS都使用同一份加载好的张量，避免了重复I/O。同时，我们允许用户指定设备（CPU/GPU），让用户根据硬件资源灵活选择。
-
-总之，`PerceptualEvaluator` 是我们客观评估模块的大脑。它将分散的功能整合成一个强大的工具，让我们能高效、可靠地量化模型的去噪性能，为回答‘模型是否达到了PSNR≥35, SSIM≥0.92的目标’提供了全面的数据支持。”
+注意：该模块仅负责**客观指标的聚合**，不包含主观感知评估（如MOS或A/B测试），后者将在后续步骤中单独实现。
 
 #### 完整实现
 
@@ -611,6 +444,9 @@ def calculate_lpips(
 import os
 from pathlib import Path
 from typing import Dict
+
+# Note: This file was renamed from perceptual_evaluator.py to objective_metrics_aggregator.py
+# to accurately reflect its role in aggregating only objective metrics (PSNR, SSIM, LPIPS).
 ```
 
 #### 重要提示
@@ -1267,31 +1103,3 @@ A/B测试结果:
 ## 📝 行动项
 
 > [step_5] 综合评估与用户测试 : 使用PSNR、SSIM、LPIPS等客观指标评估去噪效果，并组织用户主观评分实验（如MOS测试），结合A/B测试比较不同AI模型的视觉质量表现，验证模型在实际应用中的有效性。
-
----
-
-## 📚 参考文献
-
-本包实现基于以下研究文献。在阅读理论基础和概念解释部分时，请注意文中引用的文献标记，如 [作者, 年份] 或 [序号]。
-
-1. Jonathan Ho, Ajay Jain, P. Abbeel (2020). *Denoising Diffusion Probabilistic Models*. ArXiv
-2. Prafulla Dhariwal, Alex Nichol (2021). *Diffusion Models Beat GANs on Image Synthesis*. ArXiv
-3. Jiaming Song, Chenlin Meng, Stefano Ermon (2020). *Denoising Diffusion Implicit Models*. ArXiv
-4. William S. Peebles, Saining Xie (2022). *Scalable Diffusion Models with Transformers*. 2023 IEEE/CVF International Conference on Computer Vision (ICCV)
-5. Chitwan Saharia, William Chan, Saurabh Saxena et al. (2022). *Photorealistic Text-to-Image Diffusion Models with Deep Language Understanding*. ArXiv
-6. Lvmin Zhang, Anyi Rao, Maneesh Agrawala (2023). *Adding Conditional Control to Text-to-Image Diffusion Models*. 2023 IEEE/CVF International Conference on Computer Vision (ICCV)
-7. Nataniel Ruiz, Yuanzhen Li, Varun Jampani et al. (2022). *DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation*. 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-8. Kaiyang Zhou, Jingkang Yang, Chen Change Loy et al. (2022). *Conditional Prompt Learning for Vision-Language Models*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-9. Pengchuan Zhang, Xiujun Li, Xiaowei Hu et al. (2021). *VinVL: Revisiting Visual Representations in Vision-Language Models*. 2021 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-10. Robin Rombach, A. Blattmann, Dominik Lorenz et al. (2021). *High-Resolution Image Synthesis with Latent Diffusion Models*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-11. Alex Nichol, Prafulla Dhariwal, A. Ramesh et al. (2021). *GLIDE: Towards Photorealistic Image Generation and Editing with Text-Guided Diffusion Models*. 
-12. Boyuan Chen, Zhuo Xu, Sean Kirmani et al. (2024). *SpatialVLM: Endowing Vision-Language Models with Spatial Reasoning Capabilities*. 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-13. Xiaokang Peng, Yake Wei, Andong Deng et al. (2022). *Balanced Multimodal Learning via On-the-fly Gradient Modulation*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
-14. Dustin Podell, Zion English, Kyle Lacey et al. (2023). *SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis*. ArXiv
-15. Kaiyang Zhou, Jingkang Yang, Chen Change Loy et al. (2021). *Learning to Prompt for Vision-Language Models*. International Journal of Computer Vision
-16. Wenliang Dai, Junnan Li, Dongxu Li et al. (2023). *InstructBLIP: Towards General-purpose Vision-Language Models with Instruction Tuning*. ArXiv
-17. Deyao Zhu, Jun Chen, Xiaoqian Shen et al. (2023). *MiniGPT-4: Enhancing Vision-Language Understanding with Advanced Large Language Models*. ArXiv
-18. Peng Gao, Shijie Geng, Renrui Zhang et al. (2021). *CLIP-Adapter: Better Vision-Language Models with Feature Adapters*. International Journal of Computer Vision
-19. Yifan Li, Yifan Du, Kun Zhou et al. (2023). *Evaluating Object Hallucination in Large Vision-Language Models*. 
-20. Anas Awadalla, Irena Gao, Josh Gardner et al. (2023). *OpenFlamingo: An Open-Source Framework for Training Large Autoregressive Vision-Language Models*. ArXiv
-

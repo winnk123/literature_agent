@@ -32,6 +32,40 @@
   // 暴露到全局（供模块使用）
   window.currentUserRole = currentUserRole;
 
+  const notebookSessionId = (() => {
+    try {
+      const stored = localStorage.getItem('notebookSessionId');
+      if (stored) return stored;
+      const newId = `nb-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      localStorage.setItem('notebookSessionId', newId);
+      return newId;
+    } catch (e) {
+      console.warn('Notebook Session 初始化失败，使用临时ID');
+      return `nb-${Date.now()}`;
+    }
+  })();
+
+  // 统一获取后端 API 基地址：
+  // 优先级：localStorage('apiBaseUrl') > window.API_BASE_URL > 同源 > 'http://localhost:5000'
+  function getApiBaseUrl() {
+    try {
+      const fromStorage = (typeof localStorage !== 'undefined') ? localStorage.getItem('apiBaseUrl') : null;
+      if (fromStorage && typeof fromStorage === 'string') {
+        return fromStorage.replace(/\/+$/, '');
+      }
+      const fromWindow = (typeof window !== 'undefined') ? window.API_BASE_URL : null;
+      if (fromWindow && typeof fromWindow === 'string') {
+        return fromWindow.replace(/\/+$/, '');
+      }
+      if (typeof window !== 'undefined' && window.location && window.location.protocol !== 'file:') {
+        return `${window.location.protocol}//${window.location.host}`.replace(/\/+$/, '');
+      }
+    } catch (e) {
+      // ignore and fallback below
+    }
+    return 'http://localhost:5000';
+  }
+
   const themeToggles = [qs('#themeToggle'), qs('#themeToggle2')].filter(Boolean);
   themeToggles.forEach(btn => btn.addEventListener('click', () => {
     document.body.classList.toggle('theme-dark');
@@ -831,13 +865,22 @@
     switchView('detail');
     history.pushState({ view: 'detail', id: project.id, section: 'background' }, '', `#project/${project.id}/background`);
     
-    // 重置Agent欢迎页面
+    // 加载该项目的历史会话和文件
+    loadConversationHistory(project.id);
+    loadFilesFromStorage();
+    
+    // 如果有历史会话，显示对话界面；否则显示欢迎页面
     const qaWelcome = document.getElementById('qaWelcome');
     const qaChat = document.getElementById('qaChat');
+    const hasHistory = checkHasConversationHistory(project.id);
+    
+    if (hasHistory) {
+      if (qaWelcome) qaWelcome.style.display = 'none';
+      if (qaChat) qaChat.style.display = 'grid';
+    } else {
     if (qaWelcome) qaWelcome.style.display = 'flex';
     if (qaChat) qaChat.style.display = 'none';
-    hasGeneratedFiles = false;
-    if (qaFilesBtn) qaFilesBtn.style.display = 'none';
+    }
   }
 
   function buildDetailMenu(project) {
@@ -936,7 +979,7 @@
       id: cellId,
       type: type,
       content: content,
-      language: language,
+      language: type === 'code' ? language : null,
       output: null
     };
     notebookCells.push(cell);
@@ -1077,6 +1120,19 @@
     const textarea = cellDiv.querySelector('.cell-input');
     
     if (textarea && cell.type === 'code') {
+      // 支持 Tab 键缩进
+      textarea.addEventListener('keydown', (e) => {
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          const start = textarea.selectionStart;
+          const end = textarea.selectionEnd;
+          const value = textarea.value;
+          textarea.value = value.substring(0, start) + '    ' + value.substring(end);
+          textarea.selectionStart = textarea.selectionEnd = start + 4;
+          cell.content = textarea.value;
+        }
+      });
+      
       // 自动调整textarea高度
       const autoResize = () => {
         textarea.style.height = 'auto';
@@ -1108,9 +1164,14 @@
     // 工具栏按钮事件
     const runBtn = cellDiv.querySelector('.run-cell');
     if (runBtn) {
-      runBtn.addEventListener('click', (e) => {
+      runBtn.addEventListener('click', async (e) => {
         e.stopPropagation();
-        runCell(cell, cellDiv);
+        runBtn.classList.add('is-running');
+        try {
+          await runCell(cell, cellDiv);
+        } finally {
+          runBtn.classList.remove('is-running');
+        }
       });
     }
 
@@ -1213,16 +1274,16 @@
     }
   }
 
-  function addCellAbove(cellId) {
+  function addCellAbove(cellId, type = 'code') {
     const idx = notebookCells.findIndex(c => c.id === cellId);
-    const newCell = createNotebookCell('code', '', 'python');
+    const newCell = createNotebookCell(type, '', type === 'code' ? 'python' : null);
     notebookCells.splice(idx, 0, newCell);
     rerenderNotebook();
   }
 
-  function addCellBelow(cellId) {
+  function addCellBelow(cellId, type = 'code') {
     const idx = notebookCells.findIndex(c => c.id === cellId);
-    const newCell = createNotebookCell('code', '', 'python');
+    const newCell = createNotebookCell(type, '', type === 'code' ? 'python' : null);
     notebookCells.splice(idx + 1, 0, newCell);
     rerenderNotebook();
   }
@@ -1252,104 +1313,82 @@
     functions: {}
   };
 
-  function runCell(cell, cellDiv) {
-    // 执行单元格内的所有代码
+  async function runNotebookCode(code, language = 'python') {
+    const API_BASE_URL = getApiBaseUrl();
+    const payload = {
+      code,
+      language,
+      sessionId: notebookSessionId
+    };
+    const response = await fetch(`${API_BASE_URL}/api/notebook/run`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const result = await response.json();
+    return { status: response.status, result };
+  }
+
+  async function resetNotebookSession() {
+    try {
+      const API_BASE_URL = getApiBaseUrl();
+      await fetch(`${API_BASE_URL}/api/notebook/session/reset`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sessionId: notebookSessionId })
+      });
+      pythonEnv.variables = {};
+      pythonEnv.functions = {};
+      alert('Notebook 会话已重置');
+    } catch (error) {
+      console.error('重置 Notebook 会话失败:', error);
+      alert('Notebook 会话重置失败，请稍后再试');
+    }
+  }
+
+  async function runCell(cell, cellDiv) {
     const code = cell.content.trim();
+    if (!code) return;
+    
     let output = '';
+    let hasError = false;
     
     try {
-      if (cell.language === 'python') {
-        // 实际执行Python代码的模拟（带状态保持）
-        
-        // 保存函数定义
-        if (code.includes('def corr1d')) {
-          pythonEnv.functions.corr1d = function(X, K) {
-            const w = K.length;
-            const Y = [];
-            for (let i = 0; i <= X.length - w; i++) {
-              let sum = 0;
-              for (let j = 0; j < w; j++) {
-                sum += X[i + j] * K[j];
-              }
-              Y.push(sum);
-            }
-            return Y;
-          };
-          output = ''; // 函数定义无输出
-        }
-        // 执行corr1d(X, K)
-        else if (code.includes('corr1d(X, K)') && pythonEnv.functions.corr1d) {
-          const X = pythonEnv.variables.X || [0, 1, 2, 3, 4, 5, 6];
-          const K = pythonEnv.variables.K || [1, 2];
-          const result = pythonEnv.functions.corr1d(X, K);
-          output = `tensor([${result.map(v => `${v.toFixed(0)}.`).join(', ')}])`;
-        }
-        // 变量赋值
-        else if (code.includes('X, K = torch.tensor')) {
-          pythonEnv.variables.X = [0, 1, 2, 3, 4, 5, 6];
-          pythonEnv.variables.K = [1, 2];
-          output = ''; // 赋值无输出
-        }
-        // 处理print语句
-        else if (code.includes('print(')) {
-          const printRegex = /print\((.+?)\)/g;
-          const outputs = [];
-          let match;
-          while ((match = printRegex.exec(code)) !== null) {
-            try {
-              let printContent = match[1];
-              if (printContent.includes('f"') || printContent.includes("f'")) {
-                printContent = printContent
-                  .replace(/f["'](.+?)["']/g, '$1')
-                  .replace(/\{(.+?)\}/g, (_, expr) => {
-                    if (expr.includes('.shape')) return '[形状]';
-                    return '{值}';
-                  });
-              }
-              printContent = printContent.replace(/["']/g, '');
-              outputs.push(printContent);
-            } catch (e) {
-              outputs.push(match[1]);
-            }
-          }
-          output = outputs.join('\n');
-        }
-        // 其他代码
-        else if (code.includes('def ') || code.includes('class ')) {
-          output = '';
-        } else if (code.includes('=') && !code.includes('print')) {
-          output = '';
-        } else {
-          output = '';
-        }
-      } else if (cell.language === 'javascript') {
-        output = eval(code);
+      const { result } = await runNotebookCode(code, cell.language || 'python');
+      if (result.success) {
+        output = result.output && result.output.length ? result.output : '执行完成';
       } else {
-        output = '';
+        hasError = true;
+        const pieces = [];
+        if (result.output) pieces.push(result.output);
+        if (result.message) pieces.push(result.message);
+        if (result.traceback) pieces.push(result.traceback);
+        output = pieces.filter(Boolean).join('\n').trim() || '执行失败';
       }
-    } catch (e) {
-      output = `错误: ${e.message}`;
+    } catch (error) {
+      console.warn('Notebook 远程执行失败，使用本地模拟环境', error);
+      output = executeCode(cell);
+      hasError = output.startsWith('错误:');
     }
 
     cell.output = output;
     
-    // 更新或创建输出区域
     const cellContent = cellDiv.querySelector('.cell-content');
     if (cellContent) {
       let outputDiv = cellContent.querySelector('.cell-output');
       
       if (output) {
-    if (!outputDiv) {
-      outputDiv = document.createElement('div');
-      outputDiv.className = 'cell-output';
+        if (!outputDiv) {
+          outputDiv = document.createElement('div');
+          outputDiv.className = 'cell-output';
           cellContent.appendChild(outputDiv);
-    }
-    outputDiv.textContent = output;
-    
-    if (output.startsWith('错误:')) {
-      outputDiv.classList.add('error');
-    } else {
-      outputDiv.classList.remove('error');
+        }
+        outputDiv.textContent = output;
+        
+        if (hasError) {
+          outputDiv.classList.add('error');
+        } else {
+          outputDiv.classList.remove('error');
         }
       } else if (outputDiv) {
         outputDiv.remove();
@@ -1362,6 +1401,32 @@
     if (!container) return;
 
     container.innerHTML = '';
+    const notebookShell = document.createElement('div');
+    notebookShell.className = 'notebook-shell';
+
+    const notebookToolbar = document.createElement('div');
+    notebookToolbar.className = 'notebook-toolbar';
+    notebookToolbar.innerHTML = `
+      <div class="notebook-toolbar__info">
+        <div class="notebook-toolbar__title">交互式 Notebook</div>
+        <div class="notebook-toolbar__subtitle">Python · PyTorch (轻量代码)</div>
+      </div>
+      <div class="notebook-toolbar__actions">
+        <button class="notebook-action" id="nbRunAll">运行全部</button>
+        <button class="notebook-action" id="nbAddCode">+ 代码单元格</button>
+        <button class="notebook-action" id="nbAddMarkdown">+ Markdown 文本</button>
+        <div class="notebook-settings">
+          <button class="notebook-action notebook-action--ghost" id="nbSettingsToggle">设置</button>
+          <div class="notebook-settings__panel" id="nbSettingsPanel">
+            <p>Notebook 设置</p>
+            <button data-action="add-code">新增代码单元格</button>
+            <button data-action="add-markdown">新增 Markdown 单元格</button>
+            <button data-action="reset-session">重置 Python 会话</button>
+          </div>
+        </div>
+      </div>
+    `;
+
     const notebookDiv = document.createElement('div');
     notebookDiv.className = 'notebook-container';
 
@@ -1417,7 +1482,71 @@
     }, { once: false });
 
     notebookDiv.appendChild(addCellBtn);
-    container.appendChild(notebookDiv);
+    notebookShell.appendChild(notebookToolbar);
+    notebookShell.appendChild(notebookDiv);
+    container.appendChild(notebookShell);
+
+    const nbRunAllBtn = notebookToolbar.querySelector('#nbRunAll');
+    const nbAddCodeBtn = notebookToolbar.querySelector('#nbAddCode');
+    const nbAddMarkdownBtn = notebookToolbar.querySelector('#nbAddMarkdown');
+    const nbSettingsToggle = notebookToolbar.querySelector('#nbSettingsToggle');
+    const nbSettingsPanel = notebookToolbar.querySelector('#nbSettingsPanel');
+
+    if (nbRunAllBtn) {
+      nbRunAllBtn.addEventListener('click', async () => {
+        nbRunAllBtn.disabled = true;
+        nbRunAllBtn.textContent = '运行中...';
+        try {
+          await runAllCodeCells();
+        } finally {
+          nbRunAllBtn.disabled = false;
+          nbRunAllBtn.textContent = '运行全部';
+        }
+      });
+    }
+    if (nbAddCodeBtn) {
+      nbAddCodeBtn.addEventListener('click', () => {
+        createNotebookCell('code', '', 'python');
+        rerenderNotebook();
+      });
+    }
+    if (nbAddMarkdownBtn) {
+      nbAddMarkdownBtn.addEventListener('click', () => {
+        createNotebookCell('markdown', '## Markdown 笔记\n在这里记录你的思考与观察。');
+        rerenderNotebook();
+      });
+    }
+    if (nbSettingsToggle && nbSettingsPanel) {
+      nbSettingsToggle.addEventListener('click', (e) => {
+        e.stopPropagation();
+        nbSettingsPanel.classList.toggle('is-visible');
+        if (nbSettingsPanel.classList.contains('is-visible')) {
+          setTimeout(() => {
+            const closePanel = (evt) => {
+              if (!nbSettingsPanel.contains(evt.target) && evt.target !== nbSettingsToggle) {
+                nbSettingsPanel.classList.remove('is-visible');
+              }
+            };
+            document.addEventListener('click', closePanel, { once: true });
+          }, 0);
+        }
+      });
+      const settingButtons = nbSettingsPanel.querySelectorAll('button[data-action]');
+      settingButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const action = btn.dataset.action;
+          if (action === 'add-code') {
+            createNotebookCell('code', '', 'python');
+          } else if (action === 'add-markdown') {
+            createNotebookCell('markdown', '## Markdown 笔记\n在这里记录你的思考与观察。');
+          } else if (action === 'reset-session') {
+            resetNotebookSession();
+          }
+          nbSettingsPanel.classList.remove('is-visible');
+          rerenderNotebook();
+        });
+      });
+    }
   }
 
   function renderDetailSection(key) {
@@ -3725,8 +3854,16 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
   const codeRunnerContent = qs('#codeRunnerContent');
 
   if (runAllCodeBtn) {
-    runAllCodeBtn.addEventListener('click', () => {
-      runAllCodeCells();
+    runAllCodeBtn.addEventListener('click', async () => {
+      const originalText = runAllCodeBtn.textContent;
+      runAllCodeBtn.disabled = true;
+      runAllCodeBtn.textContent = '运行中...';
+      try {
+        await runAllCodeCells();
+      } finally {
+        runAllCodeBtn.disabled = false;
+        runAllCodeBtn.textContent = originalText;
+      }
     });
   }
 
@@ -3743,7 +3880,7 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     });
   }
 
-  function runAllCodeCells() {
+  async function runAllCodeCells() {
     if (!codeRunnerContent) return;
     
     // 获取所有代码单元格
@@ -3763,7 +3900,7 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     codeRunnerContent.innerHTML = '';
     
     // 依次运行每个代码块
-    codeCells.forEach((cell, index) => {
+    for (const [index, cell] of codeCells.entries()) {
       const blockDiv = document.createElement('div');
       blockDiv.className = 'runner-code-block';
       
@@ -3782,23 +3919,35 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
       blockDiv.appendChild(bodyDiv);
       
       // 运行代码并显示输出
+      let output = '';
+      let isError = false;
       try {
-        const output = executeCode(cell);
-        if (output) {
-          const outputDiv = document.createElement('div');
-          outputDiv.className = 'runner-output success';
-          outputDiv.textContent = output;
-          blockDiv.appendChild(outputDiv);
+        const { result } = await runNotebookCode(cell.content, cell.language || 'python');
+        if (result.success) {
+          output = result.output && result.output.length ? result.output : '执行完成';
+        } else {
+          isError = true;
+          const pieces = [];
+          if (result.output) pieces.push(result.output);
+          if (result.message) pieces.push(result.message);
+          if (result.traceback) pieces.push(result.traceback);
+          output = pieces.filter(Boolean).join('\n').trim() || '执行失败';
         }
-      } catch (e) {
+      } catch (error) {
+        console.warn('批量执行 Notebook 失败，使用本地模拟', error);
+        output = executeCode(cell);
+        isError = output.startsWith('错误:');
+      }
+      
+      if (output) {
         const outputDiv = document.createElement('div');
-        outputDiv.className = 'runner-output error';
-        outputDiv.textContent = `错误: ${e.message}`;
+        outputDiv.className = `runner-output ${isError ? 'error' : 'success'}`;
+        outputDiv.textContent = output;
         blockDiv.appendChild(outputDiv);
       }
       
       codeRunnerContent.appendChild(blockDiv);
-    });
+    }
   }
 
   function executeCode(cell) {
@@ -3982,18 +4131,53 @@ tensorboard>=2.13.0`
   ];
 
   // 切换到聊天界面
-  function switchToChat(initialQuery = null) {
+  function switchToChat(initialQuery = null, forcedAgent = null) {
     const qaWelcome = document.getElementById('qaWelcome');
     const qaChat = document.getElementById('qaChat');
     
     if (qaWelcome) qaWelcome.style.display = 'none';
     if (qaChat) qaChat.style.display = 'grid';
     
+    // 获取选择的 Agent 类型
+    const agentTypeSelect = document.getElementById('agentTypeSelect');
+    if (forcedAgent && agentTypeSelect) {
+      agentTypeSelect.value = forcedAgent;
+    }
+    const selectedAgent = forcedAgent || (agentTypeSelect ? agentTypeSelect.value : 'paper');
+    
+    // 切换到对应的标签页
+    const qaTabs = document.querySelectorAll('.qa__tab');
+    qaTabs.forEach(tab => {
+      tab.classList.remove('is-active');
+      if (tab.dataset.tab === selectedAgent) {
+        tab.classList.add('is-active');
+      }
+    });
+    
+    // 显示对应的欢迎消息
+    updateWelcomeMessage(selectedAgent);
+    
     // 如果有初始查询，发送它
     if (initialQuery) {
       qaInput.value = initialQuery;
       sendQaMessage();
     }
+  }
+  
+  // 更新欢迎消息函数
+  function updateWelcomeMessage(agentType) {
+    const messages = {
+      'paper': '已切换到文献模式，我能帮你检索相关文献。',
+      'research': '已切换到科研模式，我能为你提供研究建议和方法指导。',
+      'code': '已切换到代码模式，我是基于 Aider AI 的代码助手，可以帮你编写、修改和优化代码。你可以：\n\n• 描述你想实现的功能，我会生成代码\n• 提供现有代码，我会帮你改进或修复bug\n• 询问代码相关的问题\n• 让我帮你重构或优化代码'
+    };
+    
+    qaMessages.innerHTML = `<div class="msg msg--ai">
+      <div class="msg__avatar">AI</div>
+      <div class="msg__bubble">
+        <div class="msg__content" style="white-space: pre-line;">${messages[agentType] || messages.paper}</div>
+      </div>
+    </div>`;
   }
 
   // 绑定欢迎页面的输入框和发送按钮
@@ -4032,6 +4216,10 @@ tensorboard>=2.13.0`
       switchToChat();
     }
     
+    // 获取当前激活的标签
+    const activeTab = document.querySelector('.qa__tab.is-active');
+    const currentMode = activeTab ? activeTab.dataset.tab : 'paper';
+    
     qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--user">
       <div class="msg__avatar">你</div>
       <div class="msg__bubble">
@@ -4039,36 +4227,948 @@ tensorboard>=2.13.0`
       </div>
     </div>`);
     
-    // 模拟AI回复
-    setTimeout(() => {
+    qaMessages.scrollTop = qaMessages.scrollHeight;
+    qaInput.value = '';
+    
+    // 保存用户消息到会话历史
+    saveMessageToHistory('user', text, currentMode);
+    
+    // 根据不同模式处理消息
+    if (currentMode === 'code') {
+      handleCodeMessage(text);
+    } else if (currentMode === 'research') {
+      handleResearchMessage(text);
+    } else {
+      handlePaperMessage(text);
+    }
+  }
+  
+  // 处理代码模式消息
+  async function handleCodeMessage(text) {
+    // 显示思考中状态
+    const thinkingMsg = document.createElement('div');
+    thinkingMsg.className = 'msg msg--ai msg--thinking';
+    thinkingMsg.innerHTML = `
+      <div class="msg__avatar">AI</div>
+      <div class="msg__bubble">
+        <div class="msg__content">
+          <div class="thinking-indicator">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </div>
+          正在分析你的需求并生成代码...
+        </div>
+      </div>
+    `;
+    qaMessages.appendChild(thinkingMsg);
+    qaMessages.scrollTop = qaMessages.scrollHeight;
+    
+    try {
+      // 调用后端 Aider AI API
+      const API_BASE_URL = getApiBaseUrl();
+      const response = await fetch(`${API_BASE_URL}/api/code/chat`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: text,
+          language: getSelectedLanguage(),
+          context: {
+            files: [],
+            conversation_history: []
+          }
+        })
+      });
+      
+      const result = await response.json();
+      
+      console.log('API 返回结果:', result);
+      console.log('result.success:', result.success);
+      console.log('result.files:', result.files);
+      
+      // 移除思考中消息
+      thinkingMsg.remove();
+      
+      if (result.success) {
+        // 显示AI响应
+        const responseText = result.response || result.message;
+        
+        // 如果有生成的文件，更新文件列表
+        let filesToDisplay = [];
+        if (result.files && result.files.length > 0) {
+          console.log('API 返回了文件，数量:', result.files.length);
+          filesToDisplay = result.files;
+          updateGeneratedFiles(result.files);
+          
+          // 启用文件按钮
+          if (qaFilesBtn) {
+            qaFilesBtn.disabled = false;
+            hasGeneratedFiles = true;
+            console.log('文件按钮已启用');
+          }
+        } else {
+          console.info('API 已成功返回文本，但没有附带文件，直接展示文本响应。');
+          filesToDisplay = [];
+        }
+        
+        // 使用打字机效果显示消息和代码
+        try {
+          await displayMessageWithTyping('ai', responseText, getCurrentAgentMode(), filesToDisplay);
+        } catch (typingError) {
+          console.error('打字机效果显示失败:', typingError);
+          // 降级：直接显示消息
     qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--ai">
       <div class="msg__avatar">AI</div>
       <div class="msg__bubble">
-          <div class="msg__content">我已经为你生成了完整的代码框架，包括模型架构定义、训练脚本和依赖配置文件。你可以点击右上角的"文件"按钮查看和下载这些文件。</div>
+              <div class="msg__content">${responseText}</div>
       </div>
     </div>`);
-      qaMessages.scrollTop = qaMessages.scrollHeight;
+        }
+        
+      } else {
+        // 显示错误消息
+        console.error('API 返回错误:', result.message);
+        const errorMsg = `抱歉，代码生成失败: ${result.message}`;
+        await displayMessageWithTyping('ai', errorMsg, getCurrentAgentMode());
+      }
       
-      // 显示文件按钮
-      if (qaFilesBtn && !hasGeneratedFiles) {
-        qaFilesBtn.style.display = 'flex';
+    } catch (error) {
+      // 移除思考中消息
+      thinkingMsg.remove();
+      
+      // 如果API不可用，生成模拟代码文件
+      console.warn('Aider API 不可用，生成模拟代码文件:', error);
+      
+      // 生成实际的代码内容
+      const mockFiles = generateMockCodeFiles(text, getSelectedLanguage());
+      
+      // 更新文件列表
+      updateGeneratedFiles(mockFiles);
+      
+      const codeResponse = generateCodeResponse(text) + '\n\n注意: 当前使用模拟响应。要使用真实的 DeepSeek，请启动后端服务器。';
+      
+      // 使用打字机效果显示
+      try {
+        await displayMessageWithTyping('ai', codeResponse, getCurrentAgentMode(), mockFiles);
+      } catch (typingError) {
+        console.error('打字机效果显示失败:', typingError);
+        // 降级：直接显示
+        qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--ai">
+          <div class="msg__avatar">AI</div>
+          <div class="msg__bubble">
+            <div class="msg__content">${codeResponse}</div>
+          </div>
+        </div>`);
+      }
+      
+      // 启用文件按钮
+      if (qaFilesBtn) {
+        qaFilesBtn.disabled = false;
         hasGeneratedFiles = true;
       }
-    }, 1000);
+    }
     
+      qaMessages.scrollTop = qaMessages.scrollHeight;
+  }
+  
+  // 获取选中的编程语言
+  function getSelectedLanguage() {
+    const selectedLang = document.querySelector('.language-option input:checked');
+    return selectedLang ? selectedLang.value : 'python';
+  }
+  
+  // 更新生成的文件列表（累积模式，不覆盖）
+  function updateGeneratedFiles(files) {
+    console.log('更新文件列表，收到文件数:', files.length);
+    
+    // 不再清空，改为累积添加
+    // generatedFiles.length = 0;  // 注释掉，改为累积模式
+    
+    // 添加新文件（检查重复）
+    files.forEach((file, index) => {
+      // 检查是否已存在相同的文件（根据名称和内容）
+      const exists = generatedFiles.find(f => 
+        f.name === file.name && f.content === file.content
+      );
+      
+      if (!exists) {
+        const newFile = {
+          id: Date.now() + index + Math.random() * 1000,  // 确保唯一ID
+          name: file.name,
+          type: file.type || 'Text',
+          size: file.size || '0 KB',
+          time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' }),
+          content: file.content,
+          timestamp: Date.now()
+        };
+        generatedFiles.push(newFile);
+        console.log('添加文件:', newFile.name, '大小:', newFile.size, '时间:', newFile.time);
+      } else {
+        console.log('文件已存在，跳过:', file.name);
+      }
+    });
+    
+    console.log('文件列表更新完成，总文件数:', generatedFiles.length);
+    
+    // 保存到 localStorage
+    saveFilesToStorage();
+  }
+  
+  // 保存文件列表到 localStorage
+  function saveFilesToStorage() {
+    const currentProjectId = getCurrentProjectId();
+    if (currentProjectId) {
+      try {
+        const key = `agent_files_${currentProjectId}`;
+        localStorage.setItem(key, JSON.stringify(generatedFiles));
+        console.log('文件列表已保存到 localStorage');
+      } catch (e) {
+        console.error('保存文件列表失败:', e);
+      }
+    }
+  }
+  
+  // 从 localStorage 加载文件列表
+  function loadFilesFromStorage() {
+    const currentProjectId = getCurrentProjectId();
+    if (currentProjectId) {
+      try {
+        const key = `agent_files_${currentProjectId}`;
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          const files = JSON.parse(saved);
+          generatedFiles.length = 0;
+          generatedFiles.push(...files);
+          console.log('从 localStorage 加载了', files.length, '个文件');
+          
+          // 如果有文件，启用文件按钮
+          if (files.length > 0 && qaFilesBtn) {
+            qaFilesBtn.disabled = false;
+        hasGeneratedFiles = true;
+      }
+        }
+      } catch (e) {
+        console.error('加载文件列表失败:', e);
+      }
+    }
+  }
+  
+  // 获取当前项目ID
+  function getCurrentProjectId() {
+    const hash = window.location.hash;
+    const match = hash.match(/#project\/([^\/]+)/);
+    return match ? match[1] : null;
+  }
+  
+  // 获取当前 Agent 模式
+  function getCurrentAgentMode() {
+    const activeTab = document.querySelector('.qa__tab.is-active');
+    return activeTab ? activeTab.dataset.tab : 'paper';
+  }
+  
+  // HTML 转义函数
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+  
+  // 保存消息到会话历史
+  function saveMessageToHistory(role, content, agentMode, files = []) {
+    const projectId = getCurrentProjectId();
+    if (!projectId) return;
+    
+    try {
+      // 获取所有会话历史
+      const key = `agent_conversations_${projectId}`;
+      const saved = localStorage.getItem(key);
+      const conversations = saved ? JSON.parse(saved) : { paper: [], research: [], code: [] };
+      
+      // 确保当前模式的数组存在
+      if (!conversations[agentMode]) {
+        conversations[agentMode] = [];
+      }
+      
+      // 添加新消息
+      conversations[agentMode].push({
+        role: role,
+        content: content,
+        files: files,
+        timestamp: Date.now(),
+        time: new Date().toLocaleTimeString('zh-CN', { hour: '2-digit', minute: '2-digit' })
+      });
+      
+      // 保存回 localStorage
+      localStorage.setItem(key, JSON.stringify(conversations));
+      console.log(`会话已保存: ${role} 消息，模式: ${agentMode}`);
+    } catch (e) {
+      console.error('保存会话失败:', e);
+    }
+  }
+  
+  // 加载会话历史
+  function loadConversationHistory(projectId) {
+    if (!projectId) return;
+    
+    try {
+      const key = `agent_conversations_${projectId}`;
+      const saved = localStorage.getItem(key);
+      
+      if (saved) {
+        const conversations = JSON.parse(saved);
+        const currentMode = getCurrentAgentMode();
+        const messages = conversations[currentMode] || [];
+        
+        console.log(`加载会话历史: ${messages.length} 条消息，模式: ${currentMode}`);
+        
+        // 清空当前消息区
+        if (qaMessages) {
+          qaMessages.innerHTML = '';
+        }
+        
+        // 重新渲染所有历史消息
+        messages.forEach(msg => {
+          if (msg.role === 'user') {
+            qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--user">
+              <div class="msg__avatar">你</div>
+              <div class="msg__bubble">
+                <div class="msg__content">${escapeHtml(msg.content)}</div>
+              </div>
+            </div>`);
+          } else {
+            let messageHTML = `<div class="msg msg--ai">
+              <div class="msg__avatar">AI</div>
+              <div class="msg__bubble">
+                <div class="msg__content" style="white-space: pre-line;">${escapeHtml(msg.content)}</div>`;
+            
+            // 如果有文件，展示代码
+            if (msg.files && msg.files.length > 0) {
+              messageHTML += '<div class="msg-files-preview">';
+              msg.files.forEach(file => {
+                messageHTML += `
+                  <div class="file-preview-card">
+                    <div class="file-preview-header">
+                      <span class="file-icon">📄</span>
+                      <span class="file-name">${escapeHtml(file.name)}</span>
+                      <span class="file-size">${file.size || '0 KB'}</span>
+                    </div>
+                    <pre class="file-preview-code"><code>${escapeHtml(file.content)}</code></pre>
+                  </div>
+                `;
+              });
+              messageHTML += '</div>';
+            }
+            
+            messageHTML += `
+              </div>
+            </div>`;
+            
+            qaMessages.insertAdjacentHTML('beforeend', messageHTML);
+          }
+        });
+        
+        // 滚动到底部
+        if (qaMessages) {
     qaMessages.scrollTop = qaMessages.scrollHeight;
-    qaInput.value = '';
+        }
+      }
+    } catch (e) {
+      console.error('加载会话历史失败:', e);
+    }
+  }
+  
+  // 检查是否有会话历史
+  function checkHasConversationHistory(projectId) {
+    if (!projectId) return false;
+    
+    try {
+      const key = `agent_conversations_${projectId}`;
+      const saved = localStorage.getItem(key);
+      
+      if (saved) {
+        const conversations = JSON.parse(saved);
+        // 检查所有模式是否有消息
+        return Object.values(conversations).some(msgs => msgs && msgs.length > 0);
+      }
+    } catch (e) {
+      console.error('检查会话历史失败:', e);
+    }
+    
+    return false;
+  }
+  
+  // 处理科研模式消息（调用 DeepSeek API）
+  async function handleResearchMessage(text) {
+    // 显示思考中状态
+    const thinkingMsg = createThinkingMessage('正在分析研究问题...');
+    qaMessages.appendChild(thinkingMsg);
+    qaMessages.scrollTop = qaMessages.scrollHeight;
+    
+    try {
+      const API_BASE_URL = getApiBaseUrl();
+      const response = await fetch(`${API_BASE_URL}/api/code/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `作为科研助手，请为以下研究问题提供建议：${text}`,
+          language: 'research',
+          context: { mode: 'research' }
+        })
+      });
+      
+      const result = await response.json();
+      thinkingMsg.remove();
+      
+      const responseText = result.response || result.message || `关于"${text}"的研究建议：\n\n1. 首先需要进行文献综述\n2. 确定研究方法和实验设计\n3. 收集和分析数据\n4. 撰写研究报告`;
+      
+      // 使用打字机效果显示
+      try {
+        await displayMessageWithTyping('ai', responseText, 'research');
+      } catch (e) {
+        console.error('打字机效果失败:', e);
+        qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--ai">
+          <div class="msg__avatar">AI</div>
+          <div class="msg__bubble">
+            <div class="msg__content">${responseText}</div>
+          </div>
+        </div>`);
+      }
+      
+    } catch (error) {
+      thinkingMsg.remove();
+      const responseText = `关于"${text}"的研究建议：\n\n1. 首先需要进行文献综述，了解当前研究现状\n2. 确定研究方法和实验设计\n3. 收集和分析数据\n4. 撰写研究报告\n\n需要我详细展开某个部分吗？`;
+      try {
+        await displayMessageWithTyping('ai', responseText, 'research');
+      } catch (e) {
+        console.error('打字机效果失败:', e);
+        qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--ai">
+          <div class="msg__avatar">AI</div>
+          <div class="msg__bubble">
+            <div class="msg__content">${responseText}</div>
+          </div>
+        </div>`);
+      }
+    }
+  }
+  
+  // 处理文献模式消息（调用 DeepSeek API）
+  async function handlePaperMessage(text) {
+    // 显示思考中状态
+    const thinkingMsg = createThinkingMessage('正在检索相关文献...');
+    qaMessages.appendChild(thinkingMsg);
+    qaMessages.scrollTop = qaMessages.scrollHeight;
+    
+    try {
+      const API_BASE_URL = getApiBaseUrl();
+      const response = await fetch(`${API_BASE_URL}/api/code/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: `作为文献助手，请为以下主题推荐相关文献：${text}`,
+          language: 'paper',
+          context: { mode: 'paper' }
+        })
+      });
+      
+      const result = await response.json();
+      thinkingMsg.remove();
+      
+      const responseText = result.response || result.message || `我已为你检索到关于"${text}"的相关文献。以下是一些重要的研究成果：\n\n📄 相关文献将在这里显示\n\n需要我帮你分析某篇文献吗？`;
+      
+      // 使用打字机效果显示
+      try {
+        await displayMessageWithTyping('ai', responseText, 'paper');
+      } catch (e) {
+        console.error('打字机效果失败:', e);
+        qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--ai">
+          <div class="msg__avatar">AI</div>
+          <div class="msg__bubble">
+            <div class="msg__content">${responseText}</div>
+          </div>
+        </div>`);
+      }
+      
+    } catch (error) {
+      thinkingMsg.remove();
+      const responseText = `我已为你检索到关于"${text}"的相关文献。以下是一些重要的研究成果：\n\n📄 相关文献将在这里显示\n\n需要我帮你分析某篇文献吗？`;
+      try {
+        await displayMessageWithTyping('ai', responseText, 'paper');
+      } catch (e) {
+        console.error('打字机效果失败:', e);
+        qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--ai">
+          <div class="msg__avatar">AI</div>
+          <div class="msg__bubble">
+            <div class="msg__content">${responseText}</div>
+          </div>
+        </div>`);
+      }
+    }
+  }
+  
+  // 创建思考中消息
+  function createThinkingMessage(text = '正在思考...') {
+    const thinkingMsg = document.createElement('div');
+    thinkingMsg.className = 'msg msg--ai msg--thinking';
+    thinkingMsg.innerHTML = `
+      <div class="msg__avatar">AI</div>
+      <div class="msg__bubble">
+        <div class="msg__content">
+          <div class="thinking-indicator">
+            <span class="dot"></span>
+            <span class="dot"></span>
+            <span class="dot"></span>
+          </div>
+          ${text}
+        </div>
+      </div>
+    `;
+    return thinkingMsg;
+  }
+  
+  // 打字机效果显示消息
+  async function displayMessageWithTyping(role, content, agentMode, files = []) {
+    console.log('开始打字机效果显示');
+    console.log('内容长度:', content.length);
+    console.log('文件数:', files.length);
+    
+    try {
+      // 创建消息容器
+      const msgDiv = document.createElement('div');
+      msgDiv.className = role === 'user' ? 'msg msg--user' : 'msg msg--ai';
+      msgDiv.innerHTML = `
+        <div class="msg__avatar">${role === 'user' ? '你' : 'AI'}</div>
+        <div class="msg__bubble">
+          <div class="msg__content" style="white-space: pre-line;"></div>
+        </div>
+      `;
+      
+      qaMessages.appendChild(msgDiv);
+      const contentEl = msgDiv.querySelector('.msg__content');
+      
+      // 打字机效果
+      let currentIndex = 0;
+      const typingSpeed = 20; // 每个字符的延迟（毫秒）
+      
+      return new Promise((resolve, reject) => {
+        function typeNextChar() {
+          try {
+            if (currentIndex < content.length) {
+              contentEl.textContent += content[currentIndex];
+              currentIndex++;
+              qaMessages.scrollTop = qaMessages.scrollHeight;
+              setTimeout(typeNextChar, typingSpeed);
+            } else {
+              // 打字完成后，如果有文件，添加文件预览
+              console.log('打字完成，准备添加文件预览');
+              if (files && files.length > 0) {
+                let filesHTML = '<div class="msg-files-preview">';
+                files.forEach(file => {
+                  filesHTML += `
+                    <div class="file-preview-card">
+                      <div class="file-preview-header">
+                        <span class="file-icon">📄</span>
+                        <span class="file-name">${escapeHtml(file.name)}</span>
+                        <span class="file-size">${file.size || '0 KB'}</span>
+                      </div>
+                      <pre class="file-preview-code"><code>${escapeHtml(file.content)}</code></pre>
+                    </div>
+                  `;
+                });
+                filesHTML += '</div>';
+                msgDiv.querySelector('.msg__bubble').insertAdjacentHTML('beforeend', filesHTML);
+                console.log('文件预览已添加');
+              }
+              
+              // 保存到会话历史
+              saveMessageToHistory(role, content, agentMode, files);
+              console.log('打字机效果完成');
+              resolve();
+            }
+          } catch (err) {
+            console.error('打字机循环出错:', err);
+            reject(err);
+          }
+        }
+        
+        typeNextChar();
+      });
+    } catch (error) {
+      console.error('displayMessageWithTyping 函数出错:', error);
+      throw error;
+    }
+  }
+  
+  // 生成模拟代码文件
+  function generateMockCodeFiles(userQuery, language) {
+    console.log('开始生成模拟代码文件');
+    console.log('用户查询:', userQuery);
+    console.log('语言:', language);
+    
+    const query = userQuery.toLowerCase();
+    const files = [];
+    
+    // 根据用户查询生成相应的代码
+    if (query.includes('快速排序') || query.includes('quicksort') || query.includes('排序')) {
+      console.log('匹配到: 快速排序');
+      files.push({
+        id: Date.now(),
+        name: `quicksort.${getFileExtension(language)}`,
+        type: getLanguageName(language),
+        size: '1.2 KB',
+        time: '刚刚',
+        content: generateQuickSortCode(language)
+      });
+    } else if (query.includes('二分查找') || query.includes('binary search')) {
+      files.push({
+        id: Date.now(),
+        name: `binary_search.${getFileExtension(language)}`,
+        type: getLanguageName(language),
+        size: '0.8 KB',
+        time: '刚刚',
+        content: generateBinarySearchCode(language)
+      });
+    } else if (query.includes('web') || query.includes('网页') || query.includes('网站')) {
+      files.push(
+        {
+          id: Date.now(),
+          name: 'index.html',
+          type: 'HTML',
+          size: '2.1 KB',
+          time: '刚刚',
+          content: generateHTMLCode()
+        },
+        {
+          id: Date.now() + 1,
+          name: 'styles.css',
+          type: 'CSS',
+          size: '1.5 KB',
+          time: '刚刚',
+          content: generateCSSCode()
+        },
+        {
+          id: Date.now() + 2,
+          name: 'script.js',
+          type: 'JavaScript',
+          size: '1.8 KB',
+          time: '刚刚',
+          content: generateJSCode()
+        }
+      );
+    } else {
+      // 默认生成一个示例文件
+      console.log('使用默认代码生成');
+      files.push({
+        id: Date.now(),
+        name: `example.${getFileExtension(language)}`,
+        type: getLanguageName(language),
+        size: '1.0 KB',
+        time: '刚刚',
+        content: generateDefaultCode(language, userQuery)
+      });
+    }
+    
+    console.log('生成的文件数:', files.length);
+    files.forEach(f => console.log('文件:', f.name, '类型:', f.type));
+    
+    return files;
+  }
+  
+  // 生成快速排序代码
+  function generateQuickSortCode(language) {
+    if (language === 'python') {
+      return `def quicksort(arr):
+    """
+    快速排序算法实现
+    时间复杂度: O(n log n) 平均情况
+    空间复杂度: O(log n)
+    """
+    if len(arr) <= 1:
+        return arr
+    
+    pivot = arr[len(arr) // 2]
+    left = [x for x in arr if x < pivot]
+    middle = [x for x in arr if x == pivot]
+    right = [x for x in arr if x > pivot]
+    
+    return quicksort(left) + middle + quicksort(right)
+
+
+# 测试代码
+if __name__ == "__main__":
+    test_arr = [64, 34, 25, 12, 22, 11, 90]
+    print("原始数组:", test_arr)
+    sorted_arr = quicksort(test_arr)
+    print("排序后:", sorted_arr)`;
+    } else if (language === 'javascript') {
+      return `function quicksort(arr) {
+    /**
+     * 快速排序算法实现
+     * 时间复杂度: O(n log n) 平均情况
+     * 空间复杂度: O(log n)
+     */
+    if (arr.length <= 1) {
+        return arr;
+    }
+    
+    const pivot = arr[Math.floor(arr.length / 2)];
+    const left = arr.filter(x => x < pivot);
+    const middle = arr.filter(x => x === pivot);
+    const right = arr.filter(x => x > pivot);
+    
+    return [...quicksort(left), ...middle, ...quicksort(right)];
+}
+
+// 测试代码
+const testArr = [64, 34, 25, 12, 22, 11, 90];
+console.log("原始数组:", testArr);
+const sortedArr = quicksort(testArr);
+console.log("排序后:", sortedArr);`;
+    }
+    return `// ${language} 快速排序实现\n// 请根据具体语言实现`;
+  }
+  
+  // 生成二分查找代码
+  function generateBinarySearchCode(language) {
+    if (language === 'python') {
+      return `def binary_search(arr, target):
+    """
+    二分查找算法
+    前提: 数组必须已排序
+    时间复杂度: O(log n)
+    """
+    left, right = 0, len(arr) - 1
+    
+    while left <= right:
+        mid = (left + right) // 2
+        
+        if arr[mid] == target:
+            return mid
+        elif arr[mid] < target:
+            left = mid + 1
+        else:
+            right = mid - 1
+    
+    return -1  # 未找到
+
+
+# 测试代码
+if __name__ == "__main__":
+    sorted_arr = [11, 12, 22, 25, 34, 64, 90]
+    target = 25
+    result = binary_search(sorted_arr, target)
+    print(f"查找 {target}: 索引 {result}")`;
+    }
+    return `// ${language} 二分查找实现`;
+  }
+  
+  // 生成HTML代码
+  function generateHTMLCode() {
+    return `<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的网页</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <header>
+        <h1>欢迎来到我的网站</h1>
+        <nav>
+            <a href="#home">首页</a>
+            <a href="#about">关于</a>
+            <a href="#contact">联系</a>
+        </nav>
+    </header>
+    
+    <main>
+        <section id="home">
+            <h2>主页内容</h2>
+            <p>这是一个示例网页</p>
+        </section>
+    </main>
+    
+    <footer>
+        <p>&copy; 2024 我的网站</p>
+    </footer>
+    
+    <script src="script.js"></script>
+</body>
+</html>`;
+  }
+  
+  // 生成CSS代码
+  function generateCSSCode() {
+    return `* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: Arial, sans-serif;
+    line-height: 1.6;
+    color: #333;
+}
+
+header {
+    background: #35424a;
+    color: #ffffff;
+    padding: 20px;
+    text-align: center;
+}
+
+nav a {
+    color: #ffffff;
+    text-decoration: none;
+    padding: 0 15px;
+}
+
+main {
+    padding: 20px;
+    max-width: 1200px;
+    margin: 0 auto;
+}
+
+footer {
+    background: #35424a;
+    color: #ffffff;
+    text-align: center;
+    padding: 10px;
+    position: fixed;
+    bottom: 0;
+    width: 100%;
+}`;
+  }
+  
+  // 生成JavaScript代码
+  function generateJSCode() {
+    return `// 页面加载完成后执行
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('页面已加载');
+    
+    // 导航链接点击事件
+    const navLinks = document.querySelectorAll('nav a');
+    navLinks.forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            const targetId = this.getAttribute('href').substring(1);
+            const targetSection = document.getElementById(targetId);
+            if (targetSection) {
+                targetSection.scrollIntoView({ behavior: 'smooth' });
+            }
+        });
+    });
+});`;
+  }
+  
+  // 生成默认代码
+  function generateDefaultCode(language, query) {
+    if (language === 'python') {
+      return `"""
+${query}
+生成的 Python 代码示例
+"""
+
+def main():
+    print("Hello, World!")
+    print("这是根据您的需求生成的代码框架")
+    # TODO: 在这里添加具体实现
+
+if __name__ == "__main__":
+    main()`;
+    } else if (language === 'javascript') {
+      return `/**
+ * ${query}
+ * 生成的 JavaScript 代码示例
+ */
+
+function main() {
+    console.log("Hello, World!");
+    console.log("这是根据您的需求生成的代码框架");
+    // TODO: 在这里添加具体实现
+}
+
+main();`;
+    }
+    return `// ${query}\n// 代码框架`;
+  }
+  
+  // 获取文件扩展名
+  function getFileExtension(language) {
+    const extensions = {
+      'python': 'py',
+      'javascript': 'js',
+      'java': 'java',
+      'c': 'c'
+    };
+    return extensions[language] || 'txt';
+  }
+  
+  // 获取语言名称
+  function getLanguageName(language) {
+    const names = {
+      'python': 'Python',
+      'javascript': 'JavaScript',
+      'java': 'Java',
+      'c': 'C'
+    };
+    return names[language] || 'Text';
+  }
+  
+  // 生成代码响应（模拟Aider AI）
+  function generateCodeResponse(userQuery) {
+    // 这里将来会调用真实的Aider AI API
+    // 现在先返回模拟响应
+    const responses = {
+      'python': '我已经为你生成了Python代码。代码包含了完整的实现，包括必要的导入、函数定义和使用示例。',
+      'web': '我已经为你生成了Web应用代码，包括HTML、CSS和JavaScript文件。',
+      'api': '我已经为你生成了API接口代码，包括路由定义、控制器和数据模型。',
+      'default': '我已经为你生成了完整的代码框架，包括主要功能实现和配置文件。你可以点击右上角的"文件"按钮查看和下载这些文件。'
+    };
+    
+    const query = userQuery.toLowerCase();
+    if (query.includes('python') || query.includes('py')) {
+      return responses.python;
+    } else if (query.includes('web') || query.includes('网页') || query.includes('前端')) {
+      return responses.web;
+    } else if (query.includes('api') || query.includes('接口')) {
+      return responses.api;
+    }
+    
+    return responses.default;
   }
 
   qaTabs.forEach(tab => tab.addEventListener('click', () => {
     qaTabs.forEach(t => t.classList.remove('is-active'));
     tab.classList.add('is-active');
+    
+    // 切换标签时，加载该模式的会话历史
+    const projectId = getCurrentProjectId();
+    if (projectId) {
+      loadConversationHistory(projectId);
+    } else {
+      // 如果没有项目ID，显示默认欢迎消息
+      let modeText = '文献';
+      let welcomeMessage = '已切换到文献模式，我能帮你检索相关文献。';
+      
+      if (tab.dataset.tab === 'research') {
+        modeText = '科研';
+        welcomeMessage = '已切换到科研模式，我能为你提供研究建议和方法指导。';
+      } else if (tab.dataset.tab === 'code') {
+        modeText = '代码';
+        welcomeMessage = '已切换到代码模式，我是基于 Aider AI 的代码助手，可以帮你编写、修改和优化代码。你可以：\n\n• 描述你想实现的功能，我会生成代码\n• 提供现有代码，我会帮你改进或修复bug\n• 询问代码相关的问题\n• 让我帮你重构或优化代码';
+      }
+      
     qaMessages.innerHTML = `<div class="msg msg--ai">
       <div class="msg__avatar">AI</div>
       <div class="msg__bubble">
-        <div class="msg__content">已切换到 ${tab.dataset.tab === 'paper' ? '文献' : '科研'} 模式，我能为你做什么？</div>
+          <div class="msg__content" style="white-space: pre-line;">${welcomeMessage}</div>
       </div>
     </div>`;
+    }
   }));
 
   if (qaInput) {
@@ -4090,6 +5190,9 @@ tensorboard>=2.13.0`
 
   if (qaFilesBtn) {
     qaFilesBtn.addEventListener('click', () => {
+      console.log('文件按钮被点击，当前文件数:', generatedFiles.length);
+      console.log('文件列表:', generatedFiles);
+      
       if (filesModal) {
         renderFilesList();
         filesModal.classList.add('active');
@@ -4113,6 +5216,13 @@ tensorboard>=2.13.0`
 
   function renderFilesList() {
     if (!filesList) return;
+    
+    console.log('渲染文件列表，文件数:', generatedFiles.length);
+    
+    if (generatedFiles.length === 0) {
+      filesList.innerHTML = '<div class="files-empty">暂无生成的文件</div>';
+      return;
+    }
     
     filesList.innerHTML = generatedFiles.map(file => `
       <div class="file-item">
@@ -4167,11 +5277,14 @@ tensorboard>=2.13.0`
 
   // 划词工具栏功能
   const textToolbar = document.getElementById('textToolbar');
-  const askAIBtn = document.getElementById('askAI');
+  const generateVideoBtn = document.getElementById('generateVideoBtn');
   const highlightTextBtn = document.getElementById('highlightText');
   const highlightColors = document.getElementById('highlightColors');
   const underlineTextBtn = document.getElementById('underlineText');
   const strikeTextBtn = document.getElementById('strikeText');
+  const searchTextBtn = document.getElementById('searchText');
+  const searchOptions = document.getElementById('searchOptions');
+  const clearFormatBtn = document.getElementById('clearFormatBtn');
   
   let selectedText = '';
   let selectedRange = null;
@@ -4199,6 +5312,7 @@ tensorboard>=2.13.0`
       
       selectedText = text;
       selectedRange = selection.getRangeAt(0);
+      if (searchOptions) searchOptions.style.display = 'none';
       
       // 显示工具栏
       const rect = selectedRange.getBoundingClientRect();
@@ -4208,25 +5322,45 @@ tensorboard>=2.13.0`
     } else {
       textToolbar.style.display = 'none';
       highlightColors.style.display = 'none';
+      if (searchOptions) searchOptions.style.display = 'none';
     }
   });
 
   // 点击其他地方关闭工具栏
   document.addEventListener('mousedown', (e) => {
-    if (!textToolbar.contains(e.target) && !e.target.closest('.markdown-rendered')) {
+    if (textToolbar && !textToolbar.contains(e.target) && !e.target.closest('.markdown-rendered')) {
       textToolbar.style.display = 'none';
       highlightColors.style.display = 'none';
+      if (searchOptions) searchOptions.style.display = 'none';
     }
   });
 
-  // 询问AI
-  if (askAIBtn) {
-    askAIBtn.addEventListener('click', () => {
+  // 生成讲解视频
+  if (generateVideoBtn) {
+    generateVideoBtn.addEventListener('click', () => {
       if (selectedText) {
-        // 切换到AI聊天界面
-        switchToChat(selectedText);
+        // 触发生成讲解视频事件（接口待接入）
+        window.dispatchEvent(new CustomEvent('notebook:generateVideo', { 
+          detail: { text: selectedText } 
+        }));
+        
+        // 显示占位消息
+        if (qaMessages) {
+          qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--ai">
+            <div class="msg__avatar">AI</div>
+            <div class="msg__bubble">
+              <div class="msg__content">生成讲解视频接口待接入。\n选中内容: ${selectedText}</div>
+            </div>
+          </div>`);
+          qaMessages.scrollTop = qaMessages.scrollHeight;
+        } else {
+          alert(`生成讲解视频接口待接入。\n选中内容: ${selectedText}`);
+        }
+        
         textToolbar.style.display = 'none';
         window.getSelection().removeAllRanges();
+        selectedText = '';
+        selectedRange = null;
       }
     });
   }
@@ -4252,6 +5386,32 @@ tensorboard>=2.13.0`
       });
     });
   }
+
+  if (searchTextBtn && searchOptions) {
+    searchTextBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!selectedText) return;
+      searchOptions.style.display = searchOptions.style.display === 'none' ? 'flex' : 'none';
+    });
+  }
+
+  if (searchOptions) {
+    const optionButtons = searchOptions.querySelectorAll('button[data-type]');
+    optionButtons.forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        handleSearchAction(btn.dataset.type);
+      });
+    });
+  }
+
+  if (clearFormatBtn) {
+    clearFormatBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      clearFormatting();
+    });
+  }
+
 
   // 下划线
   if (underlineTextBtn) {
@@ -4284,12 +5444,16 @@ tensorboard>=2.13.0`
       
       saveAnnotations();
       window.getSelection().removeAllRanges();
+      selectedRange = null;
+      selectedText = '';
     } catch (e) {
       console.error('应用高亮失败:', e);
       // 备用方法：使用document.execCommand
       try {
         document.execCommand('backColor', false, color);
         saveAnnotations();
+        selectedRange = null;
+        selectedText = '';
       } catch (e2) {
         console.error('备用方法也失败:', e2);
       }
@@ -4309,11 +5473,15 @@ tensorboard>=2.13.0`
       
       saveAnnotations();
       window.getSelection().removeAllRanges();
+      selectedRange = null;
+      selectedText = '';
     } catch (e) {
       console.error('应用下划线失败:', e);
       try {
         document.execCommand('underline', false, null);
         saveAnnotations();
+        selectedRange = null;
+        selectedText = '';
       } catch (e2) {
         console.error('备用方法也失败:', e2);
       }
@@ -4333,6 +5501,8 @@ tensorboard>=2.13.0`
       
       saveAnnotations();
       window.getSelection().removeAllRanges();
+      selectedRange = null;
+      selectedText = '';
     } catch (e) {
       console.error('应用删除线失败:', e);
       try {
@@ -4341,6 +5511,108 @@ tensorboard>=2.13.0`
       } catch (e2) {
         console.error('备用方法也失败:', e2);
       }
+    }
+  }
+
+  function unwrapNode(node) {
+    const parent = node.parentNode;
+    if (!parent) return;
+    while (node.firstChild) {
+      parent.insertBefore(node.firstChild, node);
+    }
+    parent.removeChild(node);
+  }
+
+  function removeFormattingByClass(className) {
+    if (!selectedRange) return false;
+    let ancestor = selectedRange.commonAncestorContainer;
+    if (ancestor && ancestor.nodeType !== 1) {
+      ancestor = ancestor.parentElement;
+    }
+    if (!ancestor || !ancestor.querySelectorAll) return false;
+    const targets = ancestor.querySelectorAll(`.${className}`);
+    let changed = false;
+    targets.forEach(node => {
+      try {
+        if (selectedRange.intersectsNode(node)) {
+          unwrapNode(node);
+          changed = true;
+        }
+      } catch (e) {
+        // 忽略跨文档的节点
+      }
+    });
+    if (changed) {
+      saveAnnotations();
+    }
+    return changed;
+  }
+
+  function clearFormatting() {
+    // 清除整个内容区所有标注（不限于选中区域）
+    const content = document.getElementById('detailContent');
+    if (!content) return;
+    
+    const allHighlights = content.querySelectorAll('.text-highlight');
+    const allUnderlines = content.querySelectorAll('.text-underline');
+    const allStrikes = content.querySelectorAll('.text-strike');
+    
+    allHighlights.forEach(node => unwrapNode(node));
+    allUnderlines.forEach(node => unwrapNode(node));
+    allStrikes.forEach(node => unwrapNode(node));
+    
+    saveAnnotations();
+    
+    window.getSelection().removeAllRanges();
+    selectedRange = null;
+    selectedText = '';
+    if (textToolbar) textToolbar.style.display = 'none';
+    if (highlightColors) highlightColors.style.display = 'none';
+    if (searchOptions) searchOptions.style.display = 'none';
+    
+    alert('已清除所有标注');
+  }
+
+  function handleSearchAction(type) {
+    if (searchOptions) {
+      searchOptions.style.display = 'none';
+    }
+    if (type === 'cancel') return;
+    if (!selectedText) return;
+    const query = selectedText;
+    selectedText = '';
+    if (type === 'code') {
+      switchToChat(query, 'code');
+      window.getSelection().removeAllRanges();
+      textToolbar.style.display = 'none';
+      selectedRange = null;
+      return;
+    }
+    if (type === 'paper' || type === 'research') {
+      showSearchPlaceholder(type, query);
+      window.dispatchEvent(new CustomEvent('notebook:search', { detail: { type, query } }));
+      window.getSelection().removeAllRanges();
+      textToolbar.style.display = 'none';
+      selectedRange = null;
+    }
+  }
+
+  function showSearchPlaceholder(mode, query) {
+    const labels = {
+      paper: '文献搜索',
+      research: '科研搜索'
+    };
+    const message = `${labels[mode] || '搜索'}接口待接入。\n关键词: ${query}`;
+    if (qaMessages) {
+      qaMessages.insertAdjacentHTML('beforeend', `<div class="msg msg--ai">
+        <div class="msg__avatar">AI</div>
+        <div class="msg__bubble">
+          <div class="msg__content" style="white-space: pre-line;">${message}</div>
+        </div>
+      </div>`);
+      qaMessages.scrollTop = qaMessages.scrollHeight;
+    } else {
+      alert(message);
     }
   }
 

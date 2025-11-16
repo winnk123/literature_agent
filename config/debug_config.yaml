@@ -22,7 +22,7 @@ models:
     temperature: 0.3  # Lower temperature for more deterministic results
 
   openai:
-    model_name: "gpt-4o-mini"  # Use mini model for faster responses
+    model_name: "qwen3-vl-plus-2025-09-23"  # Use mini model for faster responses
     api_key: ""  # Set via environment variable OPENAI_API_KEY
     max_tokens: 1024  # Reduced for faster generation
     temperature: 0.3  # Lower temperature for speed

@@ -8,7 +8,8 @@ import json
 import logging
 import os
 from typing import Dict, List, Optional, Any, Union
-
+import mimetypes
+import base64
 import openai
 from openai import AsyncOpenAI
 from json_repair import repair_json
@@ -119,6 +120,108 @@ class S1Model(BaseModel):
         except Exception as e:
             logger.error(f"Error generating response from InternS1: {e}")
             raise
+        
+    def _image_to_payload(self, image_reference: str) -> Dict[str, Any]:
+      """
+        把单张图转成 Intern-S1 需要的 {
+        "type": "image_url",
+        "image_url": {"url": "<data-url 或 http url>"}
+      }
+      """
+    # 1. 远程图
+      if image_reference.startswith(("http://", "https://")):
+        return {
+            "type": "image_url",
+            "image_url": {"url": image_reference}
+        }
+
+    # 2. 本地图 -> data URL
+      if not os.path.exists(image_reference):
+        raise FileNotFoundError(f"Image not found: {image_reference}")
+      mime_type, _ = mimetypes.guess_type(image_reference)
+      mime_type = mime_type or "image/png"
+      with open(image_reference, "rb") as f:
+        encoded = base64.b64encode(f.read()).decode("utf-8")
+      data_url = f"data:{mime_type};base64,{encoded}"
+
+      return {
+        "type": "image_url",
+        "image_url": {"url": data_url}
+     }       
+        
+    async def generate_multimodal_json(
+        self,
+        prompt: str,
+        schema: Dict[str, Any],
+        images: Optional[List[str]] = None,
+        system_prompt: Optional[str] = None,
+        temperature: Optional[float] = None,
+        **kwargs,
+    ) -> Dict[str, Any]:
+        """
+        Intern-S1 多模态 JSON 生成
+        支持 http/url 或本地文件（自动转 data URL）
+        返回: 保证 dict 且符合 schema
+        """
+        messages: List[Dict[str, Any]] = []
+
+        # 1. system prompt 带 schema
+        schema_instruction = (
+            "You must respond with valid JSON only, no extra text. "
+            f"JSON must match this schema:\n{json.dumps(schema, indent=2)}"
+        )
+        enhanced_system = f"{system_prompt or ''}\n\n{schema_instruction}".strip()
+        messages.append({"role": "system", "content": enhanced_system})
+
+        # 2. 用户内容 = text + 图片
+        user_content: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
+        for img in images or []:
+            try:
+                if img.startswith("http"):
+                    user_content.append({"type": "image_url", "image_url": {"url": img}})
+                else:
+                    if not os.path.exists(img):
+                        raise FileNotFoundError(img)
+                    mime, _ = mimetypes.guess_type(img)
+                    mime = mime or "image/png"
+                    with open(img, "rb") as f:
+                        encoded = base64.b64encode(f.read()).decode()
+                    url = f"data:{mime};base64,{encoded}"
+                    user_content.append({"type": "image_url", "image_url": {"url": url}})
+            except Exception as exc:
+                logger.error(f"Intern-S1 failed to process image '{img}': {exc}")
+                raise
+        messages.append({"role": "user", "content": user_content})
+
+        # 3. 调用参数
+        payload = {
+            "model": self.model_name,          # 用 intern-s1-vl
+            "messages": messages,
+            "temperature": temperature if temperature is not None else self.temperature,
+            **kwargs,
+        }
+
+        # 4. 若后端支持 json_object 则一步到位，否则退化
+        try:
+            payload["response_format"] = {"type": "json_object"}
+            response = await self.client.chat.completions.create(**payload)
+            raw = response.choices[0].message.content
+            return json.loads(raw)
+        except Exception as e:
+            logger.warning("S1 does not accept response_format, fall back to prompt-level JSON")
+            payload.pop("response_format", None)
+            response = await self.client.chat.completions.create(**payload)
+            raw = response.choices[0].message.content
+            if "</think>" in raw:                # 去掉思维链
+                raw = raw.split("</think>", 1)[1].strip()
+            try:
+                return json.loads(raw)
+            except json.JSONDecodeError:
+                fixed = repair_json(raw)
+                if fixed:
+                    return json.loads(fixed)
+                raise ValueError("Invalid JSON even after repair")
+        
     async def generate_with_json_output(self, 
                                        prompt: str, 
                                        json_schema: Dict[str, Any],

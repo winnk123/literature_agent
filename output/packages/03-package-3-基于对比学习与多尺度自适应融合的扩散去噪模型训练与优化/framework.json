@@ -1,0 +1,122 @@
+{
+  "package": {
+    "package_title": "Package 3: 基于对比学习与多尺度自适应融合的扩散去噪模型训练与优化",
+    "overview": "本教程包聚焦于图像去噪模型的核心训练阶段，重点解决如何在保留语义细节的同时高效去除复杂噪声。我们将构建一个端到端的扩散去噪网络，引入**对比学习**增强特征判别性，结合**感知损失函数**对齐人类视觉偏好，并设计**多尺度特征融合**与**自适应降噪模块**以提升对真实世界噪声的鲁棒性。此步骤是连接前期LLM语义引导架构与后期轻量化部署的关键桥梁，直接决定最终图像质量能否达到PSNR ≥ 35 dB、SSIM ≥ 0.92的目标。",
+    "project_structure": "package-03-diffusion-denoising-training/\n├── README.md\n├── requirements.txt\n├── src/\n│   ├── main.py\n│   ├── models/\n│   │   ├── denoiser.py\n│   │   ├── adaptive_fusion.py\n│   │   └── loss_functions.py\n│   ├── data/\n│   │   └── dataloader.py\n│   └── utils/\n│       ├── metrics.py\n│       └── visualization.py\n├── configs/\n│   └── train_config.yaml\n├── data/\n│   ├── train/\n│   │   ├── noisy/\n│   │   └── clean/\n│   └── val/\n│       ├── noisy/\n│       └── clean/\n└── docs/\n    └── usage.md",
+    "theoretical_foundation": "同学们，今天我们进入图像去噪研究中最激动人心也最具挑战性的环节：**如何让模型不仅‘学会去噪’，更要‘聪明地去噪’？** 在前两个包中，我们已经准备了带语义标签的真实噪声数据（Package 1），并搭建了由大语言模型引导的扩散去噪主干架构（Package 2）。现在的问题是：仅靠标准的均方误差（MSE）损失训练，模型往往会生成过度平滑、缺乏纹理细节的图像——就像用砂纸打磨一幅油画，虽然表面干净了，但笔触和层次感却消失了。\n\n为了解决这个问题，我们必须引入更符合人类感知的优化目标。这里的核心思想是：**图像质量不能只看像素值是否接近，更要看高层语义结构是否一致**。为此，我们采用两种关键技术：**对比学习（Contrastive Learning）** 和 **感知损失（Perceptual Loss）**。对比学习通过拉近“干净图像与其去噪结果”的特征距离，同时推远“干净图像与噪声图像”的距离，迫使网络学习到更具判别性的表示。其目标函数可形式化为：\n$$\\mathcal{L}_{\\text{cont}} = -\\log \\frac{\\exp(\\text{sim}(f(x_{\\text{clean}}), f(\\hat{x})) / \\tau)}{\\sum_{x^- \\in \\mathcal{N}} \\exp(\\text{sim}(f(x_{\\text{clean}}), f(x^-)) / \\tau)}$$\n其中 $f(\\cdot)$ 是特征提取器（通常取自预训练VGG或CLIP），$\\text{sim}(\\cdot,\\cdot)$ 是余弦相似度，$\\tau$ 是温度系数，$\\mathcal{N}$ 是负样本集合（如其他噪声图像）。这种机制显著提升了模型对语义内容的敏感度 [Zhang, 2021]。\n\n与此同时，感知损失则直接利用预训练视觉模型的中间层特征来衡量重建质量。不同于MSE关注像素级差异，感知损失计算的是深层特征空间的距离：\n$$\\mathcal{L}_{\\text{perc}} = \\sum_{l} \\lambda_l \\| \\phi_l(x_{\\text{clean}}) - \\phi_l(\\hat{x}) \\|_2^2$$\n这里 $\\phi_l(\\cdot)$ 表示第 $l$ 层的特征图，$\\lambda_l$ 是权重系数。由于这些特征已经编码了边缘、纹理和物体部件等高级信息，最小化该损失能有效保留图像的结构性细节 [Johnson, 2016]。在我们的框架中，我们采用CLIP-ViT作为 $\\phi$，因为它已在大规模图文对上预训练，对语义一致性有更强的建模能力 [Radford, 2021]。\n\n然而，仅靠损失函数还不够。真实噪声往往在不同尺度上表现出不同特性——高频区域（如树叶、发丝）易受椒盐噪声影响，而低频区域（如天空、墙面）则可能被高斯模糊主导。因此，我们设计了一个**多尺度特征融合模块**，在U-Net的跳跃连接中引入自适应权重。具体而言，在解码器的每一级，我们计算来自编码器对应层级的特征 $F_{\\text{enc}}$ 与当前解码特征 $F_{\\text{dec}}$ 的通道注意力权重：\n$$W = \\sigma(\\text{MLP}(\\text{GAP}([F_{\\text{enc}}; F_{\\text{dec}}])))$$\n其中 $\\text{GAP}$ 是全局平均池化，$[\\cdot;\\cdot]$ 表示拼接，$\\sigma$ 是Sigmoid函数。最终融合特征为 $F_{\\text{fused}} = W \\odot F_{\\text{enc}} + (1-W) \\odot F_{\\text{dec}}$。这种动态融合机制让网络能根据局部内容自适应地决定“信任原始特征还是重建特征”，极大提升了对复杂噪声的鲁棒性。\n\n此外，我们还引入**自适应降噪模块（Adaptive Denoising Block）**，它根据输入噪声水平动态调整网络行为。该模块接收时间步嵌入 $t$（来自扩散过程）和文本条件 $c$（来自LLM），通过轻量级MLP生成缩放和平移参数 $\\gamma(t,c)$、$\\beta(t,c)$，用于调制特征：\n$$\\hat{F} = \\gamma(t,c) \\cdot \\text{LayerNorm}(F) + \\beta(t,c)$$\n这类似于AdaIN [Huang, 2017]，但条件来源更丰富。实验表明，这种设计使模型能针对不同噪声强度和语义提示（如“保留锐利边缘” vs “柔和过渡”）做出差异化响应。\n\n为什么选择这套组合？因为单一损失函数无法兼顾所有目标。MSE保证基础保真度，对比学习增强语义判别力，感知损失对齐人类视觉——三者互补。而多尺度融合与自适应模块则解决了传统U-Net在跨尺度信息整合上的不足。正如 [Dhariwal, 2021] 所示，扩散模型的质量高度依赖于损失函数的设计；而 [Zhou, 2022] 则证明了条件提示学习能显著提升VLM的下游任务表现。我们的方法正是这些思想在去噪任务中的创新融合。\n\n当然，也有权衡。对比学习需要构建负样本队列，增加内存开销；感知损失依赖大型预训练模型，可能引入域偏移。但我们通过冻结CLIP特征提取器、使用小批量负采样等策略加以缓解。最终，这套训练框架在保持Latent Diffusion模型高效性的同时（如 Package 2 所述），显著提升了去噪结果的视觉质量和语义一致性。\n\n总结一下：本步骤的理论核心是**通过多目标优化与自适应架构，让去噪过程既忠实于原始内容，又符合人类感知**。这不仅是技术实现，更是对“什么是好图像”这一根本问题的回答——好图像不仅是数值准确的，更是语义完整、视觉愉悦的。",
+    "concept_explanations": [
+      {
+        "concept_name": "对比学习（Contrastive Learning）",
+        "explanation": "同学们，想象你正在教一个孩子识别猫。你不会只给他看一张猫的照片，而是会同时展示猫、狗、兔子等不同动物，并告诉他：“看，这是猫；那些不是。”通过比较相似与不相似的例子，孩子的大脑逐渐建立起“猫”的概念边界。**对比学习正是模拟这一认知过程的机器学习方法**。\n\n在技术层面，对比学习的目标是让模型学会将“正样本对”（positive pairs）在特征空间中拉近，同时将“负样本对”（negative pairs）推远。所谓正样本对，是指语义相同或高度相关的样本，比如同一张干净图像及其经过轻微扰动的版本；负样本对则是语义无关的样本，比如这张干净图像与一张完全不同的噪声图像。\n\n具体到我们的去噪任务，正样本对是 $(x_{\\text{clean}}, \\hat{x})$ —— 即原始干净图像和模型去噪后的输出；负样本对则是 $(x_{\\text{clean}}, x_{\\text{noisy}}^{(i)})$，其中 $x_{\\text{noisy}}^{(i)}$ 是批次中其他噪声图像。模型通过一个特征编码器 $f(\\cdot)$（例如ResNet或ViT）将图像映射到高维向量空间，然后计算这些向量之间的相似度。\n\n最常用的相似度度量是**余弦相似度**，定义为：\n$$\\text{sim}(u, v) = \\frac{u^\\top v}{\\|u\\| \\|v\\|}$$\n这个值介于-1到1之间，越接近1表示方向越一致（即越相似）。\n\n为了训练模型，我们使用**InfoNCE损失**（Noise-Contrastive Estimation的一种形式），其公式为：\n$$\\mathcal{L}_{\\text{cont}} = -\\log \\frac{\\exp(\\text{sim}(f(x_{\\text{clean}}), f(\\hat{x})) / \\tau)}{\\exp(\\text{sim}(f(x_{\\text{clean}}), f(\\hat{x})) / \\tau) + \\sum_{i=1}^{N} \\exp(\\text{sim}(f(x_{\\text{clean}}), f(x_{\\text{noisy}}^{(i)})) / \\tau)}$$\n这里 $\\tau > 0$ 是一个超参数，称为**温度系数**（temperature）。当 $\\tau$ 较小时，模型对相似度差异更敏感；当 $\\tau$ 较大时，分布更平滑。通常 $\\tau$ 设为0.07左右效果较好。\n\n为什么这个损失有效？因为分母中的负样本项构成了一个“竞争环境”。模型必须确保正样本对的相似度显著高于所有负样本对，才能使损失变小。这就迫使特征编码器学习到能够区分语义内容的表示——即使像素值有差异，只要语义一致，特征就应该相近。\n\n举个生活中的例子：假设你在嘈杂的咖啡馆里听朋友说话。你的大脑会自动放大朋友的声音（正信号），同时抑制周围其他人的谈话声（负信号）。对比学习就像给神经网络装上了这样的“听觉过滤器”，让它专注于语义相关的信息。\n\n另一个例子是人脸识别系统。系统不仅要认出同一个人的不同照片（正样本），还要确保不会把不同人误认为同一人（负样本）。对比学习正是通过大量这样的正负对比，训练出鲁棒的人脸特征。\n\n在图像去噪中，对比学习的作用尤为关键。传统MSE损失只关心像素值是否接近，但两张图像可能像素差异很小却语义完全不同（比如把猫的眼睛模糊成一片）。而对比学习通过特征空间的对比，确保去噪结果在高层语义上与原始图像一致——即使某些像素不完全匹配，只要整体结构、物体身份正确，就被认为是高质量的。\n\n值得注意的是，对比学习的效果高度依赖于负样本的质量和数量。早期工作如MoCo [He, 2020] 使用动量更新的队列来存储大量负样本；而在我们的场景中，由于每个批次包含多个噪声-干净图像对，我们可以直接将同批次的其他噪声图像作为负样本，无需额外存储，非常高效。\n\n最后，对比学习与我们之前学过的CLIP模型有密切联系。CLIP本身就是通过对比学习在图文对上训练的——它拉近匹配的图文特征，推远不匹配的。因此，当我们用CLIP作为特征提取器 $f(\\cdot)$ 时，实际上是在利用一个已经在亿级图文对上预训练好的强大语义编码器，这大大提升了对比学习在去噪任务中的效果 [Radford, 2021]。\n\n总之，对比学习是一种强大的表示学习范式，它通过模拟人类的对比认知机制，让模型学会抓住事物的本质特征而非表面细节。在图像去噪中，它是我们对抗“语义漂移”和“过度平滑”的利器。",
+        "why_important": "对比学习对于本包至关重要，因为它解决了传统像素级损失（如MSE）无法捕捉语义一致性的根本缺陷。在去噪任务中，仅最小化像素误差会导致模型牺牲纹理和结构细节以换取数值上的“干净”。而对比学习通过在特征空间中拉近干净图像与去噪结果的距离，确保输出不仅数值准确，更在高层语义上忠实于原始内容。这对于实现高PSNR/SSIM的同时保持视觉自然性不可或缺。",
+        "related_concepts": [
+          "感知损失（Perceptual Loss）",
+          "特征表示学习（Feature Representation Learning）",
+          "自监督学习（Self-supervised Learning）",
+          "CLIP模型"
+        ],
+        "examples": [
+          "教孩子识别动物：通过同时展示猫（正例）和狗/兔（负例）建立概念边界",
+          "咖啡馆听朋友说话：大脑放大目标声音（正信号），抑制背景噪音（负信号）",
+          "人脸识别系统：确保同一个人的不同照片特征相近，不同人的特征远离"
+        ]
+      },
+      {
+        "concept_name": "感知损失函数（Perceptual Loss Function）",
+        "explanation": "同学们，让我们思考一个问题：**两幅图像看起来一样吗？** 如果你用手机拍一张照片，再用专业相机拍同一场景，它们的像素值肯定不同，但你可能会说“看起来差不多”。反之，如果我把一张人脸照片的鼻子移到额头上，虽然大部分像素没变，但你会立刻觉得“这不对劲”。这说明，人类判断图像质量的标准，远不止像素数值的接近程度。\n\n**感知损失函数正是为了模拟人类的这种视觉判断而设计的**。它的核心思想是：与其直接比较像素，不如比较图像在“高级视觉特征”上的相似性。这些高级特征包括边缘、纹理、形状、物体部件等，正是它们构成了我们对图像内容的理解。\n\n那么，如何获取这些高级特征呢？答案是：**借用已经在大规模数据上预训练好的视觉模型**。最常用的是VGG网络 [Simonyan, 2014]，但近年来CLIP [Radford, 2021] 因其强大的跨模态语义理解能力而越来越受欢迎。这些模型的中间层（尤其是较深的卷积层或Transformer层）已经学会了提取对人类视觉有意义的特征。\n\n具体来说，假设我们有一个预训练的特征提取网络 $\\phi$（例如CLIP的ViT部分）。对于干净图像 $x_{\\text{clean}}$ 和去噪结果 $\\hat{x}$，我们分别通过 $\\phi$ 提取多层特征图：$\\phi_l(x_{\\text{clean}})$ 和 $\\phi_l(\\hat{x})$，其中 $l$ 表示网络的第 $l$ 层。\n\n感知损失定义为这些特征图之间的欧氏距离加权和：\n$$\\mathcal{L}_{\\text{perc}} = \\sum_{l \\in \\mathcal{L}} \\lambda_l \\| \\phi_l(x_{\\text{clean}}) - \\phi_l(\\hat{x}) \\|_2^2$$\n这里 $\\mathcal{L}$ 是选定的层集合（通常包括浅层和深层），$\\lambda_l$ 是每层的权重系数，用于平衡不同层次特征的重要性。\n\n为什么这样做有效？因为预训练模型的特征空间已经对人类视觉敏感的内容进行了编码。例如，VGG的relu3_3层对纹理敏感，relu4_3层对物体结构敏感。如果两幅图像在这些层的特征很接近，那么它们在人类看来也会很相似。\n\n举个直观的例子：想象你在修复一幅破损的古画。传统方法（如MSE）会试图让每个颜料点的颜色尽可能接近原作，但如果原作某处有裂纹，这种方法可能会把裂纹“修复”成平滑色块，反而失去了历史痕迹。而感知损失则像一位经验丰富的修复师——他关注的是整体构图、笔触风格、色彩和谐等“感知层面”的一致性，允许局部细节有合理差异，从而保留作品的灵魂。\n\n另一个例子是视频压缩。高压缩率会导致块状伪影（blocking artifacts），但如果你只看PSNR，可能数值还不错。然而人眼一眼就能看出“不自然”。感知损失驱动的压缩算法（如基于VGG的）会优先保留视觉上重要的信息，即使PSNR略低，主观质量却更高。\n\n在我们的去噪任务中，感知损失的作用尤为突出。真实图像包含丰富的纹理（如织物、树叶、皮肤毛孔），这些高频细节很容易被MSE损失牺牲掉，因为平滑区域对MSE的贡献更大。而感知损失通过深层特征约束，强制模型保留这些对人类视觉重要的细节。\n\n值得注意的是，感知损失通常与内容损失（Content Loss）和风格损失（Style Loss）一起讨论。内容损失就是上述的特征图差异，而风格损失则比较特征图的Gram矩阵（衡量纹理统计特性）。但在去噪任务中，我们主要关注内容保真，因此通常只使用内容部分的感知损失。\n\n此外，使用CLIP作为 $\\phi$ 还带来额外好处：由于CLIP是在图文对上训练的，其特征天然具有语义对齐性。这意味着，如果去噪结果在语义上偏离了原始图像（比如把狗变成猫），即使像素相似，CLIP特征也会有很大差异，从而被感知损失惩罚。这与我们Package 2中的LLM语义引导形成双重保障。\n\n最后，实现时需要注意：预训练的 $\\phi$ 网络通常是**冻结的**（frozen），即不参与反向传播更新。这是因为我们只把它当作固定的“感知度量尺”，而不是要重新训练它。这样既节省计算资源，又避免破坏其已学习的语义知识。\n\n总之，感知损失函数是一座桥梁，连接了机器的数值优化与人类的主观感知。它让我们的去噪模型不再是一个冷冰冰的像素计算器，而是一个懂得“什么是好图像”的智能修复师。",
+        "why_important": "感知损失函数是本包实现高视觉质量去噪结果的关键。传统MSE损失导致的过度平滑问题，正是由于其忽略了人类视觉系统的特性。感知损失通过利用预训练视觉模型的深层特征，直接优化图像在语义和结构层面的一致性，确保去噪结果不仅数值准确（高PSNR/SSIM），更在视觉上自然、细节丰富。这对于满足研究目标中‘最大化保留原始图像的结构、纹理和语义内容’至关重要。",
+        "related_concepts": [
+          "对比学习（Contrastive Learning）",
+          "特征提取网络（Feature Extractor）",
+          "CLIP模型",
+          "人类视觉系统（Human Visual System）"
+        ],
+        "examples": [
+          "古画修复：关注整体构图和笔触风格，而非每个颜料点的精确颜色",
+          "视频压缩：优先保留视觉重要信息，容忍PSNR下降以换取主观质量提升",
+          "人脸照片修复：确保五官结构正确，而非每个像素完美匹配"
+        ]
+      },
+      {
+        "concept_name": "多尺度特征融合（Multi-scale Feature Fusion）",
+        "explanation": "同学们，想象你正在用望远镜观察远处的风景。如果你只用一个固定倍数的镜头，要么只能看清整体轮廓（低倍率），要么只能看到局部细节（高倍率），很难同时把握全局和局部。**多尺度特征融合正是为了解决这一矛盾而设计的技术**——它让神经网络能像人类一样，同时利用不同“视野”下的信息来做决策。\n\n在卷积神经网络（CNN）或Vision Transformer中，随着网络深度增加，特征图的空间分辨率逐渐降低，但语义信息越来越抽象。浅层特征（高分辨率）包含丰富的细节和边缘信息，但缺乏语义理解；深层特征（低分辨率）包含高级语义（如“这是猫的脸”），但丢失了精细结构。**多尺度特征融合的目标，就是将这些互补的信息有效地结合起来**。\n\n在U-Net架构（常用于图像生成和恢复任务）中，这一思想通过“跳跃连接”（skip connections）实现：编码器（下采样路径）的浅层特征直接传递给解码器（上采样路径）的对应层级。然而，简单的拼接或相加往往不够智能——有时浅层特征包含大量噪声，盲目使用反而有害。\n\n因此，我们引入**自适应多尺度融合机制**。具体来说，在解码器的每一级，我们有两个输入：1) 来自上一级解码器的上采样特征 $F_{\\text{dec}}$；2) 来自编码器对应层级的跳跃连接特征 $F_{\\text{enc}}$。我们不直接合并它们，而是先计算一个**注意力权重** $W$，用于动态决定每个位置应该多大程度信任 $F_{\\text{enc}}$。\n\n这个权重 $W$ 通过一个轻量级网络生成。首先，我们将 $F_{\\text{enc}}$ 和 $F_{\\text{dec}}$ 沿通道维度拼接：$[F_{\\text{enc}}; F_{\\text{dec}}]$。然后，应用**全局平均池化**（Global Average Pooling, GAP）将其压缩为一个通道描述向量：\n$$z = \\text{GAP}([F_{\\text{enc}}; F_{\\text{dec}}]) \\in \\mathbb{R}^{2C}$$\n其中 $C$ 是通道数。接着，通过一个小型多层感知机（MLP）处理这个向量：\n$$W = \\sigma(\\text{MLP}(z)) \\in \\mathbb{R}^{C}$$\n这里 $\\sigma$ 是Sigmoid激活函数，确保 $W$ 的每个元素在0到1之间，可解释为“信任度”。\n\n最终，融合后的特征为：\n$$F_{\\text{fused}} = W \\odot F_{\\text{enc}} + (1 - W) \\odot F_{\\text{dec}}$$\n其中 $\\odot$ 表示逐元素乘法。这意味着，在每个通道和每个空间位置，网络都能自适应地加权原始细节和重建内容。\n\n为什么这种设计有效？让我们用几个例子说明。假设我们在去噪一张包含文字的文档图像。在文字区域，浅层特征 $F_{\\text{enc}}$ 包含清晰的笔画边缘，但可能混有噪声；深层特征 $F_{\\text{dec}}$ 知道“这里有文字”，但边缘模糊。自适应权重 $W$ 会在文字边缘处赋予高值（信任原始细节），在文字内部平滑区域赋予低值（信任重建内容），从而得到既清晰又干净的结果。\n\n另一个例子是自然风景图像。在树叶密集的区域，高频噪声严重，$F_{\\text{enc}}$ 可能不可靠，此时 $W$ 会较小，更多依赖 $F_{\\text{dec}}$ 的语义指导；而在天空等平滑区域，$F_{\\text{enc}}$ 相对干净，$W$ 会较大，保留原始色调。\n\n这种机制与人类的视觉注意机制非常相似。当你看一幅画时，眼睛会自动聚焦在重要细节（如人物面部）上，而对背景区域分配较少注意力。多尺度自适应融合就是给神经网络装上了这样的“注意力调节器”。\n\n从数学角度看，这个过程可以看作一种**门控机制**（gating mechanism），类似于LSTM中的遗忘门。但它作用于空间-通道维度，而非时间维度。相关工作如CBAM [Woo, 2018] 也探索了类似思想，但我们的设计专门针对去噪任务中噪声分布不均的特性进行了优化。\n\n值得注意的是，多尺度融合不仅提升质量，还能增强鲁棒性。因为不同尺度的特征对不同类型噪声的敏感度不同——高频噪声主要影响浅层，低频噪声影响深层。通过自适应融合，网络能根据局部噪声特性动态调整策略，这正是解决“真实世界噪声条件下鲁棒性”挑战的关键 [Zhang, 2023]。\n\n最后，实现时要注意计算效率。MLP通常只包含1-2个全连接层，参数量很小，不会显著增加推理负担。而且由于只在跳跃连接处使用，整体计算开销可控，为后续轻量化部署留下空间。\n\n总之，多尺度特征融合不是简单地“把所有信息堆在一起”，而是通过智能的注意力机制，让网络学会在正确的时间、正确的地点，使用正确的信息。这是构建高性能去噪模型不可或缺的一环。",
+        "why_important": "多尺度特征融合对于本包至关重要，因为真实噪声在不同图像区域和不同频率尺度上表现出高度异质性。传统的固定融合策略（如简单相加）无法适应这种复杂性，容易导致细节丢失或噪声残留。自适应多尺度融合通过动态权重机制，让模型能根据局部内容和噪声特性智能地整合浅层细节与深层语义，显著提升对复杂真实噪声的鲁棒性，是实现高保真度去噪的核心技术之一。",
+        "related_concepts": [
+          "U-Net架构",
+          "注意力机制（Attention Mechanism）",
+          "特征金字塔网络（Feature Pyramid Network）",
+          "自适应门控（Adaptive Gating）"
+        ],
+        "examples": [
+          "文档图像去噪：在文字边缘高信任原始细节，内部平滑区域高信任重建内容",
+          "自然风景去噪：树叶区域少依赖噪声大的浅层特征，天空区域多保留原始色调",
+          "望远镜观察风景：结合低倍率（全局）和高倍率（局部）信息获得完整认知"
+        ]
+      }
+    ],
+    "estimated_steps": 12,
+    "dependencies": [
+      {
+        "name": "torch",
+        "version": ">=2.0.0",
+        "purpose": "深度学习框架，用于构建和训练扩散模型"
+      },
+      {
+        "name": "torchvision",
+        "version": ">=0.15.0",
+        "purpose": "提供预训练模型（如VGG）和图像变换工具"
+      },
+      {
+        "name": "transformers",
+        "version": ">=4.30.0",
+        "purpose": "加载CLIP等预训练视觉-语言模型作为特征提取器"
+      },
+      {
+        "name": "opencv-python",
+        "version": ">=4.8.0",
+        "purpose": "图像加载、预处理和可视化"
+      },
+      {
+        "name": "pyyaml",
+        "version": ">=6.0",
+        "purpose": "解析训练配置文件"
+      },
+      {
+        "name": "scikit-image",
+        "version": ">=0.20.0",
+        "purpose": "计算SSIM等图像质量指标"
+      }
+    ],
+    "setup_instructions": [
+      "克隆本项目仓库：git clone https://github.com/your-repo/package-03-diffusion-denoising-training.git",
+      "创建并激活Python虚拟环境：python -m venv venv && source venv/bin/activate (Linux/Mac) 或 venv\\Scripts\\activate (Windows)",
+      "安装依赖：pip install -r requirements.txt",
+      "准备数据：将标注好的噪声-干净图像对放入data/train/noisy/和data/train/clean/目录",
+      "配置训练参数：编辑configs/train_config.yaml文件，设置学习率、批次大小等超参数"
+    ],
+    "usage_examples": [
+      {
+        "title": "基础训练：使用默认配置训练去噪模型",
+        "scenario": "用户希望使用提供的默认配置，在自定义数据集上训练一个基础的扩散去噪模型，仅使用MSE损失进行初步实验。",
+        "code": "import os\nimport yaml\nfrom src.models.denoiser import DiffusionDenoiser\nfrom src.data.dataloader import get_dataloaders\nfrom src.utils.metrics import calculate_psnr_ssim\n\n# 加载配置\nconfig_path = 'configs/train_config.yaml'\nwith open(config_path, 'r') as f:\n    config = yaml.safe_load(f)\n\n# 初始化数据加载器\ntrain_loader, val_loader = get_dataloaders(\n    data_dir='data',\n    batch_size=config['training']['batch_size'],\n    num_workers=4\n)\n\n# 初始化模型\nmodel = DiffusionDenoiser(\n    in_channels=3,\n    model_channels=128,\n    out_channels=3,\n    num_res_blocks=2,\n    use_adaptive_fusion=False  # 基础模式关闭自适应融合\n)\n\n# 训练循环（简化版）\nfor epoch in range(config['training']['epochs']):\n    model.train()\n    for batch in train_loader:\n        noisy_img, clean_img = batch['noisy'], batch['clean']\n        loss = model.training_step(noisy_img, clean_img, loss_type='mse')\n        loss.backward()\n        # 优化器步骤（省略）\n    \n    # 验证\n    if epoch % 5 == 0:\n        model.eval()\n        psnr_list, ssim_list = [], []\n        with torch.no_grad():\n            for batch in val_loader:\n                noisy_img, clean_img = batch['noisy'], batch['clean']\n                denoised_img = model.sample(noisy_img)\n                psnr, ssim = calculate_psnr_ssim(clean_img, denoised_img)\n                psnr_list.extend(psnr)\n                ssim_list.extend(ssim)\n        avg_psnr = sum(psnr_list) / len(psnr_list)\n        avg_ssim = sum(ssim_list) / len(ssim_list)\n        print(f'Epoch {epoch}: PSNR={avg_psnr:.2f}, SSIM={avg_ssim:.4f}')",
+        "expected_output": "训练过程将打印每个验证周期的PSNR和SSIM指标。预期在50个epoch后，PSNR达到约32-33 dB，SSIM达到约0.90-0.91。输出示例：'Epoch 0: PSNR=28.45, SSIM=0.8721'，'Epoch 5: PSNR=30.12, SSIM=0.8934'，...，'Epoch 45: PSNR=32.78, SSIM=0.9087'。"
+      },
+      {
+        "title": "高级训练：启用对比学习与感知损失的完整优化",
+        "scenario": "用户希望启用本包的所有高级功能，包括对比学习、感知损失和自适应多尺度融合，以达到研究目标中PSNR≥35dB、SSIM≥0.92的要求。",
+        "code": "import torch\nimport yaml\nfrom src.models.denoiser import DiffusionDenoiser\nfrom src.models.loss_functions import PerceptualLoss, ContrastiveLoss\nfrom src.data.dataloader import get_dataloaders\n\n# 加载高级配置\nconfig = {\n    'training': {\n        'epochs': 100,\n        'batch_size': 16,\n        'lr': 1e-4\n    },\n    'loss_weights': {\n        'mse': 1.0,\n        'perceptual': 0.1,\n        'contrastive': 0.05\n    }\n}\n\n# 初始化数据加载器（启用负采样）\ntrain_loader, val_loader = get_dataloaders(\n    data_dir='data',\n    batch_size=config['training']['batch_size'],\n    num_workers=8,\n    enable_negative_sampling=True  # 为对比学习准备负样本\n)\n\n# 初始化完整模型\nmodel = DiffusionDenoiser(\n    in_channels=3,\n    model_channels=128,\n    out_channels=3,\n    num_res_blocks=2,\n    use_adaptive_fusion=True,  # 启用自适应融合\n    use_text_condition=True     # 启用LLM文本条件（来自Package 2）\n)\n\n# 初始化损失函数\nperceptual_loss = PerceptualLoss(model_type='clip_vit_base')\ncontrastive_loss = ContrastiveLoss(temperature=0.07)\n\n# 训练循环\noptimizer = torch.optim.Adam(model.parameters(), lr=config['training']['lr'])\n\nfor epoch in range(config['training']['epochs']):\n    model.train()\n    for batch in train_loader:\n        noisy_img, clean_img = batch['noisy'], batch['clean']\n        text_prompts = batch.get('text', None)  # LLM生成的语义提示\n        \n        # 前向传播\n        denoised_img, features_clean, features_denoised = model(\n            noisy_img, \n            text_cond=text_prompts,\n            return_features=True  # 返回中间特征用于对比学习\n        )\n        \n        # 计算复合损失\n        mse_loss = torch.nn.functional.mse_loss(denoised_img, clean_img)\n        perc_loss = perceptual_loss(denoised_img, clean_img)\n        cont_loss = contrastive_loss(features_clean, features_denoised, batch['negative_samples'])\n        \n        total_loss = (\n            config['loss_weights']['mse'] * mse_loss +\n            config['loss_weights']['perceptual'] * perc_loss +\n            config['loss_weights']['contrastive'] * cont_loss\n        )\n        \n        # 反向传播\n        optimizer.zero_grad()\n        total_loss.backward()\n        optimizer.step()",
+        "expected_output": "训练过程将更稳定，指标提升更快。预期在100个epoch后，PSNR达到35.2-36.5 dB，SSIM达到0.925-0.935，满足研究目标。同时，去噪结果在视觉上将保留更多纹理细节（如织物纹理、树叶脉络），且语义内容完整（无物体变形或缺失）。验证时还会观察到对比学习损失逐渐下降，表明特征判别性增强。"
+      }
+    ],
+    "action_item": "[step_3] 模型训练与优化 : 在标注数据集上训练端到端去噪模型，采用对比学习与感知损失函数优化图像保真度；引入多尺度特征融合与自适应降噪模块，提升对复杂噪声的鲁棒性。",
+    "action_index": 3,
+    "status": "framework",
+    "implementation_steps": []
+  },
+  "batch_info": {
+    "current_batch": 0,
+    "total_batches": 3,
+    "steps_generated": 0,
+    "status": "framework"
+  }
+}

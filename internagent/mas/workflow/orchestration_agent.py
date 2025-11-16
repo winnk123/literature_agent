@@ -436,17 +436,42 @@ class OrchestrationAgent:
             raise ValueError("Generation agent initialization failed")
 
         paper_lst = None
+        survey_report = None
         if generation_agent.config.get("do_survey", False):
             logger.info(f"Survey Agent: Conduct in-depth literature research on task {session.id}")
             survey_agent = self._get_agent("survey")
             if survey_agent:
-                paper_lst = await survey_agent.execute(session.task.to_dict(), {})
+                survey_outputs = await survey_agent.execute(session.task.to_dict(), {})
+                if isinstance(survey_outputs, dict):
+                    paper_lst = survey_outputs.get("papers", [])
+                    search_history = survey_outputs.get("search_queries", [])
+                else:
+                    paper_lst = survey_outputs
+                    search_history = []
+
+                summary_agent = self._get_agent("literature_summary")
+                if summary_agent and paper_lst:
+                    task_dict = session.task.to_dict()
+                    summary_context = {
+                        "description": task_dict.get("description", ""),
+                        "domain": task_dict.get("domain", ""),
+                        "papers": paper_lst,
+                        "search_queries": search_history,
+                    }
+                    try:
+                        survey_report = await summary_agent.execute(summary_context, {})
+                    except Exception as e:
+                        logger.error(f"Literature summary agent failed: {e}")
+                        survey_report = None
+            else:
+                logger.warning("Survey agent requested but not available")
 
         context = {
             "goal": session.task.to_dict(),
             "iteration": session.iterations_completed,
             "feedback": session.feedback_history,
-            "paper_lst": paper_lst
+            "paper_lst": paper_lst,
+            "survey_report": survey_report
         }
 
         try:

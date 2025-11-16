@@ -46,7 +46,7 @@ class PaperSurvey:
         # Cache for search results
         self._cache = {}
    
-    def query_route(self, query, max_results):
+    def query_route(self, query, max_results, **kwargs):
         
-        return parse_and_execute(query, max_results)
+        return parse_and_execute(query, max_results, **kwargs)
 

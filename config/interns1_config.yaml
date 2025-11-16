@@ -13,7 +13,7 @@ models:
     temperature: 0.7
 
   openai:
-    model_name: "gpt-4o-mini"
+    model_name: "qwen3-vl-plus-2025-09-23"
     api_key: ""  # Set via environment variable OPENAI_API_KEY
     max_tokens: 4096
     temperature: 0.7

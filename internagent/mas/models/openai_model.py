@@ -4,8 +4,10 @@ OpenAI Model Adapter for InternAgent
 Implements the BaseModel interface for OpenAI models.
 """
 
+import base64
 import json
 import logging
+import mimetypes
 import os
 from typing import Dict, List, Optional, Any, Union
 from json_repair import repair_json
@@ -26,7 +28,7 @@ class OpenAIModel(BaseModel):
                 model_name: str = "gpt-4o", 
                 max_tokens: int = 4096,
                 temperature: float = 0.7,
-                timeout: int = 60):
+                timeout: int = 100):
         """
         Initialize the OpenAI model adapter.
         
@@ -37,8 +39,8 @@ class OpenAIModel(BaseModel):
             temperature: Default temperature setting (0 to 1)
             timeout: Timeout in seconds for API calls
         """
-        self.api_key = api_key or os.environ.get("OPENAI_API_KEY")
-        self.base_url = os.environ.get("OPENAI_API_BASE_URL", "https://api.openai.com/v1")
+        self.api_key = api_key or os.environ.get("DASHSCOPE_API_KEY")
+        self.base_url = os.environ.get("OPENAI_API_BASE_URL", "https://dashscope.aliyuncs.com/compatible-mode/v1")
         if not self.api_key:
             logger.warning("OpenAI API key not provided. Please set OPENAI_API_KEY environment variable.")
             
@@ -139,21 +141,80 @@ class OpenAIModel(BaseModel):
             )
             
             result_text = response.choices[0].message.content
+            
+            # 首先尝试清理和提取JSON
+            cleaned_text = result_text.strip()
+            
+            # 尝试从markdown代码块中提取JSON（支持多行）
+            import re
+            # 匹配 ```json ... ``` 或 ``` ... ``` 中的JSON
+            json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*```', cleaned_text, re.MULTILINE)
+            if json_match:
+                cleaned_text = json_match.group(1).strip()
+            
+            # 如果还是找不到，尝试找到第一个 { 或 [（支持多行JSON）
+            if not cleaned_text.startswith('{') and not cleaned_text.startswith('['):
+                start_idx = cleaned_text.find('{')
+                if start_idx == -1:
+                    start_idx = cleaned_text.find('[')
+                if start_idx >= 0:
+                    # 找到匹配的结束位置（支持嵌套）
+                    brace_count = 0
+                    bracket_count = 0
+                    in_string = False
+                    escape_next = False
+                    end_idx = start_idx
+                    
+                    for i in range(start_idx, len(cleaned_text)):
+                        char = cleaned_text[i]
+                        
+                        if escape_next:
+                            escape_next = False
+                            continue
+                        
+                        if char == '\\':
+                            escape_next = True
+                            continue
+                        
+                        if char == '"' and not escape_next:
+                            in_string = not in_string
+                            continue
+                        
+                        if not in_string:
+                            if char == '{':
+                                brace_count += 1
+                            elif char == '}':
+                                brace_count -= 1
+                            elif char == '[':
+                                bracket_count += 1
+                            elif char == ']':
+                                bracket_count -= 1
+                            
+                            if brace_count == 0 and bracket_count == 0:
+                                end_idx = i + 1
+                                break
+                    
+                    if end_idx > start_idx:
+                        cleaned_text = cleaned_text[start_idx:end_idx].strip()
+            
             try:
-                result_dict = json.loads(result_text)
+                result_dict = json.loads(cleaned_text)
+                return result_dict
             except json.JSONDecodeError:
-                logger.error(f"Model returned invalid JSON: {result_text}")
-                result_text_repair = repair_json(result_text)
-                if result_text_repair:
-                    try:
-                        result_dict = json.loads(result_text_repair)
-                    except json.JSONDecodeError:
-                        logger.error(f"Repaired JSON still invalid: {result_text_repair}")
-                        raise ValueError("Model did not return valid JSON after repair")
-                else:
-                    logger.error("Failed to repair JSON response")
-                raise ValueError("Model did not return valid JSON")
-            return result_dict
+                # 如果清理后的文本仍然失败，尝试原始文本
+                try:
+                    result_dict = json.loads(result_text)
+                    return result_dict
+                except json.JSONDecodeError:
+                    logger.error(f"Model returned invalid JSON: {result_text[:500]}...")
+                    repaired_text = repair_json(result_text) if repair_json else None
+                    if repaired_text:
+                        try:
+                            return json.loads(repaired_text)
+                        except json.JSONDecodeError:
+                            logger.error(f"Repaired JSON still invalid: {repaired_text[:500]}...")
+                    # 在异常消息中包含原始响应文本，以便上层代码可以尝试提取
+                    raise ValueError(f"Model did not return valid JSON: {result_text}")
         
         except json.JSONDecodeError as e:
             logger.error(f"Failed to decode JSON response: {e}")
@@ -201,6 +262,111 @@ class OpenAIModel(BaseModel):
                 return default
             raise
 
+    def _image_to_payload(self, image_reference: str) -> Dict[str, Any]:
+        """Prepare image payload for responses API."""
+        if image_reference.startswith("http://") or image_reference.startswith("https://"):
+            return {
+                "type": "input_image",
+                "image_url": {"url": image_reference}
+            }
+
+        if not os.path.exists(image_reference):
+            raise FileNotFoundError(f"Image not found: {image_reference}")
+
+        with open(image_reference, "rb") as f:
+            encoded = base64.b64encode(f.read()).decode("utf-8")
+
+        return {
+            "type": "input_image",
+            "image_base64": encoded
+        }
+
+    async def generate_multimodal_json(self,
+                                   prompt: str,
+                                   schema: Dict[str, Any],
+                                   images: Optional[List[str]] = None,
+                                   system_prompt: Optional[str] = None,
+                                   temperature: Optional[float] = None,
+                                   **kwargs) -> Dict[str, Any]:
+  
+        messages: List[Dict[str, Any]] = []
+     
+        if system_prompt:
+          messages.append({"role": "system", "content": system_prompt})
+    
+        # Build user content with text and images
+        user_content: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
+    
+        for image_ref in images or []:
+          try:
+             if image_ref.startswith("http://") or image_ref.startswith("https://"):
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {"url": image_ref}
+                })
+             else:
+                # Local file: convert to base64 data URL
+                if not os.path.exists(image_ref):
+                    raise FileNotFoundError(f"Image not found: {image_ref}")
+                
+                mime_type, _ = mimetypes.guess_type(image_ref)
+                if not mime_type:
+                    mime_type = "image/png"
+                
+                with open(image_ref, "rb") as f:
+                    encoded = base64.b64encode(f.read()).decode("utf-8")
+                
+                data_url = f"data:{mime_type};base64,{encoded}"
+                user_content.append({
+                    "type": "image_url",
+                    "image_url": {"url": data_url}
+                })
+          except Exception as exc:
+            logger.error(f"Failed to process image '{image_ref}': {exc}")
+            raise
+    
+        messages.append({"role": "user", "content": user_content})
+    
+    # Add schema instruction to system prompt
+        schema_instruction = json.dumps(schema, indent=2)
+        enhanced_system = system_prompt or ""
+        if enhanced_system:
+          enhanced_system += "\n\n"
+        enhanced_system += (
+        f"Return a JSON object that strictly follows this schema:\n{schema_instruction}\n"
+        "Output only valid JSON, no additional text."
+        )
+        if messages and messages[0].get("role") == "system":
+          messages[0]["content"] = enhanced_system
+        else:
+          messages.insert(0, {"role": "system", "content": enhanced_system})
+    
+        try:
+            response = await self.client.chat.completions.create(
+            model=self.model_name,
+            messages=messages,
+            temperature=temperature if temperature is not None else self.temperature,
+            response_format={"type": "json_object"},
+            **kwargs
+            )
+        
+            result_text = response.choices[0].message.content
+            try:
+              return json.loads(result_text)
+            except json.JSONDecodeError:
+              logger.error(f"Model returned invalid JSON for multimodal request: {result_text}")
+              repaired = repair_json(result_text)
+              if repaired:
+                return json.loads(repaired)
+              raise ValueError("Model did not return valid JSON for multimodal request")
+    
+        except json.JSONDecodeError as e:
+           logger.error(f"Failed to decode JSON response: {e}")
+           raise ValueError(f"Model did not return valid JSON: {e}")
+        except Exception as e:
+           logger.error(f"Error generating multimodal JSON response from OpenAI: {e}")
+           raise
+    
     async def embed(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:
         """
         Generate embeddings for the given text(s).
@@ -243,7 +409,7 @@ class OpenAIModel(BaseModel):
         return cls(
             api_key=config.get("api_key"),
             model_name=config.get("model_name", "gpt-4o"),
-            max_tokens=config.get("max_tokens", 4096),
-            temperature=config.get("temperature", 0.7),
-            timeout=config.get("timeout", 60)
+            max_tokens=config.get("max_tokens", 10000),
+            temperature=config.get("temperature", 0.6),
+            timeout=config.get("timeout", 300)
         ) 

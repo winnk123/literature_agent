@@ -10,16 +10,22 @@ from typing import Dict, Any, Type
 from ..models.model_factory import ModelFactory
 from .base_agent import BaseAgent
 
+from .judger_agent import JudgerAgent
 from .survey_agent import SurveyAgent
+from .literature_summary_agent import LiteratureSummaryAgent
+from .task_decomposition_agent import TaskDecompositionAgent
 from .scholar_agent import ScholarAgent
 
 from .generation_agent import GenerationAgent
 from .evolution_agent import EvolutionAgent
+from .Logical_Coherence_Reviewer import LogicalCoherenceReviewerAgent
+from .Pedagogical_Reviewer import PedagogicalReviewerAgent
 
 from .reflection_agent import ReflectionAgent
 from .ranking_agent import RankingAgent
 
 from .method_development_agent import MethodDevelopmentAgent
+from .engineer_agent import EngineerAgent
 from .refinement_agent import RefinementAgent
 
 logger = logging.getLogger(__name__)
@@ -39,10 +45,16 @@ class AgentFactory:
         "reflection": ReflectionAgent,
         "evolution": EvolutionAgent,
         "method_development": MethodDevelopmentAgent,
+        "engineer": EngineerAgent,
         "refinement": RefinementAgent,
         "ranking": RankingAgent,
         "survey": SurveyAgent,
+        "literature_summary": LiteratureSummaryAgent,
+        "task_decomposition": TaskDecompositionAgent,
         "scholar": ScholarAgent,
+        "judger": JudgerAgent,
+        "logical_coherence_reviewer": LogicalCoherenceReviewerAgent,
+        "pedagogical_reviewer": PedagogicalReviewerAgent,
     }
     
     # Cache of created agent instances

@@ -326,6 +326,37 @@ class BaseAgent(abc.ABC):
                 
                 if remaining_retries <= 0:
                     raise AgentExecutionError(f"Agent {self.name} failed after max retries: {str(e)}")
+
+    async def _call_model_multimodal(self,
+                                     prompt: str,
+                                     images: List[str],
+                                     system_prompt: Optional[str] = None,
+                                     schema: Optional[Dict[str, Any]] = None,
+                                     temperature: Optional[float] = None) -> Dict[str, Any]:
+        """Call the model with multimodal inputs (text + images)."""
+        if schema is None:
+            raise ValueError("Multimodal calls require a JSON schema")
+
+        if not hasattr(self.model, "generate_multimodal_json"):
+            raise AgentExecutionError("Underlying model does not support multimodal generation")
+
+        remaining_retries = self.max_retries
+
+        while True:
+            try:
+                return await self.model.generate_multimodal_json(
+                    prompt=prompt,
+                    schema=schema,
+                    images=images,
+                    system_prompt=system_prompt or self.system_prompt,
+                    temperature=temperature
+                )
+            except Exception as e:
+                await asyncio.sleep(1)
+                remaining_retries -= 1
+                logger.warning(f"Agent {self.name} multimodal call failed: {str(e)}. Retries left: {remaining_retries}")
+                if remaining_retries <= 0:
+                    raise AgentExecutionError(f"Agent {self.name} failed after max retries: {str(e)}")
     
     def _format_context(self, context: Dict[str, Any]) -> str:
         """

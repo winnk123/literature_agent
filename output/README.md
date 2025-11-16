@@ -1,0 +1,87 @@
+# 研究实现项目
+
+## 🎯 研究目标
+
+图像去噪的核心科学问题是：如何在去除噪声的同时，最大化保留原始图像的结构、纹理和语义内容？传统方法（如均值滤波、双边滤波）因缺乏对复杂视觉模式的建模能力，常导致边缘模糊或细节丢失。深度学习模型，特别是扩散模型与视觉-语言模型（VLM），为该问题提供了新范式：通过概率生成过程实现高保真度重建，并利用文本提示引导语义一致的修复。本研究聚焦于构建一个由大语言模型（LLM）引导的扩散去噪框架，解决以下子挑战：(1) 如何将文本语义有效注入去噪过程以实现语义感知的噪声抑制；(2) 如何在保持高图像质量（PSNR ≥ 35 dB, SSIM ≥ 0.92）的前提下提升模型效率；(3) 如何在真实世界噪声条件下实现鲁棒性与泛化能力；(4) 如何建立兼顾客观指标与人类感知的综合评估体系。
+
+## 📦 项目包概览
+
+本项目包含 **5** 个独立的实现包，每个包对应一个具体的行动项：
+
+### 1. Package 1: 基于大语言模型引导的真实噪声图像数据准备与语义标注框架
+
+本教程包聚焦于图像去噪任务的第一步：构建高质量、语义丰富的含噪图像数据集。我们将利用真实世界拍摄的低光/高ISO图像作为基础，并引入GPT类大语言模型（LLM）自动生成噪声类型（如高斯、泊松、椒盐）及其强度标签，从而实现高效、低成本的噪声语义标注。该数据集不仅包含像素级噪声样本，还附带文本描述（如“...
+
+### 2. Package 2: 基于视觉-语言模型与扩散机制的LLM引导去噪架构
+
+本教程包聚焦于构建一个由大语言模型（LLM）语义引导的图像去噪框架，核心是将文本提示（如“清晰、自然、无噪”）通过视觉-语言模型（如CLIP）注入扩散去噪过程。我们将设计一个跨模态注意力机制，使去噪不仅依赖像素统计特性，还能理解高层语义，从而在去除噪声的同时保留物体结构与上下文合理性。该架构为后续轻...
+
+### 3. Package 3: 基于对比学习与多尺度自适应融合的扩散去噪模型训练与优化
+
+本教程包聚焦于图像去噪模型的核心训练阶段，重点解决如何在保留语义细节的同时高效去除复杂噪声。我们将构建一个端到端的扩散去噪网络，引入**对比学习**增强特征判别性，结合**感知损失函数**对齐人类视觉偏好，并设计**多尺度特征融合**与**自适应降噪模块**以提升对真实世界噪声的鲁棒性。此步骤是连接...
+
+### 4. Package 4: 面向边缘设备的LLM引导扩散去噪模型压缩与部署优化
+
+本教程包聚焦于将前序构建的LLM引导扩散去噪模型高效部署到资源受限的边缘设备（如智能手机、嵌入式相机）上。我们将系统性地应用模型剪枝、量化与知识蒸馏三大核心技术，在显著降低模型体积与计算开销的同时，严格保障去噪质量（PSNR ≥ 35 dB, SSIM ≥ 0.92）。这不仅是工程落地的关键一步，更...
+
+### 5. Package 5: 基于多维指标与主观感知的LLM引导去噪模型综合评估体系
+
+本教程包聚焦于图像去噪任务中常被忽视但至关重要的环节：**如何科学、全面地评估一个AI去噪模型的真实性能？** 仅依赖PSNR或SSIM等传统客观指标，往往无法反映人类对图像质量的主观感受，尤其在语义细节保留方面存在严重偏差。为此，我们将构建一个融合客观指标（PSNR、SSIM、LPIPS）与主观评...
+
+
+## 🚀 快速开始
+
+查看 [QUICKSTART.md](./QUICKSTART.md) 获取快速上手指南。
+
+## 📚 完整文档
+
+- **[完整教程](./FULL_TUTORIAL.md)** - 包含所有包的详细实现指南
+- **[项目结构](./PROJECT_STRUCTURE.md)** - 项目组织结构说明
+- **[各包 README](./packages/)** - 每个包的独立文档
+
+## 📂 文件结构
+
+```
+.
+├── README.md
+├── QUICKSTART.md
+├── FULL_TUTORIAL.md
+├── PROJECT_STRUCTURE.md
+└── packages/
+    ├── 01-package-name/
+    │   └── README.md
+    └── ...
+```
+
+## 📄 许可证
+
+[在此添加许可证信息]
+
+## 🤝 贡献
+
+[在此添加贡献指南]
+---
+
+## 📚 参考文献
+
+1. Jonathan Ho, Ajay Jain, P. Abbeel (2020). *Denoising Diffusion Probabilistic Models*. ArXiv
+2. Prafulla Dhariwal, Alex Nichol (2021). *Diffusion Models Beat GANs on Image Synthesis*. ArXiv
+3. Jiaming Song, Chenlin Meng, Stefano Ermon (2020). *Denoising Diffusion Implicit Models*. ArXiv
+4. William S. Peebles, Saining Xie (2022). *Scalable Diffusion Models with Transformers*. 2023 IEEE/CVF International Conference on Computer Vision (ICCV)
+5. Chitwan Saharia, William Chan, Saurabh Saxena et al. (2022). *Photorealistic Text-to-Image Diffusion Models with Deep Language Understanding*. ArXiv
+6. Lvmin Zhang, Anyi Rao, Maneesh Agrawala (2023). *Adding Conditional Control to Text-to-Image Diffusion Models*. 2023 IEEE/CVF International Conference on Computer Vision (ICCV)
+7. Nataniel Ruiz, Yuanzhen Li, Varun Jampani et al. (2022). *DreamBooth: Fine Tuning Text-to-Image Diffusion Models for Subject-Driven Generation*. 2023 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
+8. Kaiyang Zhou, Jingkang Yang, Chen Change Loy et al. (2022). *Conditional Prompt Learning for Vision-Language Models*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
+9. Pengchuan Zhang, Xiujun Li, Xiaowei Hu et al. (2021). *VinVL: Revisiting Visual Representations in Vision-Language Models*. 2021 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
+10. Robin Rombach, A. Blattmann, Dominik Lorenz et al. (2021). *High-Resolution Image Synthesis with Latent Diffusion Models*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
+11. Alex Nichol, Prafulla Dhariwal, A. Ramesh et al. (2021). *GLIDE: Towards Photorealistic Image Generation and Editing with Text-Guided Diffusion Models*. 
+12. Boyuan Chen, Zhuo Xu, Sean Kirmani et al. (2024). *SpatialVLM: Endowing Vision-Language Models with Spatial Reasoning Capabilities*. 2024 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
+13. Xiaokang Peng, Yake Wei, Andong Deng et al. (2022). *Balanced Multimodal Learning via On-the-fly Gradient Modulation*. 2022 IEEE/CVF Conference on Computer Vision and Pattern Recognition (CVPR)
+14. Dustin Podell, Zion English, Kyle Lacey et al. (2023). *SDXL: Improving Latent Diffusion Models for High-Resolution Image Synthesis*. ArXiv
+15. Kaiyang Zhou, Jingkang Yang, Chen Change Loy et al. (2021). *Learning to Prompt for Vision-Language Models*. International Journal of Computer Vision
+16. Wenliang Dai, Junnan Li, Dongxu Li et al. (2023). *InstructBLIP: Towards General-purpose Vision-Language Models with Instruction Tuning*. ArXiv
+17. Deyao Zhu, Jun Chen, Xiaoqian Shen et al. (2023). *MiniGPT-4: Enhancing Vision-Language Understanding with Advanced Large Language Models*. ArXiv
+18. Peng Gao, Shijie Geng, Renrui Zhang et al. (2021). *CLIP-Adapter: Better Vision-Language Models with Feature Adapters*. International Journal of Computer Vision
+19. Yifan Li, Yifan Du, Kun Zhou et al. (2023). *Evaluating Object Hallucination in Large Vision-Language Models*. 
+20. Anas Awadalla, Irena Gao, Josh Gardner et al. (2023). *OpenFlamingo: An Open-Source Framework for Training Large Autoregressive Vision-Language Models*. ArXiv
+

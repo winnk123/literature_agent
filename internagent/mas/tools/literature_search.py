@@ -20,12 +20,245 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class PaperMetadata:
-    """Data class for paper metadata."""
+    """数据类：存储论文的元数据信息。
     
-    title: str
-    authors: List[str]
-    abstract: str
-    year: Optional[int] = None
+    包括论文的标题、作者、摘要、年份、DOI、期刊、URL、引用数、参考文献、关键词和全文内容。
+    """
+    
+    title: str  # 论文标题
+    authors: List[str]  # 作者列表
+    abstract: str  # 论文摘要
+    year: Optional[int] = None  # 发表年份
+    doi: Optional[str] = None  # DOI
+    journal: Optional[str] = None  # 期刊名称
+    url: Optional[str] = None  # 论文链接
+    citations: Optional[int] = None  # 引用次数
+    references: Optional[List[str]] = None  # 参考文献列表
+    keywords: Optional[List[str]] = None  # 关键词列表
+    full_text: Optional[str] = None  # 论文全文内容
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """将元数据转换为字典格式。"""
+        return {
+            "title": self.title,
+            "authors": self.authors,
+            "abstract": self.abstract,
+            "year": self.year,
+            "doi": self.doi,
+            "journal": self.journal,
+            "url": self.url,
+            "citations": self.citations,
+            "references": self.references,
+            "keywords": self.keywords
+        }
+    
+    def to_citation(self, format_type: str = "apa") -> str:
+        """
+        生成格式化的引用字符串。
+        
+        参数:
+            format_type: 引用格式 ("apa", "mla", "chicago", "harvard", "bibtex")
+            
+        返回:
+            str: 格式化的引用字符串
+        """
+        if format_type == "apa":
+            # APA 格式
+            author_text = ""
+            if self.authors:
+                if len(self.authors) == 1:
+                    author_text = f"{self.authors[0]}."
+                elif len(self.authors) == 2:
+                    author_text = f"{self.authors[0]} & {self.authors[1]}."
+                else:
+                    author_text = f"{self.authors[0]} et al."
+            
+            year_text = f" ({self.year})." if self.year else ""
+            journal_text = f" {self.journal}," if self.journal else ""
+            doi_text = f" doi:{self.doi}" if self.doi else ""
+            
+            return f"{author_text}{year_text} {self.title}.{journal_text}{doi_text}"
+            
+        elif format_type == "bibtex":
+            # BibTeX 格式
+            first_author = self.authors[0].split(" ")[-1] if self.authors else "Unknown"
+            year = self.year or "Unknown"
+            key = f"{first_author}{year}"
+            
+            authors = " and ".join(self.authors) if self.authors else "Unknown"
+            
+            return (
+                f"@article{{{key},\n"
+                f"  author = {{{authors}}},\n"
+                f"  title = {{{self.title}}},\n"
+                f"  journal = {{{self.journal or 'Unknown'}}},\n"
+                f"  year = {{{self.year or 'Unknown'}}},\n"
+                f"  doi = {{{self.doi or ''}}}\n"
+                f"}}"
+            )
+            
+        # 默认返回基本的引用格式
+        authors = ", ".join(self.authors) if self.authors else "Unknown"
+        year = f"({self.year})" if self.year else ""
+        journal = f"{self.journal}" if self.journal else ""
+        
+        return f"{authors} {year}. {self.title}. {journal}"
+
+
+class CitationManager:
+    """
+    引用管理器：用于管理文献的引用和参考文献列表。
+    """
+    
+    def __init__(self):
+        """初始化引用管理器。"""
+        self.papers: Dict[str, PaperMetadata] = {}  # 存储论文元数据的字典，键为 DOI
+        self.cached_search_results: Dict[str, List[PaperMetadata]] = {}  # 缓存的搜索结果
+        
+    def add_paper(self, paper: PaperMetadata) -> None:
+        """
+        向引用管理器中添加一篇论文。
+        
+        参数:
+            paper: 要添加的论文元数据
+        """
+        if paper.doi:
+            self.papers[paper.doi] = paper
+        else:
+            # 如果没有 DOI，则使用标题作为键
+            key = paper.title.lower().strip()
+            existing = False
+            
+            # 检查是否已存在相同标题的论文
+            for existing_paper in self.papers.values():
+                if existing_paper.title.lower().strip() == key:
+                    existing = True
+                    break
+                    
+            if not existing:
+                # 使用生成的键添加
+                generated_key = f"paper_{len(self.papers)}"
+                self.papers[generated_key] = paper
+    
+    def clear(self) -> None:
+        """清空引用管理器中的所有论文和缓存的搜索结果。"""
+        self.papers.clear()
+        self.cached_search_results.clear()
+
+class LiteratureSearch:
+    """
+    文献搜索工具：用于在多个来源中搜索科学文献。
+    """
+    
+    def __init__(self, 
+                email: str, 
+                api_keys: Optional[Dict[str, str]] = None,
+                citation_manager: Optional[CitationManager] = None):
+        """
+        初始化文献搜索工具。
+        
+        参数:
+            email: 用于 API 访问的电子邮件地址（PubMed 必需）
+            api_keys: 各种来源的 API 密钥字典
+            citation_manager: 引用管理器实例
+        """
+        self.email = email
+        self.api_keys = api_keys or {}
+        self.citation_manager = citation_manager or CitationManager()
+        
+        # 默认搜索参数
+        self.default_max_results = 10
+        self.default_sort = "relevance"  # 或 "date"
+        
+        # 搜索结果缓存
+        self._cache = {}
+        
+    async def search_pubmed(self,
+                          query: str,
+                          max_results: int = 10,
+                          sort: str = "relevance",
+                          **kwargs) -> List[PaperMetadata]:
+        """
+        在 PubMed 中搜索与查询匹配的论文。
+        
+        参数:
+            query: 搜索查询
+            max_results: 最大返回结果数
+            sort: 排序方式 ("relevance" 或 "date")
+            
+        返回:
+            包含论文元数据的列表
+        """
+        # 构建缓存键
+        cache_key = f"pubmed:{query}:{max_results}:{sort}"
+        if cache_key in self._cache:
+            logger.info(f"使用缓存的 PubMed 查询结果: {query}")
+            return self._cache[cache_key]
+            
+        logger.info(f"在 PubMed 中搜索: {query}")
+        
+        # PubMed API 基础 URL
+        base_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils"
+        search_url = f"{base_url}/esearch.fcgi"
+        fetch_url = f"{base_url}/efetch.fcgi"
+        
+        # 搜索参数
+        sort_param = "relevance" if sort == "relevance" else "pub+date"
+        search_params = {
+            "db": "pubmed",
+            "term": query,
+            "retmax": max_results,
+            "sort": sort_param,
+            "retmode": "json",
+            "email": self.email,
+            "tool": "search_tool"
+        }
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                # 第一步，搜索匹配的 PMIDs
+                async with session.get(search_url, params=search_params) as response:
+                    if response.status != 200:
+                        logger.error(f"PubMed 搜索错误: {response.status}")
+                        return []
+                        
+                    search_data = await response.json() if response.content_type == 'application/json' else {}
+                    pmids = search_data.get("esearchresult", {}).get("idlist", [])
+                    
+                    if not pmids:
+                        logger.info(f"未找到与查询匹配的 PubMed 结果: {query}")
+                        return []
+                    
+                    # 第二步，获取这些 PMIDs 的详细信息
+                    fetch_params = {
+                        "db": "pubmed",
+                        "id": ",".join(pmids),
+                        "retmode": "xml",
+                        "email": self.email,
+                        "tool": "search_tool"
+                    }
+                    
+                    async with session.get(fetch_url, params=fetch_params) as fetch_response:
+                        if fetch_response.status != 200:
+                            logger.error(f"PubMed 获取错误: {fetch_response.status}")
+                            return []
+                            
+                        xml_data = await fetch_response.text()
+                        papers = self._parse_pubmed_xml(xml_data)
+                        
+                        # 缓存结果
+                        self._cache[cache_key] = papers
+                        
+                        # 将论文添加到引用管理器
+                        for paper in papers:
+                            self.citation_manager.add_paper(paper)
+                            
+                        return papers
+                        
+        except Exception as e:
+            logger.error(f"搜索 PubMed 时出错: {str(e)}")
+            return []
+
     doi: Optional[str] = None
     journal: Optional[str] = None
     url: Optional[str] = None

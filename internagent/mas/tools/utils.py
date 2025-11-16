@@ -123,41 +123,49 @@ class PaperMetadata:
         return f"{authors} {year}. {self.title}. {journal}"
     
 # Search tools
-def fetch_semantic_papers(keyword, max_results=20):
+def fetch_semantic_papers(keyword, max_results=20, sort="relevance", min_citation_count: int = 0, min_year: Optional[int] = None):
     search_url = "https://api.semanticscholar.org/graph/v1/paper/search"
     query_params = {
         'query': keyword,
         'limit': max_results,
-        'fields': 'title,year,citationCount,abstract,tldr,isOpenAccess,openAccessPdf'
+        'fields': 'title,year,citationCount,venue,journal,authors,abstract,tldr,isOpenAccess,openAccessPdf'
     }
+    if sort:
+        query_params['sort'] = sort
     headers = {'x-api-key': os.environ['S2_API_KEY']}  # Ensure you have the API key set
     response = requests.get(search_url, params=query_params, headers=headers)
 
     if response.status_code == 200:
         searched_data = response.json().get('data', [])
         papers = []
-        for paper in searched_data:
-            author_list = [author.get("name", "") for author in paper.get("authors", [])]
+        for paper_data in searched_data:
+            author_list = [author.get("name", "") for author in paper_data.get("authors", [])]
             
-            paper = PaperMetadata(
-                title=paper.get("title", ""),
+            paper_obj = PaperMetadata(
+                title=paper_data.get("title", ""),
                 authors=author_list,
-                abstract=paper.get("abstract", ""),
-                year=paper.get("year"),
-                doi=paper.get("doi"),
-                journal=paper.get("journal", {}).get("name") if paper.get("journal") else None,
-                url=paper.get("url"),
-                citations=paper.get("citationCount"),
+                abstract=paper_data.get("abstract", ""),
+                year=paper_data.get("year"),
+                doi=paper_data.get("doi"),
+                journal=(paper_data.get("journal", {}).get("name") if isinstance(paper_data.get("journal"), dict) else paper_data.get("venue")),
+                url=paper_data.get("url"),
+                citations=paper_data.get("citationCount"),
                 source='semantic_scholar'
             )
-            papers.append(paper.to_dict()) # NOTE: placeholder for paper metadata
+            paper_dict = paper_obj.to_dict()
+            paper_dict["citationCount"] = paper_data.get("citationCount")
+            if min_citation_count and (paper_dict.get("citationCount") or 0) < min_citation_count:
+                continue
+            if min_year and paper_dict.get("year") and paper_dict["year"] < min_year:
+                continue
+            papers.append(paper_dict)
             
         return papers
     else:
         logger.info(f"KeywordQuery: {response.status_code}")
         return []   
     
-def fetch_pubmed_papers(query: str, max_results: int = 20, sort: str = "relevance") -> list:
+def fetch_pubmed_papers(query: str, max_results: int = 20, sort: str = "relevance", **kwargs) -> list:
     """
     Fetch papers from PubMed based on the query.
     
@@ -218,7 +226,7 @@ def fetch_pubmed_papers(query: str, max_results: int = 20, sort: str = "relevanc
         return []
 
 
-def fetch_arxiv_papers(query: str, max_results: int = 20, sort: str = "relevance", categories: list = None) -> list:
+def fetch_arxiv_papers(query: str, max_results: int = 20, sort: str = "relevance", categories: list = None, **kwargs) -> list:
     """
     Fetch papers from arXiv based on the query.
     
@@ -272,7 +280,7 @@ def fetch_arxiv_papers(query: str, max_results: int = 20, sort: str = "relevance
 def select_papers(paper_bank, max_papers, rag_read_depth):
     selected_for_deep_read = []
     count = 0
-    for paper in sorted(paper_bank, key=lambda x: x['score'], reverse=True):
+    for paper in sorted(paper_bank, key=lambda x: x.get('score', 0), reverse=True):
         if count >= rag_read_depth:
             break
         url = None
@@ -799,23 +807,29 @@ def multi_source_search(query: str, sources: list[str] = None, max_results: int 
     
     for source in sources:
         if source == "pubmed":
-            combined_results[source] = fetch_pubmed_papers(query, max_results, **kwargs)
+            combined_results[source] = fetch_pubmed_papers(query, max_results)
         elif source == "arxiv":
-            combined_results[source] = fetch_arxiv_papers(query, max_results, **kwargs)
+            combined_results[source] = fetch_arxiv_papers(query, max_results)
         elif source == "semantic_scholar":
-            combined_results[source] = fetch_semantic_papers(query, max_results, **kwargs)  # 假设你有这个函数
+            combined_results[source] = fetch_semantic_papers(
+                query,
+                max_results,
+                sort=kwargs.get("sort", "relevance"),
+                min_citation_count=kwargs.get("min_citation_count", 0),
+                min_year=kwargs.get("min_year")
+            )
         else:
             logger.warning(f"Unknown source: {source}. Skipping.")
     
     return combined_results
 
-def parse_and_execute(output, max_results):
+def parse_and_execute(output, max_results, **kwargs):
     ## parse gpt4 output and execute corresponding functions
     if output.startswith("KeywordQuery"):
         match = re.match(r'KeywordQuery\("([^"]+)"\)', output)
         keyword = match.group(1) if match else None
         if keyword:
-            response = multi_source_search(keyword, max_results=max_results)
+            response = multi_source_search(keyword, max_results=max_results, **kwargs)
             if response is not None:
                 paper_lst = response
             # print("paper_lst: ",paper_lst)

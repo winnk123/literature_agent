@@ -5,12 +5,20 @@ version: "1.0.0"
 
 # Model Providers Configuration
 models:
-  default_provider: "openai"
-
   openai:
-    model_name: "gpt-4o-mini"
+    model_name: "qwen-vl-max"
     api_key: ""  # Set via environment variable OPENAI_API_KEY
-    max_tokens: 4096
+    max_tokens: 10000
+    temperature: 0.7
+  qwen3_max:
+    model_name: "qwen3-max"
+    api_key: ""  # Set via environment variable QWEN3_API_KEY or reuse OPENAI_API_KEY
+    max_tokens: 10000
+    temperature: 0.6
+  interns1:
+    model_name: "intern-s1"
+    api_key: "" # Set via environment variable DS_API_KEY
+    max_tokens: 10000
     temperature: 0.7
 
 # Memory Configuration
@@ -22,19 +30,19 @@ memory:
 agents:
   # Idea Generation Agent
   generation:
-    model_provider: "default"
+    model_provider: "openai"
     generation_count: 5
     creativity: 0.7
     do_survey: false
 
   # Reflection Agent
   reflection:
-    model_provider: "default"
+    model_provider: "openai"
     detail_level: "medium"
 
   # Evolution Agent
   evolution:
-    model_provider: "default"
+    model_provider: "openai"
     creativity_level: 0.6
 
   # Method Development Agent
@@ -49,16 +57,44 @@ agents:
 
   # Ranking Agent
   ranking:
-    model_provider: "default"
+    model_provider: "openai"
 
   # Scholar Agent
   scholar:
-    model_provider: "default"
+    model_provider: "openai"
     search_depth: "moderate"
 
   # Survey Agent
   survey:
-    model_provider: "default"
+    model_provider: "openai"
+
+  # Literature Summary Agent
+  literature_summary:
+    model_provider: "openai"
+
+  # Engineer Agent
+  engineer:
+    model_provider: "qwen3_max"
+    max_actions: 5
+    default_language: "python"
+    require_tests: true
+
+  # Task Decomposition Agent (multimodal)
+  task_decomposition:
+    model_provider: "openai"
+    temperature: 0.3
+
+  # Judger Agent
+  judger:
+    model_provider: "interns1"
+
+  # Logical Coherence Reviewer Agent
+  logical_coherence_reviewer:
+    model_provider: "qwen3_max"
+    
+  # Pedagogical Reviewer Agent
+  pedagogical_reviewer:
+    model_provider: "interns1"
 
 # Workflow Configuration
 workflow:

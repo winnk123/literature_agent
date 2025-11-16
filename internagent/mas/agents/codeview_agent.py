@@ -549,4 +549,3 @@ def get_repo_structure(model, project_path, output_dir, output_name, ignore_list
 
 
     
-

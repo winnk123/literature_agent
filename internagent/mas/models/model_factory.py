@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 # Available model provider implementations
 MODEL_PROVIDER_MAP = {
     "openai": "internagent.mas.models.openai_model.OpenAIModel",
+    "qwen3_max": "internagent.mas.models.openai_model.OpenAIModel",
     "interns1": "internagent.mas.models.s1_model.S1Model",
     "dsr1": "internagent.mas.models.r1_model.R1Model",
 }

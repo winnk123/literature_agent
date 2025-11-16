@@ -11,7 +11,7 @@ models:
 
   # OpenAI Configuration
   openai:
-    model_name: "gpt-4o-2024-11-20"
+    model_name: "qwen3-vl-plus-2025-09-23"
     api_key: ""  # Set via environment variable OPENAI_API_KEY
     max_tokens: 4096
     temperature: 0.7
@@ -52,12 +52,12 @@ agents:
   # Method Development Agent
   method_development:
     model_provider: "openai"  # Use more powerful model
-    model_name: "gpt-4o-2024-11-20"
+    model_name: "qwen3-vl-plus-2025-09-23"
 
   # Refinement Agent
   refinement:
     model_provider: "openai"
-    model_name: "gpt-4o-2024-11-20"
+    model_name: "qwen3-vl-plus-2025-09-23"
 
   # Ranking Agent (for idea scoring)
   ranking:

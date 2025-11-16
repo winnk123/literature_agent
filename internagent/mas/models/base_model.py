@@ -112,6 +112,33 @@ class BaseModel(abc.ABC):
             ModelError: On generation failure when no default is provided
         """
         pass
+
+    @abc.abstractmethod
+    async def generate_multimodal_json(self,
+                                       prompt: str,
+                                       schema: Dict[str, Any],
+                                       images: Optional[List[str]] = None,
+                                       system_prompt: Optional[str] = None,
+                                       temperature: Optional[float] = None,
+                                       **kwargs) -> Dict[str, Any]:
+        """
+        Generate structured JSON output using multimodal (text + image) inputs.
+
+        Args:
+            prompt: Primary textual instructions for the model
+            schema: Expected JSON schema for the response
+            images: Optional list of image references (paths or data URLs)
+            system_prompt: Optional system-level instructions
+            temperature: Creativity control (higher = more random)
+            **kwargs: Provider-specific parameters
+
+        Returns:
+            Structured data as a Python dictionary
+
+        Raises:
+            ModelError: If multimodal generation is not supported or fails
+        """
+        pass
     
     @abc.abstractmethod
     async def embed(self, text: Union[str, List[str]]) -> Union[List[float], List[List[float]]]:

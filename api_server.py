@@ -13,7 +13,8 @@ from contextlib import redirect_stdout
 
 import numpy as np
 import requests
-
+from dotenv import load_dotenv
+load_dotenv("config/api.env")
 try:
     import torch
 except Exception:
@@ -21,6 +22,10 @@ except Exception:
     print("警告: 未检测到 PyTorch，Notebook 执行环境中的 torch 代码可能不可用。")
 
 from aider_service import process_code_request, AiderService
+from literature_agent_service import (
+    LiteratureAgentError,
+    run_literature_query,
+)
 
 app = Flask(__name__)
 CORS(app)
@@ -257,6 +262,44 @@ def code_chat():
         
         message = data['message']
         language = data.get('language', 'python')
+        context_payload = data.get('context') or {}
+
+        if language == 'paper':
+            manual_guidance = context_payload.get('manual_guidance')
+            if isinstance(manual_guidance, str):
+                manual_guidance = [manual_guidance]
+            max_papers = context_payload.get('max_papers')
+            if not isinstance(max_papers, int):
+                max_papers = 12
+
+            try:
+                literature_result = run_literature_query(
+                    question=message,
+                    domain=context_payload.get('domain') or 'Academic Research',
+                    background=context_payload.get('background', ''),
+                    max_papers=max_papers,
+                    guidance=manual_guidance,
+                )
+            except LiteratureAgentError as exc:
+                app.logger.error("Literature agent error: %s", exc)
+                return jsonify({'success': False, 'message': str(exc)}), 500
+            except Exception as exc:
+                app.logger.exception("Unexpected literature agent failure")
+                return jsonify({'success': False, 'message': '文献智能体内部错误'}), 500
+
+            survey_payload = literature_result.get('survey', {}) or {}
+            summary_payload = literature_result.get('summary', {}) or {}
+
+            return jsonify({
+                'success': True,
+                'response': literature_result.get('answer', ''),
+                'papers': survey_payload.get('papers', []),
+                'metadata': {
+                    'search_queries': survey_payload.get('search_queries', []),
+                    'round_results': survey_payload.get('round_results', []),
+                    'summary': summary_payload,
+                }
+            })
         
         # 分析用户意图
         intent = analyze_intent(message)
@@ -401,8 +444,10 @@ def format_chat_response(result: dict, action: str) -> str:
         if file_count > 0:
             file_list = '\n'.join([f"• {f['name']}" for f in result['files']])
             return f'我已经为你生成了 {file_count} 个文件：\n\n{file_list}\n\n你可以点击右上角的"文件"按钮查看和下载这些文件。'
-        else:
-            return "代码已生成完成。"
+        output = result.get('output') or result.get('message')
+        if output:
+            return f"以下是生成结果输出：\n\n{output}"
+        return "代码已生成完成。"
     
     elif action == 'edit':
         return "我已经根据你的要求修改了代码。请查看更新后的文件。"

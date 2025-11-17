@@ -142,6 +142,48 @@ start_aider_service.bat
 
 ---
 
+## 📚 文献智能体（DeepSeek）部署流程
+
+1. **拉取模型仓库**  
+   ```powershell
+   cd C:\Users\小新\Desktop\科创平台_cursor
+   git clone https://github.com/winnk123/literature_agent.git
+   # 如果 Git 访问受限，可手动下载 zip，解压到 literature_agent/
+   ```
+
+2. **安装依赖**  
+   ```powershell
+   pip install -r requirements_aider.txt
+   pip install -r literature_agent/literature_agent-123/requirements.txt
+   ```
+
+3. **设置环境变量（PowerShell 永久方式）**  
+   ```powershell
+   setx DEEPSEEK_API_KEY "sk-xxxxxx"
+   setx S2_API_KEY "semanticscholar_xxxxxx"
+   ```
+   > **说明**  
+   > - `DEEPSEEK_API_KEY`：调用 DeepSeek Chat Completions，已在 `OpenAIModel` 默认读取。  
+   > - `S2_API_KEY`：用于 `PaperSurvey` 调用 Semantic Scholar Graph API。  
+   > - 如需自定义 API 入口，可额外设置 `OPENAI_API_BASE_URL=https://api.deepseek.com/v1`。
+
+4. **启动后端**  
+   ```powershell
+   cd C:\Users\小新\Desktop\科创平台_cursor
+   python api_server.py
+   ```
+   文献模式请求（`language=paper`）会自动进入 `literature_agent_service`，拉起 `SurveyAgent + LiteratureSummaryAgent` 生成完整报告，并返回：
+   - `response`：结构化总结（供前端气泡显示）  
+   - `papers`：高分文献清单  
+   - `metadata.summary`：包含 `problem_formulation / action_items / references` 等字段  
+   - `metadata.search_queries / round_results`：所有检索指令及轮次状态
+
+5. **前端使用**  
+   - 进入“文献”标签输入问题即可，无需额外按钮。  
+   - 若要限制开销，可在前端 `context` 中传 `max_papers`，或在 `literature_agent_service.run()` 里修改默认值。
+
+---
+
 ## 🎨 新功能展示
 
 ### 1. 打字机效果

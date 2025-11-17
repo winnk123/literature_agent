@@ -25,6 +25,22 @@ class AiderService:
         self.api_key = api_key or os.environ.get('DEEPSEEK_API_KEY')
         self.model = model
         self.work_dir = Path(tempfile.mkdtemp(prefix='aider_'))
+
+    def _run_aider(self, args: List[str], timeout: int = 120) -> subprocess.CompletedProcess:
+        env = os.environ.copy()
+        if os.name == "nt":
+            command_line = subprocess.list2cmdline(args)
+            cmd = ["cmd.exe", "/c", command_line]
+        else:
+            cmd = args
+        return subprocess.run(
+            cmd,
+            cwd=self.work_dir,
+            env=env,
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
         
     def generate_code(self, prompt: str, language: str = "python", 
                      context_files: Optional[List[str]] = None) -> Dict:
@@ -60,17 +76,7 @@ class AiderService:
                 cmd.extend(context_files)
             
             # 设置环境变量
-            env = os.environ.copy()
-            
-            # 执行 Aider 命令
-            result = subprocess.run(
-                cmd,
-                cwd=self.work_dir,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=120
-            )
+            result = self._run_aider(cmd, timeout=120)
             
             # 收集生成的文件
             generated_files = self._collect_generated_files()
@@ -135,16 +141,7 @@ class AiderService:
             # 添加消息和文件
             cmd.extend(['--message', edit_prompt, file_path])
             
-            env = os.environ.copy()
-            
-            result = subprocess.run(
-                cmd,
-                cwd=self.work_dir,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=120
-            )
+            result = self._run_aider(cmd, timeout=120)
             
             # 读取编辑后的文件
             edited_file = self.work_dir / file_path
@@ -208,16 +205,7 @@ class AiderService:
             # 添加消息和文件
             cmd.extend(['--message', prompt, str(temp_file)])
             
-            env = os.environ.copy()
-            
-            result = subprocess.run(
-                cmd,
-                cwd=self.work_dir,
-                env=env,
-                capture_output=True,
-                text=True,
-                timeout=60
-            )
+            result = self._run_aider(cmd, timeout=60)
             
             return {
                 'success': True,

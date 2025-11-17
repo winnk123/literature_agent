@@ -117,19 +117,19 @@
           <div class="language-selector__title">代码语言</div>
           <div class="language-options">
             <label class="language-option">
-              <input type="checkbox" value="python" checked />
+              <input type="checkbox" id="lang-python" name="language" value="python" checked />
               <span>Python</span>
             </label>
             <label class="language-option">
-              <input type="checkbox" value="javascript" />
+              <input type="checkbox" id="lang-javascript" name="language" value="javascript" />
               <span>JavaScript</span>
             </label>
             <label class="language-option">
-              <input type="checkbox" value="java" />
+              <input type="checkbox" id="lang-java" name="language" value="java" />
               <span>Java</span>
             </label>
             <label class="language-option">
-              <input type="checkbox" value="c" />
+              <input type="checkbox" id="lang-c" name="language" value="c" />
               <span>C</span>
             </label>
           </div>
@@ -207,6 +207,16 @@
           <div class="welcome__content">
             <h1 class="welcome__title">早上好，研究者</h1>
             <p class="welcome__subtitle">有什么我能帮您的吗？</p>
+            
+            <!-- Agent 类型选择 -->
+            <div class="welcome__agent-selector">
+              <label for="agentTypeSelect" class="agent-selector__label">选择 AI 助手类型：</label>
+              <select id="agentTypeSelect" name="agentType" class="agent-selector__select">
+                <option value="paper">📄 文献助手 - 检索和推荐学术文献</option>
+                <option value="research">🔬 科研助手 - 提供研究建议和方法</option>
+                <option value="code">💻 代码助手 - 生成、编辑和解释代码</option>
+              </select>
+            </div>
           </div>
           <div class="welcome__input">
             <label for="qaWelcomeInput" class="sr-only">向 AI 提问</label>
@@ -227,8 +237,10 @@
               <button class="qa__tab is-active" data-tab="paper">文献</button>
               <div class="qa__split"></div>
               <button class="qa__tab" data-tab="research">科研</button>
+              <div class="qa__split"></div>
+              <button class="qa__tab" data-tab="code">代码</button>
             </div>
-            <button class="qa__files-btn" id="qaFilesBtn" title="查看文件" style="display: none;">
+            <button class="qa__files-btn" id="qaFilesBtn" title="查看文件" disabled>
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <path d="M8.5 2L14 7.5V13C14 13.2652 13.8946 13.5196 13.7071 13.7071C13.5196 13.8946 13.2652 14 13 14H3C2.73478 14 2.48043 13.8946 2.29289 13.7071C2.10536 13.5196 2 13.2652 2 13V3C2 2.73478 2.10536 2.48043 2.29289 2.29289C2.48043 2.10536 2.73478 2 3 2H8.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                 <path d="M8.5 2V7.5H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -585,9 +597,9 @@
 
   <!-- 划词工具栏 -->
   <div id="textToolbar" class="text-toolbar" style="display: none;">
-    <button class="text-toolbar__btn" id="askAI" title="询问AI">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
-      <span>询问AI</span>
+    <button class="text-toolbar__btn" id="generateVideoBtn" title="生成讲解视频">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" stroke="currentColor" stroke-width="2"/><path d="M10 8l6 4-6 4V8z" fill="currentColor"/></svg>
+      <span>生成讲解视频</span>
     </button>
     <div class="toolbar__divider"></div>
     <button class="text-toolbar__btn" id="highlightText" title="高亮">
@@ -599,12 +611,24 @@
       <div class="color-option" data-color="#90caf9" style="background: #90caf9;" title="蓝色"></div>
       <div class="color-option" data-color="#ef9a9a" style="background: #ef9a9a;" title="红色"></div>
     </div>
+    <button class="text-toolbar__btn" id="searchText" title="搜索">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M16 16L21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>搜索</span>
+    </button>
+    <div class="search-options" id="searchOptions" style="display: none;">
+      <button data-type="paper">文献搜索</button>
+      <button data-type="research">科研搜索</button>
+      <button data-type="code">代码搜索</button>
+      <button data-type="cancel" class="search-option--cancel">取消</button>
+    </div>
     <button class="text-toolbar__btn" id="underlineText" title="下划线">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 3v7a6 6 0 0 0 12 0V3M4 21h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
     <button class="text-toolbar__btn" id="strikeText" title="删除线">
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M17.5 12h-11M4 7h16M8 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
     </button>
+    <div class="toolbar__divider"></div>
+    <button class="text-toolbar__btn text-toolbar__btn--ghost" id="clearFormatBtn" title="清除所有标注">清除标注</button>
   </div>
 
   <script src="app.js"></script>

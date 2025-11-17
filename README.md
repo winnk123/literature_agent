@@ -263,19 +263,289 @@ AI 科创平台是一个面向科研学习者的综合性平台，提供了类�
    - 删除线
    - 询问 AI
 
-## 🎨 主题定制
+## 🎨 UI 设计规范
+
+### 整体设计风格
+
+平台采用**学术风格设计**（参考香港理工大学 NLP Lab 招博海报），追求：
+- **学院风（Academic）**：专业、正式、学术化
+- **简洁克制（Minimal）**：去除多余装饰，聚焦内容
+- **高阅读体验（High Readability）**：高对比度，清晰可读
+- **强结构感（Structured Layout）**：明确的视觉层级和分区
+
+### 色彩体系
+
+#### 核心红色色板
+
+```css
+--red-dark: #7F0037;        /* 深红 - 用于标题条、重要强调 */
+--red-primary: #A5192E;     /* 主深红 - 用于按钮、主要交互 */
+--red-soft: #B8404A;        /* 柔和红 - 用于标签、次要强调 */
+--red-light: #FFF2F2;       /* 浅粉背景 - 用于悬浮窗、柔和区域 */
+```
+
+**使用规则**：
+- ✅ 使用以上三种红色作为核心色板
+- ❌ 不使用亮红、高饱和红、粉红
+- ✅ 红色作为**点缀色**，背景保持浅色
+- ✅ 大面积背景必须保持轻、简洁、干净
+
+#### 中性色系统
+
+```css
+--text: #333333;            /* 主文字 - 深灰（WCAG AA） */
+--text-2: #666666;         /* 次要文字 - 中灰 */
+--text-3: #999999;          /* 辅助文字 - 浅灰 */
+--border: #E5E5E5;          /* 浅灰色边框 */
+--bg: #FAFAFA;              /* 主背景 - 极浅灰 */
+--bg-elev: #FFFFFF;         /* 卡片背景 - 纯白 */
+```
+
+### 侧边栏设计规范（重点）
+
+#### 整体结构
+
+侧边栏采用**纯白背景**（`#FFFFFF`），学术风格设计：
+
+```css
+.sidebar {
+  background: #FFFFFF;              /* 纯白背景 */
+  border-right: 1px solid #E5E5E5; /* 浅灰右侧边框 */
+  box-shadow: 1px 0 4px rgba(0, 0, 0, 0.04); /* 轻微阴影 */
+}
+```
+
+#### 品牌区域（`.sidebar__brand`）
+
+- **背景**：纯白 `#FFFFFF`
+- **分隔线**：底部 2px 深红边框（`#7F0037`）
+- **Logo**：
+  - 尺寸：40px × 40px
+  - 背景：深红 `#7F0037`
+  - 文字：白色 `#FFFFFF`
+  - 圆角：6px
+  - 悬停：背景变为主深红 `#A5192E`
+- **品牌名**：
+  - 颜色：深红 `#7F0037`
+  - 字号：16px
+  - 字重：700
+
+#### 导航区域（`.sidebar__nav`）
+
+##### 导航标题（`.nav__title`）
+
+```css
+.nav__title {
+  color: #888888;                    /* 中灰色 */
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;        /* 大写字母 */
+  letter-spacing: 1.5px;
+  border-bottom: 1px solid #E5E5E5; /* 浅灰下划线 */
+}
+```
+
+##### 导航项（`.nav__item`）- 核心设计
+
+**默认状态**：
+```css
+.nav__item {
+  color: #333333;                    /* 深灰文字，高对比度 */
+  background: transparent;            /* 透明背景 */
+  padding: 8px 16px;                 /* 舒适的内边距 */
+  border-radius: 6px;                /* 小圆角 */
+  font-size: 14px;
+  font-weight: 500;
+  border-left: 3px solid transparent; /* 左侧边框预留 */
+}
+```
+
+**悬停状态（`:hover`）**：
+```css
+.nav__item:hover {
+  background: #FAFAFA;               /* 极浅灰背景 */
+  color: #7F0037;                    /* 深红色文字 */
+  border-left-color: #B8404A;        /* 左侧柔和红边框 */
+  padding-left: calc(16px - 1px);    /* 补偿边框宽度 */
+}
+```
+
+**激活状态（`.is-active`）**：
+```css
+.nav__item.is-active {
+  background: #FFF2F2;               /* 浅粉背景 */
+  color: #7F0037;                    /* 深红色文字 */
+  font-weight: 600;                  /* 加粗 */
+  border-left-color: #A5192E;        /* 左侧主深红边框 */
+  padding-left: calc(16px - 1px);
+}
+```
+
+##### 导航图标（`.nav__icon`）
+
+```css
+.nav__icon {
+  width: 18px;
+  height: 18px;
+  stroke: #888888;                   /* 默认：中灰色 */
+  stroke-width: 1.8;
+}
+
+.nav__item:hover .nav__icon {
+  stroke: #7F0037;                   /* 悬停：深红色 */
+}
+
+.nav__item.is-active .nav__icon {
+  stroke: #A5192E;                   /* 激活：主深红 */
+  stroke-width: 2.2;
+}
+```
+
+#### 子导航列表（`.nav__sublist`）
+
+```css
+.nav__sublist {
+  border-left: 2px solid #E5E5E5;    /* 左侧浅灰边框 */
+  padding-left: 24px;
+  margin-left: 16px;
+}
+
+.nav__sublist .nav__item {
+  color: #666666;                    /* 中灰文字 */
+  font-size: 13px;
+  border-left: none;                 /* 移除左侧边框 */
+}
+
+.nav__sublist .nav__item:hover {
+  color: #7F0037;
+  background: #FAFAFA;
+}
+
+.nav__sublist .nav__item.is-active {
+  background: #FFF2F2;
+  color: #7F0037;
+  border-left: 2px solid #B8404A;    /* 左侧柔和红边框 */
+}
+```
+
+#### 筛选组和语言选择器
+
+```css
+.filter__group,
+.language-selector {
+  background: #FFFFFF;                /* 白色背景 */
+  border: 1px solid #E5E5E5;         /* 浅灰边框 */
+  border-left: 3px solid #7F0037;     /* 左侧深红边框（强调） */
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.filter__title,
+.language-selector__title {
+  color: #888888;                    /* 中灰色 */
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.check,
+.language-option {
+  color: #333333;                    /* 深灰文字 */
+  font-size: 13px;
+}
+
+.check:hover,
+.language-option:hover {
+  color: #7F0037;                    /* 悬停：深红色 */
+}
+
+.check input[type="checkbox"],
+.language-option input[type="checkbox"] {
+  accent-color: #A5192E;            /* 主深红 */
+}
+
+.check input[type="checkbox"]:checked,
+.language-option input[type="checkbox"]:checked {
+  accent-color: #7F0037;            /* 选中：深红色 */
+}
+```
+
+#### 个人资料区域（`.sidebar__profile`）
+
+```css
+.sidebar__profile {
+  background: #FAFAFA;                /* 极浅灰背景 */
+  border-top: 1px solid #E5E5E5;     /* 浅灰上边框 */
+  padding: 16px;
+}
+
+.profile__avatar {
+  width: 40px;
+  height: 40px;
+  background: #7F0037;                /* 深红背景 */
+  color: #FFFFFF;                    /* 白色文字 */
+  border-radius: 6px;
+}
+
+.profile__name {
+  color: #333333;                    /* 深灰文字 */
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.profile__sub {
+  color: #888888;                    /* 中灰文字 */
+  font-size: 12px;
+}
+```
+
+#### 详情页控制按钮（`.detail__sidectrl`）
+
+```css
+.detail__sidectrl {
+  background: #FFFFFF;
+  border-bottom: 1px solid #E5E5E5;
+  padding: 16px;
+}
+
+.detail__sidectrl .btn--ghost {
+  color: #666666;                    /* 中灰文字 */
+  border-color: #E5E5E5;
+  background: transparent;
+}
+
+.detail__sidectrl .btn--ghost:hover {
+  color: #7F0037;                    /* 深红色文字 */
+  border-color: #B8404A;             /* 柔和红边框 */
+  background: #FAFAFA;                /* 极浅灰背景 */
+}
+```
+
+### 设计原则总结
+
+1. **背景优先**：侧边栏使用纯白背景，确保所有文字清晰可读
+2. **红色点缀**：深红色仅用于强调和交互反馈，不作为大面积背景
+3. **状态明确**：通过背景色、文字色、左侧边框的组合，清晰区分默认/悬停/激活状态
+4. **结构清晰**：使用分隔线、边框、间距建立明确的视觉层级
+5. **高对比度**：深灰文字（`#333333`）配白色背景，符合 WCAG AA 标准
+
+### 主题定制
 
 平台支持明暗主题切换，可通过以下方式修改：
 
-### CSS 变量
+#### CSS 变量
 
 在 `styles.css` 中修改 `:root` 和 `.theme-dark` 中的变量：
 
 ```css
 :root {
-  --brand: #A0522D;        /* 品牌色 */
-  --bg: #F5F1EA;            /* 背景色 */
-  --text: #3E2723;           /* 文字色 */
+  --red-dark: #7F0037;        /* 深红 */
+  --red-primary: #A5192E;     /* 主深红 */
+  --red-soft: #B8404A;        /* 柔和红 */
+  --bg: #FAFAFA;              /* 主背景 */
+  --bg-elev: #FFFFFF;         /* 卡片背景 */
+  --text: #333333;            /* 主文字 */
   /* ... 更多变量 */
 }
 ```
@@ -404,46 +674,6 @@ AI 科创平台是一个面向科研学习者的综合性平台，提供了类�
 4. 推送到分支 (`git push origin feature/AmazingFeature`)
 5. 开启 Pull Request
 
-## 🎨 UI 风格切换（开发模式）
-
-⚠️ **重要提示**：本项目包含 UI 风格切换功能，**仅用于开发测试**。
-
-### 功能说明
-
-- **位置**：侧边栏顶部，主题切换按钮旁边（🎨 图标）
-- **功能**：可以在"默认风格（圆润）"和"硬朗风格（小圆角）"之间切换
-- **用途**：方便开发时测试不同的 UI 风格效果
-
-### 正式上线前必须删除
-
-在正式上线前，请务必删除以下内容：
-
-1. **HTML 代码**（`index.html`）：
-   - 第 27 行：首页 UI 风格切换按钮 `<button id="uiStyleToggle">`
-   - 第 116 行：详情页 UI 风格切换按钮 `<button id="uiStyleToggle2">`
-   - 第 292 行：出题页 UI 风格切换按钮 `<button id="uiStyleToggle3">`
-   - 第 649-674 行：UI 风格切换面板 `<div id="uiStylePanel">`
-
-2. **JavaScript 代码**（`app.js`）：
-   - 查找 `// ⚠️ 开发模式：UI风格切换器` 注释后的整个函数块并删除
-
-3. **CSS 代码**（`styles.css`）：
-   - 查找 `/* ⚠️ 开发模式：UI风格切换面板样式` 注释后的所有样式并删除
-
-4. **CSS 文件**（可选）：
-   - 如果不需要硬朗风格，可以删除 `styles-ui-hard.css` 文件
-   - 如果保留，记得在 `index.html` 中移除相关引用
-
-### 删除检查清单
-
-- [ ] 删除 `index.html` 中的 3 个 UI 风格切换按钮（第 27、116、292 行）
-- [ ] 删除 `index.html` 中的 UI 风格切换面板（第 648-674 行）
-- [ ] 删除 `app.js` 中的 UI 风格切换器代码（第 75-166 行，查找 `// ⚠️ 开发模式：UI风格切换器` 注释）
-- [ ] 删除 `styles.css` 中的 UI 风格面板样式（第 48-190 行，查找 `/* ⚠️ 开发模式：UI风格切换面板样式` 注释）
-- [ ] （可选）删除 `styles-ui-hard.css` 文件（如果不需要硬朗风格）
-- [ ] 测试所有功能确保正常
-
-详细说明请参考：[UI 修改指南](UI_MODIFICATION_GUIDE.md)
 
 ---
 

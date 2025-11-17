@@ -8,8 +8,6 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css" />
-  <!-- 硬朗风格 UI 主题（取消注释以启用） -->
-  <!-- <link rel="stylesheet" href="styles-ui-hard.css" /> -->
   <!-- 项目结构配置系统 -->
   <script src="project-structure-config.js"></script>
 </head>
@@ -21,7 +19,9 @@
         <div class="sidebar__brand">
           <div class="brand__logo ai-logo">AI</div>
           <div class="brand__name">AI科创平台</div>
-          <button id="themeToggle" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          <div class="brand__actions">
+            <button id="themeToggle" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          </div>
         </div>
 
         <nav class="sidebar__nav">
@@ -106,7 +106,9 @@
         <div class="sidebar__brand">
           <div class="brand__logo ai-logo">AI</div>
           <div class="brand__name">AI科创平台</div>
-          <button id="themeToggle2" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          <div class="brand__actions">
+            <button id="themeToggle2" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          </div>
         </div>
 
         <div class="detail__sidectrl">
@@ -278,7 +280,11 @@
         <div class="sidebar__brand">
           <div class="brand__logo ai-logo">AI</div>
           <div class="brand__name">AI科创平台</div>
-          <button id="themeToggle3" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          <div class="brand__actions">
+            <button id="themeToggle3" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+            <!-- ⚠️ 开发模式：UI风格切换器（正式上线前请删除） -->
+            <button id="uiStyleToggle3" class="btn btn--ghost ui-style-toggle" aria-label="切换UI风格" title="UI风格切换（开发模式）">🎨</button>
+          </div>
         </div>
 
         <div class="detail__sidectrl">

@@ -29,10 +29,16 @@
   const homeNavBtn = qs('#homeNavBtn');
   const projectsNavBtn = qs('#projectsNavBtn');
   const createNavBtn = qs('#createNavBtn');
+  const myProjectsNavBtn = qs('#myProjectsNavBtn');
   const homeHero = qs('#homeHero');
   const projectsView = qs('#projectsView');
   const projectsGrid = qs('#projectsGrid');
   const categoryListEl = qs('#categoryList');
+  const myProjectsView = qs('#my-projects-view');
+  const myProjectsGrid = qs('#myProjectsGrid');
+  const createMyProjectBtn = qs('#createMyProjectBtn');
+  const createMyProjectView = qs('#create-my-project-view');
+  const createMyProjectForm = qs('#createMyProjectForm');
 
   let currentUserRole = null;
   // 暴露到全局（供模块使用）
@@ -600,6 +606,18 @@
     }
   });
 
+  // 个人项目导航按钮
+  if (myProjectsNavBtn) myProjectsNavBtn.addEventListener('click', () => {
+    if (currentUserRole) {
+      history.pushState({ view: 'my-projects' }, '', '#my-projects');
+      switchView('my-projects');
+      renderMyProjectsCards(getMyProjects());
+    } else {
+      // 未登录，显示登录模态框
+      if (loginModal) loginModal.classList.add('active');
+    }
+  });
+
   // ============================================
   // 渲染器注册表 - Renderer Registry
   // ============================================
@@ -748,6 +766,104 @@
   
   // 暴露到全局（供其他模块使用）
   window.projects = projects;
+
+  // ============================================
+  // 个人项目数据管理模块 - My Projects Data Management
+  // ============================================
+  
+  const STORAGE_KEY_MY_PROJECTS = 'ai_platform_my_projects';
+  
+  /**
+   * 获取当前用户名
+   */
+  function getCurrentUsername() {
+    try {
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+      return currentUser ? (currentUser.username || currentUser.role || 'user') : 'user';
+    } catch (e) {
+      return 'user';
+    }
+  }
+  
+  /**
+   * 初始化个人项目数据
+   */
+  function initMyProjectsData() {
+    try {
+      const stored = localStorage.getItem(STORAGE_KEY_MY_PROJECTS);
+      return stored ? JSON.parse(stored) : [];
+    } catch (e) {
+      console.error('[MyProjects] 初始化个人项目数据失败:', e);
+      return [];
+    }
+  }
+  
+  /**
+   * 获取当前用户的个人项目
+   */
+  function getMyProjects() {
+    const allProjects = initMyProjectsData();
+    const username = getCurrentUsername();
+    return allProjects.filter(p => p.createdByUsername === username);
+  }
+  
+  /**
+   * 保存个人项目列表
+   */
+  function saveMyProjects(projects) {
+    try {
+      localStorage.setItem(STORAGE_KEY_MY_PROJECTS, JSON.stringify(projects));
+      console.log('[MyProjects] 个人项目已保存，数量:', projects.length);
+    } catch (e) {
+      console.error('[MyProjects] 保存个人项目失败:', e);
+    }
+  }
+  
+  /**
+   * 创建个人项目
+   */
+  function createMyProject(projectData) {
+    const allProjects = initMyProjectsData();
+    const username = getCurrentUsername();
+    const newProject = {
+      ...projectData,
+      id: `my-${Date.now()}`,
+      status: 'personal',
+      likes: 0,
+      createdAt: new Date().toISOString(),
+      createdBy: currentUserRole || 'user',
+      createdByUsername: username
+    };
+    allProjects.push(newProject);
+    saveMyProjects(allProjects);
+    return newProject;
+  }
+  
+  /**
+   * 更新个人项目
+   */
+  function updateMyProject(projectId, updates) {
+    const allProjects = initMyProjectsData();
+    const username = getCurrentUsername();
+    const index = allProjects.findIndex(p => p.id === projectId && p.createdByUsername === username);
+    if (index !== -1) {
+      allProjects[index] = { ...allProjects[index], ...updates };
+      saveMyProjects(allProjects);
+      return allProjects[index];
+    }
+    return null;
+  }
+  
+  /**
+   * 删除个人项目
+   */
+  function deleteMyProject(projectId) {
+    const allProjects = initMyProjectsData();
+    const username = getCurrentUsername();
+    const filtered = allProjects.filter(p => !(p.id === projectId && p.createdByUsername === username));
+    saveMyProjects(filtered);
+    return filtered.length < allProjects.length;
+  }
   
   /**
    * 监听项目更新事件
@@ -825,6 +941,107 @@
     });
     
     console.log('✓ 所有项目卡片渲染完成，总数:', list.length);
+  }
+
+  // 渲染个人项目卡片到 myProjectsGrid
+  function renderMyProjectsCards(list) {
+    if (!myProjectsGrid) {
+      console.error('myProjectsGrid 元素未找到！');
+      return;
+    }
+    
+    console.log('[MyProjects] 开始渲染个人项目卡片，数量:', list.length);
+    myProjectsGrid.innerHTML = '';
+    
+    // 如果没有项目，显示空状态
+    if (list.length === 0) {
+      const emptyState = document.createElement('div');
+      emptyState.style.cssText = 'grid-column: 1 / -1; text-align: center; padding: 60px 20px; color: var(--text-2);';
+      emptyState.innerHTML = `
+        <div style="font-size: 48px; margin-bottom: 16px;">📁</div>
+        <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px; color: var(--text);">还没有个人项目</div>
+        <div style="font-size: 14px; margin-bottom: 24px;">点击右上角"创建新项目"按钮开始创建</div>
+      `;
+      myProjectsGrid.appendChild(emptyState);
+      return;
+    }
+    
+    list.forEach((p, idx) => {
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.setAttribute('data-id', p.id);
+      card.style.cursor = 'pointer';
+      card.style.position = 'relative';
+      
+      // 添加编辑和删除按钮
+      const actionsHtml = `
+        <div class="card__actions" style="position: absolute; top: 8px; right: 8px; display: flex; gap: 4px; opacity: 0; transition: opacity 0.2s;">
+          <button class="btn btn--ghost btn--small" data-action="edit" data-id="${p.id}" style="padding: 4px 8px; font-size: 12px;" title="编辑">✏️</button>
+          <button class="btn btn--ghost btn--small" data-action="delete" data-id="${p.id}" style="padding: 4px 8px; font-size: 12px;" title="删除">🗑️</button>
+        </div>
+      `;
+      
+      card.innerHTML = `
+        <div class="card__poster">${p.category.toUpperCase()}<span class="badge">个人</span></div>
+        <div class="card__body">
+          <div class="card__title">${p.title}</div>
+          <div class="card__desc">${p.desc}</div>
+          <div class="card__meta">
+            <span class="thumb">👍 ${p.likes}</span>
+            ${p.createdAt ? `<span style="font-size: 12px; color: var(--text-2); margin-left: 12px;">${new Date(p.createdAt).toLocaleDateString()}</span>` : ''}
+          </div>
+        </div>
+        ${actionsHtml}
+      `;
+      
+      // 悬停显示操作按钮
+      card.addEventListener('mouseenter', function() {
+        const actions = card.querySelector('.card__actions');
+        if (actions) actions.style.opacity = '1';
+      });
+      card.addEventListener('mouseleave', function() {
+        const actions = card.querySelector('.card__actions');
+        if (actions) actions.style.opacity = '0';
+      });
+      
+      // 绑定点击事件（查看详情）
+      card.addEventListener('click', function(e) {
+        // 如果点击的是操作按钮，不触发详情查看
+        if (e.target.closest('.card__actions')) {
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('[MyProjects] 项目卡片被点击:', p.title, p);
+        openDetail(p);
+      }, false);
+      
+      // 绑定编辑按钮事件
+      const editBtn = card.querySelector('[data-action="edit"]');
+      if (editBtn) {
+        editBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          editMyProject(p.id);
+        });
+      }
+      
+      // 绑定删除按钮事件
+      const deleteBtn = card.querySelector('[data-action="delete"]');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', function(e) {
+          e.stopPropagation();
+          if (confirm(`确定要删除项目"${p.title}"吗？`)) {
+            deleteMyProject(p.id);
+            renderMyProjectsCards(getMyProjects());
+          }
+        });
+      }
+      
+      myProjectsGrid.appendChild(card);
+      console.log(`[MyProjects] 卡片 ${idx + 1} 已添加:`, p.title);
+    });
+    
+    console.log('[MyProjects] ✓ 所有个人项目卡片渲染完成，总数:', list.length);
   }
 
   function setPrimaryNavActive(btn) {
@@ -3653,6 +3870,8 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     if (detailView) detailView.classList.remove('active');
     if (createViewGlobal) createViewGlobal.classList.remove('active');
     if (profileView) profileView.classList.remove('active');
+    if (myProjectsView) myProjectsView.classList.remove('active');
+    if (createMyProjectView) createMyProjectView.classList.remove('active');
     
     // 显示目标视图
     if (view === 'home' && homeView) {
@@ -3664,6 +3883,13 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     } else if (view === 'create' && createViewGlobal) {
       createViewGlobal.classList.add('active');
       console.log('✓ 已切换到出题页');
+    } else if (view === 'my-projects' && myProjectsView) {
+      myProjectsView.classList.add('active');
+      console.log('✓ 已切换到个人项目页');
+      renderMyProjectsCards(getMyProjects());
+    } else if (view === 'create-my-project' && createMyProjectView) {
+      createMyProjectView.classList.add('active');
+      console.log('✓ 已切换到创建个人项目页');
     } else if (view === 'profile') {
       if (profileView) {
         profileView.classList.add('active');
@@ -4297,22 +4523,28 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     // 获取审核按钮
     const adminReviewBtn = qs('#adminReviewBtn');
 
-    // 根据角色显示/隐藏功能按钮
-      if (role === 'enterprise' || role === 'teacher') {
-      // 企业和教师：显示出题和上传按钮
+    // 根据角色显示/隐藏功能按钮和导航
+    if (role === 'enterprise' || role === 'teacher') {
+      // 企业和教师：显示出题和上传按钮，显示"我要出题"导航
       if (createProblemBtn) createProblemBtn.style.display = 'inline-block';
       if (uploadDataBtn) uploadDataBtn.style.display = 'inline-block';
       if (adminReviewBtn) adminReviewBtn.style.display = 'none';
+      if (createNavBtn) createNavBtn.style.display = 'block';
+      if (myProjectsNavBtn) myProjectsNavBtn.style.display = 'none';
     } else if (role === 'admin') {
-      // 管理员：显示所有按钮
+      // 管理员：显示所有按钮，显示"我要出题"导航
       if (createProblemBtn) createProblemBtn.style.display = 'inline-block';
       if (uploadDataBtn) uploadDataBtn.style.display = 'inline-block';
       if (adminReviewBtn) adminReviewBtn.style.display = 'inline-block';
-      } else {
-      // 普通用户：隐藏所有按钮
+      if (createNavBtn) createNavBtn.style.display = 'block';
+      if (myProjectsNavBtn) myProjectsNavBtn.style.display = 'none';
+    } else {
+      // 普通用户：隐藏所有按钮，显示"个人项目"导航
       if (createProblemBtn) createProblemBtn.style.display = 'none';
       if (uploadDataBtn) uploadDataBtn.style.display = 'none';
       if (adminReviewBtn) adminReviewBtn.style.display = 'none';
+      if (createNavBtn) createNavBtn.style.display = 'none';
+      if (myProjectsNavBtn) myProjectsNavBtn.style.display = 'block';
     }
 
     // 更新侧边栏个人中心信息
@@ -7973,6 +8205,151 @@ main();`;
     });
   }
   
+  // ============================================
+  // 个人项目功能 - My Projects Feature
+  // ============================================
+  
+  // 创建个人项目按钮
+  if (createMyProjectBtn) {
+    createMyProjectBtn.addEventListener('click', () => {
+      history.pushState({ view: 'create-my-project' }, '', '#create-my-project');
+      switchView('create-my-project');
+      if (createMyProjectForm) createMyProjectForm.reset();
+    });
+  }
+  
+  // 返回按钮
+  const backFromMyProjectsBtn = qs('#backFromMyProjectsBtn');
+  const backFromCreateMyProjectBtn = qs('#backFromCreateMyProjectBtn');
+  const closeCreateMyProjectViewBtn = qs('#closeCreateMyProjectViewBtn');
+  const cancelCreateMyProjectBtn = qs('#cancelCreateMyProjectBtn');
+  
+  if (backFromMyProjectsBtn) {
+    backFromMyProjectsBtn.addEventListener('click', () => {
+      history.pushState({ view: 'home' }, '', '#home');
+      switchView('home');
+    });
+  }
+  
+  if (backFromCreateMyProjectBtn || closeCreateMyProjectViewBtn || cancelCreateMyProjectBtn) {
+    const backToMyProjects = () => {
+      editingProjectId = null; // 重置编辑状态
+      if (createMyProjectForm) {
+        const submitBtn = createMyProjectForm.querySelector('button[type="submit"]');
+        if (submitBtn) submitBtn.textContent = '创建项目';
+      }
+      history.pushState({ view: 'my-projects' }, '', '#my-projects');
+      switchView('my-projects');
+      renderMyProjectsCards(getMyProjects());
+    };
+    
+    if (backFromCreateMyProjectBtn) {
+      backFromCreateMyProjectBtn.addEventListener('click', backToMyProjects);
+    }
+    if (closeCreateMyProjectViewBtn) {
+      closeCreateMyProjectViewBtn.addEventListener('click', backToMyProjects);
+    }
+    if (cancelCreateMyProjectBtn) {
+      cancelCreateMyProjectBtn.addEventListener('click', backToMyProjects);
+    }
+  }
+  
+  // 编辑个人项目
+  let editingProjectId = null; // 当前正在编辑的项目ID
+  
+  function editMyProject(projectId) {
+    const myProjects = getMyProjects();
+    const project = myProjects.find(p => p.id === projectId);
+    
+    if (!project) {
+      alert('项目不存在！');
+      return;
+    }
+    
+    // 设置编辑模式
+    editingProjectId = projectId;
+    
+    // 跳转到创建页面并填充数据
+    history.pushState({ view: 'create-my-project', editId: projectId }, '', `#create-my-project?edit=${projectId}`);
+    switchView('create-my-project');
+    
+    // 填充表单
+    if (createMyProjectForm) {
+      qs('#myProjectTitle', createMyProjectForm).value = project.title || '';
+      qs('#myProjectCategory', createMyProjectForm).value = project.category || '';
+      qs('#myProjectSubKey', createMyProjectForm).value = project.subKey || '';
+      qs('#myProjectDesc', createMyProjectForm).value = project.desc || '';
+      
+      // 修改提交按钮文本
+      const submitBtn = createMyProjectForm.querySelector('button[type="submit"]');
+      if (submitBtn) {
+        submitBtn.textContent = '更新项目';
+      }
+    }
+  }
+  
+  // 创建个人项目表单提交（支持创建和编辑）
+  if (createMyProjectForm) {
+    createMyProjectForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      const title = qs('#myProjectTitle', createMyProjectForm)?.value.trim();
+      const category = qs('#myProjectCategory', createMyProjectForm)?.value;
+      const subKey = qs('#myProjectSubKey', createMyProjectForm)?.value.trim();
+      const desc = qs('#myProjectDesc', createMyProjectForm)?.value.trim();
+      
+      if (!title || !category || !subKey || !desc) {
+        alert('请填写所有必填字段！');
+        return;
+      }
+      
+      if (editingProjectId) {
+        // 更新模式
+        const updated = updateMyProject(editingProjectId, {
+          title,
+          category,
+          subKey,
+          desc
+        });
+        
+        if (updated) {
+          alert('项目更新成功！');
+          editingProjectId = null;
+          const submitBtn = createMyProjectForm.querySelector('button[type="submit"]');
+          if (submitBtn) submitBtn.textContent = '创建项目';
+        } else {
+          alert('更新失败！');
+          return;
+        }
+      } else {
+        // 创建模式
+        const projectData = {
+          title,
+          category,
+          subKey,
+          desc,
+          detailContent: null // 个人项目暂时不支持详情内容，后续可以扩展
+        };
+        
+        const newProject = createMyProject(projectData);
+        console.log('[MyProjects] 项目已创建:', newProject);
+        alert('项目创建成功！');
+      }
+      
+      // 返回个人项目列表
+      history.pushState({ view: 'my-projects' }, '', '#my-projects');
+      switchView('my-projects');
+      renderMyProjectsCards(getMyProjects());
+      
+      // 重置表单
+      createMyProjectForm.reset();
+    });
+  }
+  
+  
+  // 暴露编辑函数到全局
+  window.editMyProject = editMyProject;
+
   // 恢复主题
   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
     document.body.classList.remove('theme-light');

@@ -1882,7 +1882,8 @@ body.has-feature-bar #profile-view .content {
 .hero__actions { display: flex; align-items: center; justify-content: center; gap: 22px; flex-wrap: wrap; margin-top: 16px; }
 
 /* 项目视图五列布局（首页不显示标题） */
-.projects-heading { display: block; font-size: 28px; font-weight: 800; margin-bottom: 24px; color: var(--text); }
+.projects-heading { display: flex; align-items: center; justify-content: space-between; font-size: 28px; font-weight: 800; margin-bottom: 24px; color: var(--text); }
+.projects-heading > span { flex: 1; }
 .projects-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 20px; width: 100%; }
 @media (max-width: 1600px) { .projects-grid { grid-template-columns: repeat(5, minmax(0, 1fr)); } }
 @media (max-width: 1400px) { .projects-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
@@ -2183,6 +2184,19 @@ body.has-feature-bar #profile-view .content {
 
 /* 出题视图布局 */
 #create-view.view.active {
+  grid-template-columns: 240px 1fr;
+  column-gap: 24px;
+  padding: 0 24px;
+}
+
+/* 个人项目视图布局 */
+#my-projects-view.view.active {
+  grid-template-columns: 240px 1fr;
+  column-gap: 24px;
+  padding: 0 24px;
+}
+
+#create-my-project-view.view.active {
   grid-template-columns: 240px 1fr;
   column-gap: 24px;
   padding: 0 24px;

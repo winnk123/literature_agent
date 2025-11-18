@@ -48,11 +48,18 @@
                 <ul class="nav__sublist" id="categoryList" style="display: none;"></ul>
               </li>
               <li>
-                <button class="nav__item" data-menu="create" id="createNavBtn">
+                <button class="nav__item" data-menu="create" id="createNavBtn" style="display: none;">
                   <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M8 11V1M8 1L4 5M8 1L12 5M2 11H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
                   </svg>
                   <span>我要出题</span>
+                </button>
+                <button class="nav__item" data-menu="my-projects" id="myProjectsNavBtn" style="display: none;">
+                  <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2 4L8 1L14 4V13C14 13.5304 13.7893 14.0391 13.4142 14.4142C13.0391 14.7893 12.5304 15 12 15H4C3.46957 15 2.96086 14.7893 2.58579 14.4142C2.21071 14.0391 2 13.5304 2 13V4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M6 15V8H10V15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>个人项目</span>
                 </button>
               </li>
             </ul>
@@ -378,6 +385,165 @@
             <div class="form-actions">
               <button type="button" class="btn btn--ghost" id="cancelCreateBtn">取消</button>
               <button type="submit" class="btn btn--primary">提交审核</button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </section>
+
+    <!-- 个人项目页面视图 -->
+    <section id="my-projects-view" class="view">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo ai-logo">AI</div>
+          <div class="brand__name">AI科创平台</div>
+          <div class="brand__actions">
+            <button id="themeToggle4" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          </div>
+        </div>
+
+        <div class="detail__sidectrl">
+          <button id="backFromMyProjectsBtn" class="btn btn--ghost">← 返回主页</button>
+        </div>
+
+        <div class="sidebar__profile profile-clickable" id="sidebarProfileBtnMyProjects" role="button" tabindex="0">
+          <div class="profile__avatar">你</div>
+          <div class="profile__meta">
+            <div class="profile__name">个人中心</div>
+            <div class="profile__sub">已登录 · 研究者</div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="blue-ribbon-bg"></div>
+        <div class="container">
+          <section class="projects-view is-active" id="myProjectsView">
+            <div class="projects-heading">
+              <span>我的项目</span>
+              <button id="createMyProjectBtn" class="btn btn--primary" style="margin-left: auto; display: inline-flex; align-items: center; gap: 8px;">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                创建新项目
+              </button>
+            </div>
+            <div class="projects-grid" id="myProjectsGrid"></div>
+          </section>
+        </div>
+      </main>
+    </section>
+
+    <!-- 创建个人项目页面视图 -->
+    <section id="create-my-project-view" class="view">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo ai-logo">AI</div>
+          <div class="brand__name">AI科创平台</div>
+          <div class="brand__actions">
+            <button id="themeToggle5" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          </div>
+        </div>
+
+        <div class="detail__sidectrl">
+          <button id="backFromCreateMyProjectBtn" class="btn btn--ghost">← 返回我的项目</button>
+        </div>
+
+        <div class="sidebar__profile profile-clickable" id="sidebarProfileBtnCreateMyProject" role="button" tabindex="0">
+          <div class="profile__avatar">你</div>
+          <div class="profile__meta">
+            <div class="profile__name">个人中心</div>
+            <div class="profile__sub">已登录 · 研究者</div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="content problem-creation-content">
+        <div class="problem-creation-container">
+          <header class="problem-creation-header">
+            <h1 class="problem-creation-title">创建个人项目</h1>
+            <button id="closeCreateMyProjectViewBtn" class="btn btn--ghost">× 关闭</button>
+          </header>
+          
+          <form id="createMyProjectForm" class="problem-creation-form">
+            <!-- 题目名称 -->
+            <div class="form-group">
+              <label for="myProjectTitle" class="form-label">
+                项目名称 <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="myProjectTitle" 
+                name="myProjectTitle"
+                class="input input--full" 
+                placeholder="例如：我的图像去噪项目" 
+                autocomplete="off"
+                required 
+              />
+            </div>
+
+            <!-- 分类 -->
+            <div class="form-group">
+              <label for="myProjectCategory" class="form-label">
+                分类 <span class="required">*</span>
+              </label>
+              <select id="myProjectCategory" name="myProjectCategory" class="input input--full" autocomplete="off" required>
+                <option value="">请选择分类</option>
+                <option value="image">图像</option>
+                <option value="audio">语音</option>
+                <option value="llm">LLM</option>
+                <option value="mllm">MLLM</option>
+                <option value="agent">Agent</option>
+              </select>
+            </div>
+
+            <!-- 子分类 -->
+            <div class="form-group">
+              <label for="myProjectSubKey" class="form-label">
+                子分类 <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="myProjectSubKey" 
+                name="myProjectSubKey"
+                class="input input--full" 
+                placeholder="例如：my-denoise（英文小写，使用连字符）" 
+                autocomplete="off"
+                required 
+                pattern="[a-z0-9-]+"
+              />
+              <small class="form-hint">子分类键用于URL和内部标识，请使用英文小写字母、数字和连字符</small>
+            </div>
+
+            <!-- 项目描述 -->
+            <div class="form-group">
+              <label for="myProjectDesc" class="form-label">
+                项目描述 <span class="required">*</span>
+              </label>
+              <textarea 
+                id="myProjectDesc" 
+                name="myProjectDesc"
+                class="input input--full" 
+                rows="4" 
+                placeholder="简要描述项目的内容和目标..." 
+                autocomplete="off"
+                required
+              ></textarea>
+            </div>
+
+            <!-- 详情内容表单（动态生成） -->
+            <div class="form-section" id="myProjectDetailContentFormSection" style="display: none;">
+              <h2 class="form-section-title">详情内容</h2>
+              <p class="form-section-desc">填写项目的详细内容，未填写的部分将使用默认内容</p>
+              
+              <!-- 动态生成的章节编辑器将插入这里 -->
+              <div id="myProjectDynamicSectionsContainer"></div>
+            </div>
+
+            <!-- 表单操作按钮 -->
+            <div class="form-actions">
+              <button type="button" class="btn btn--ghost" id="cancelCreateMyProjectBtn">取消</button>
+              <button type="submit" class="btn btn--primary">创建项目</button>
             </div>
           </form>
         </div>

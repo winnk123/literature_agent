@@ -48,6 +48,15 @@
                 <ul class="nav__sublist" id="categoryList" style="display: none;"></ul>
               </li>
               <li>
+                <button class="nav__item" data-menu="knowledge-tree" id="knowledgeTreeNavBtn">
+                  <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 2L2 6V14L8 10L14 14V6L8 2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8 2V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>知识树</span>
+                </button>
+              </li>
+              <li>
                 <button class="nav__item" data-menu="create" id="createNavBtn" style="display: none;">
                   <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
                     <path d="M8 11V1M8 1L4 5M8 1L12 5M2 11H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
@@ -549,6 +558,116 @@
         </div>
       </main>
     </section>
+
+    <!-- 知识树页面视图 -->
+    <section id="knowledge-tree-view" class="view">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo ai-logo">AI</div>
+          <div class="brand__name">AI科创平台</div>
+          <div class="brand__actions">
+            <button id="themeToggleKT" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          </div>
+        </div>
+
+        <div class="detail__sidectrl">
+          <button id="backFromKnowledgeTreeBtn" class="btn btn--ghost">← 返回主页</button>
+        </div>
+
+        <nav class="sidebar__nav">
+          <div class="nav__group">
+            <div class="nav__title">知识树导航</div>
+            <ul class="nav__list">
+              <li>
+                <button class="nav__item is-active" data-section="tree">
+                  <span>知识树</span>
+                </button>
+              </li>
+              <li>
+                <button class="nav__item" data-section="roadmap">
+                  <span>学习路线</span>
+                </button>
+              </li>
+              <li>
+                <button class="nav__item" data-section="progress">
+                  <span>学习进度</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </nav>
+      </aside>
+
+      <main class="content knowledge-tree-content">
+        <div class="knowledge-tree-container">
+          <!-- 进度概览卡片 -->
+          <div class="knowledge-tree-card" id="progressOverviewCard">
+            <h2 class="knowledge-tree-card__title">学习进度概览</h2>
+            <div id="progressOverview"></div>
+          </div>
+
+          <!-- 本周任务卡片 -->
+          <div class="knowledge-tree-card" id="weeklyTasksCard">
+            <h2 class="knowledge-tree-card__title">本周学习任务</h2>
+            <div id="weeklyTasks"></div>
+          </div>
+
+          <!-- 知识树主区域 -->
+          <div class="knowledge-tree-card knowledge-tree-card--main">
+            <div class="knowledge-tree-header">
+              <h1 class="knowledge-tree-title">AI 知识树</h1>
+              <div class="knowledge-tree-actions">
+                <button class="btn btn--ghost btn--small" id="addNodeBtn" style="display: none;">添加节点</button>
+                <button class="btn btn--ghost btn--small" id="refreshTreeBtn">刷新</button>
+              </div>
+            </div>
+            <div id="knowledgeTreeContainer" class="knowledge-tree-container__tree"></div>
+          </div>
+        </div>
+      </main>
+    </section>
+
+    <!-- 节点详情抽屉 -->
+    <div id="nodeDrawer" class="node-drawer">
+      <div class="node-drawer__content">
+        <div class="node-drawer__header">
+          <h2 id="nodeDrawerTitle" class="node-drawer__title">节点详情</h2>
+          <button id="nodeDrawerClose" class="node-drawer__close">×</button>
+        </div>
+        <div class="node-drawer__body">
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">类型</label>
+            <span id="nodeDrawerType" class="node-drawer__value"></span>
+          </div>
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">描述</label>
+            <p id="nodeDrawerDesc" class="node-drawer__value"></p>
+          </div>
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">预计学习时长</label>
+            <span id="nodeDrawerHours" class="node-drawer__value"></span>
+          </div>
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">完成进度</label>
+            <div class="node-drawer__progress">
+              <div class="node-drawer__progress-bar-wrapper">
+                <div class="node-drawer__progress-bar"></div>
+              </div>
+              <span id="nodeDrawerProgress" class="node-drawer__progress-text"></span>
+            </div>
+          </div>
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">状态</label>
+            <span id="nodeDrawerStatus" class="node-drawer__value"></span>
+          </div>
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">子节点</label>
+            <div id="nodeDrawerChildren" class="node-drawer__children"></div>
+          </div>
+          <div id="nodeDrawerActions" class="node-drawer__actions"></div>
+        </div>
+      </div>
+    </div>
 
     <!-- 个人中心页面视图 -->
     <section id="profile-view" class="view">
@@ -1180,6 +1299,10 @@
     <button class="text-toolbar__btn text-toolbar__btn--ghost" id="clearFormatBtn" title="清除所有标注">清除标注</button>
   </div>
 
+  <!-- 知识树模块 -->
+  <script src="knowledge-tree-data.js"></script>
+  <script src="knowledge-tree-core.js"></script>
+  <script src="knowledge-tree-ui.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

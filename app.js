@@ -28,8 +28,11 @@
   const profileEditBtn = qs('#profileEditBtn');
   const homeNavBtn = qs('#homeNavBtn');
   const projectsNavBtn = qs('#projectsNavBtn');
+  const knowledgeTreeNavBtn = qs('#knowledgeTreeNavBtn');
   const createNavBtn = qs('#createNavBtn');
   const myProjectsNavBtn = qs('#myProjectsNavBtn');
+  const knowledgeTreeView = qs('#knowledge-tree-view');
+  const backFromKnowledgeTreeBtn = qs('#backFromKnowledgeTreeBtn');
   const homeHero = qs('#homeHero');
   const projectsView = qs('#projectsView');
   const projectsGrid = qs('#projectsGrid');
@@ -78,11 +81,21 @@
     return 'http://localhost:5000';
   }
 
-  const themeToggles = [qs('#themeToggle'), qs('#themeToggle2')].filter(Boolean);
+  const themeToggles = [qs('#themeToggle'), qs('#themeToggle2'), qs('#themeToggleKT')].filter(Boolean);
   themeToggles.forEach(btn => btn.addEventListener('click', () => {
     document.body.classList.toggle('theme-dark');
     document.body.classList.toggle('theme-light');
   }));
+  
+  // 知识树刷新按钮
+  const refreshTreeBtn = qs('#refreshTreeBtn');
+  if (refreshTreeBtn) {
+    refreshTreeBtn.addEventListener('click', () => {
+      if (typeof KnowledgeTreeUI !== 'undefined') {
+        KnowledgeTreeUI.refresh();
+      }
+    });
+  }
 
 
   // 密集粒子云特效
@@ -589,6 +602,8 @@
     showProjectsView();
     toggleCategoryList();
   });
+  if (knowledgeTreeNavBtn) knowledgeTreeNavBtn.addEventListener('click', showKnowledgeTreeView);
+  if (backFromKnowledgeTreeBtn) backFromKnowledgeTreeBtn.addEventListener('click', showHomeView);
   if (createNavBtn) createNavBtn.addEventListener('click', () => {
     // 检查权限
     if (currentUserRole === 'enterprise' || currentUserRole === 'teacher') {
@@ -1062,6 +1077,21 @@
   
   // 暴露到全局（供模块使用）
   window.showHomeView = showHomeView;
+
+  function showKnowledgeTreeView() {
+    console.log('显示知识树视图');
+    setPrimaryNavActive(knowledgeTreeNavBtn);
+    
+    // 切换视图
+    switchView('knowledge-tree');
+    
+    // 初始化知识树UI
+    if (typeof KnowledgeTreeUI !== 'undefined') {
+      setTimeout(() => {
+        KnowledgeTreeUI.init();
+      }, 100);
+    }
+  }
 
   function showProjectsView() {
     console.log('显示项目视图');
@@ -3872,6 +3902,7 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     if (profileView) profileView.classList.remove('active');
     if (myProjectsView) myProjectsView.classList.remove('active');
     if (createMyProjectView) createMyProjectView.classList.remove('active');
+    if (knowledgeTreeView) knowledgeTreeView.classList.remove('active');
     
     // 显示目标视图
     if (view === 'home' && homeView) {
@@ -3890,6 +3921,9 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     } else if (view === 'create-my-project' && createMyProjectView) {
       createMyProjectView.classList.add('active');
       console.log('✓ 已切换到创建个人项目页');
+    } else if (view === 'knowledge-tree' && knowledgeTreeView) {
+      knowledgeTreeView.classList.add('active');
+      console.log('✓ 已切换到知识树页');
     } else if (view === 'profile') {
       if (profileView) {
         profileView.classList.add('active');

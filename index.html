@@ -58,14 +58,6 @@
             </ul>
           </div>
         </nav>
-
-        <div class="sidebar__profile">
-          <div class="profile__avatar">你</div>
-          <div class="profile__meta">
-            <div class="profile__name">个人中心</div>
-            <div class="profile__sub">已登录 · 研究者</div>
-          </div>
-        </div>
       </aside>
 
       <main class="content">
@@ -139,7 +131,7 @@
           </div>
         </div>
 
-        <div class="sidebar__profile">
+        <div class="sidebar__profile profile-clickable" id="sidebarProfileBtn" role="button" tabindex="0">
           <div class="profile__avatar">你</div>
           <div class="profile__meta">
             <div class="profile__name">个人中心</div>
@@ -291,7 +283,7 @@
           <button id="backFromCreateBtn" class="btn btn--ghost">← 返回主页</button>
         </div>
 
-        <div class="sidebar__profile">
+        <div class="sidebar__profile profile-clickable" id="sidebarProfileBtn" role="button" tabindex="0">
           <div class="profile__avatar">你</div>
           <div class="profile__meta">
             <div class="profile__name">个人中心</div>
@@ -391,6 +383,183 @@
         </div>
       </main>
     </section>
+
+    <!-- 个人中心页面视图 -->
+    <section id="profile-view" class="view">
+      <main class="content profile-content profile-content--fullscreen">
+        <div class="profile-wrapper">
+          <!-- 导航栏 -->
+          <div class="profile-navigation">
+            <button class="back-btn" id="profileBackBtn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m15 18-6-6 6-6"/>
+              </svg>
+              返回
+            </button>
+            <button class="btn btn--primary" id="profilePageEditBtn" style="margin-left: auto;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+              编辑个人主页
+            </button>
+          </div>
+
+          <!-- Hero 区域 -->
+          <div class="profile-hero" id="profileHero">
+            <div class="hero-content">
+              <div class="hero-left">
+                <div class="profile-avatar-hero">
+                  <img id="profileHeroAvatar" src="" alt="头像" />
+                  <span class="status-badge-hero" id="profileOnlineBadge" style="display: none;">
+                    <span class="status-dot"></span>
+                    在线
+                  </span>
+                </div>
+              </div>
+              <div class="hero-right">
+                <div class="profile-header">
+                  <div class="header-text">
+                    <h1 class="profile-name-hero" id="profileDisplayName">—</h1>
+                    <p class="profile-title" id="profileTitle">—</p>
+                    <div class="profile-meta">
+                      <span class="meta-item" id="profileInstitution">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                          <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+                        </svg>
+                        <span id="profileInstitutionText">—</span>
+                      </span>
+                      <span class="meta-item" id="profileLocation">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path>
+                          <circle cx="12" cy="10" r="3"></circle>
+                        </svg>
+                        <span id="profileLocationText">—</span>
+                      </span>
+                    </div>
+                  </div>
+                  <div class="header-action">
+                    <button class="btn btn--primary btn--large" id="collaborationBtn">发起合作</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 主内容区 -->
+          <div class="profile-container">
+            <div class="profile-grid">
+              <!-- 左栏（侧边信息栏） -->
+              <div class="profile-sidebar">
+                <!-- 快速信息卡 -->
+                <div class="info-card">
+                  <h3 class="card-title">快速信息</h3>
+                  <div class="info-grid">
+                    <div class="info-box">
+                      <div class="info-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                      </div>
+                      <div class="info-text">
+                        <p class="info-label">可用时间</p>
+                        <p class="info-value" id="profileAvailability">—</p>
+                      </div>
+                    </div>
+                    <div class="info-box" id="profileResearchAreasBox">
+                      <div class="info-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                        </svg>
+                      </div>
+                      <div class="info-text">
+                        <p class="info-label">研究方向</p>
+                        <div class="info-tags" id="profileResearchTags"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 技能/语言标签卡 -->
+                <div class="languages-card">
+                  <h3 class="card-title">技术栈</h3>
+                  <div class="language-tags" id="profileTechStack"></div>
+                </div>
+
+                <div class="languages-card">
+                  <h3 class="card-title">语言</h3>
+                  <div class="language-tags" id="profileLanguages"></div>
+                </div>
+              </div>
+
+              <!-- 右栏（主内容） -->
+              <div class="profile-main">
+                <!-- 关于卡片 -->
+                <div class="about-card">
+                  <div class="card-header">
+                    <div class="header-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
+                      </svg>
+                    </div>
+                    <h2 class="card-title-main">关于</h2>
+                  </div>
+                  <p class="about-text" id="profileShortBio">—</p>
+                </div>
+
+                <!-- 背景与经历卡片 -->
+                <div class="education-card">
+                  <div class="card-header">
+                    <div class="header-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                        <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+                      </svg>
+                    </div>
+                    <h2 class="card-title-main">背景与经历</h2>
+                  </div>
+                  <p class="education-text" id="profileBackground">—</p>
+                </div>
+
+                <!-- 研究方向卡片 -->
+                <div class="specialties-card" id="profileResearchAreasCard">
+                  <div class="card-header">
+                    <div class="header-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                      </svg>
+                    </div>
+                    <h2 class="card-title-main">研究方向</h2>
+                  </div>
+                  <div class="specialties-grid" id="profileResearchGrid"></div>
+                </div>
+
+                <!-- 成果展示卡片 -->
+                <div class="education-card" id="profilePublicationsCard" style="display: none;">
+                  <div class="card-header">
+                    <div class="header-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                      </svg>
+                    </div>
+                    <h2 class="card-title-main">成果展示</h2>
+                  </div>
+                  <div class="publications-list" id="profilePublicationsList"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </section>
   </div>
 
   <!-- 登录模态框 -->
@@ -466,16 +635,18 @@
   </div>
 
   <!-- 功能入口（登录后显示） -->
+  <div class="feature-bar-trigger" id="featureBarTrigger" style="display: none;"></div>
   <div id="featureBar" class="feature-bar" style="display: none;">
-    <div class="feature-bar__content">
-      <span class="feature-bar__user">当前角色：<span id="currentRole"></span></span>
-      <div class="feature-bar__actions">
-        <button id="createProblemBtn" class="btn btn--primary">出题</button>
-        <button id="uploadDataBtn" class="btn btn--primary">数据上传</button>
-        <button id="adminReviewBtn" class="btn btn--primary" style="display: none;">审核题目</button>
-        <button id="logoutBtn" class="btn btn--ghost">退出登录</button>
+      <div class="feature-bar__content">
+        <span class="feature-bar__user">当前角色：<span id="currentRole"></span></span>
+        <div class="feature-bar__actions">
+          <button id="profilePageBtn" class="btn btn--primary">个人中心</button>
+          <button id="createProblemBtn" class="btn btn--primary">出题</button>
+          <button id="uploadDataBtn" class="btn btn--primary">数据上传</button>
+          <button id="adminReviewBtn" class="btn btn--primary" style="display: none;">审核题目</button>
+          <button id="logoutBtn" class="btn btn--ghost">退出登录</button>
+        </div>
       </div>
-    </div>
   </div>
 
   <!-- 小频道四步流程模态框 -->
@@ -600,6 +771,210 @@
       <div class="files-list" id="filesList">
         <!-- 文件列表将动态生成 -->
       </div>
+    </div>
+  </div>
+
+  <!-- 合作弹窗模态框 -->
+  <div id="collaborationModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--form">
+      <button class="modal__close" id="closeCollaborationModal">×</button>
+      <h2 class="modal__title">发起合作</h2>
+      <form class="collaboration__form" id="collaborationForm">
+        <div class="form__group">
+          <label for="collaborationProjectType" class="form__label">项目类型 <span class="required">*</span></label>
+          <select id="collaborationProjectType" name="projectType" class="input input--full" required>
+            <option value="">请选择项目类型</option>
+            <option value="research">研究项目</option>
+            <option value="development">开发项目</option>
+            <option value="consulting">咨询服务</option>
+            <option value="internship">实习机会</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="form__group">
+          <label for="collaborationTimeline" class="form__label">时间周期 <span class="required">*</span></label>
+          <select id="collaborationTimeline" name="timeline" class="input input--full" required>
+            <option value="">请选择时间周期</option>
+            <option value="1month">1个月</option>
+            <option value="3months">3个月</option>
+            <option value="6months">6个月</option>
+            <option value="1year">1年</option>
+            <option value="flexible">灵活安排</option>
+          </select>
+        </div>
+        <div class="form__group">
+          <label for="collaborationMessage" class="form__label">补充说明</label>
+          <textarea id="collaborationMessage" name="message" class="input input--full" rows="4" placeholder="请描述您的合作需求、期望和目标..."></textarea>
+        </div>
+        <div class="form__actions">
+          <button type="button" class="btn btn--ghost" id="cancelCollaborationBtn">取消</button>
+          <button type="submit" class="btn btn--primary">提交</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 个人中心模态框 -->
+  <div id="profileModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--profile">
+      <button class="modal__close" id="closeProfileModal">×</button>
+      <div class="profile-modal__header">
+        <div class="profile-modal__avatar" id="profileModalAvatar">你</div>
+        <div class="profile-modal__info">
+          <h2 class="profile-modal__name" id="profileModalName">个人中心</h2>
+          <div class="profile-modal__role" id="profileModalRole">已登录 · 研究者</div>
+        </div>
+      </div>
+      <div class="profile-modal__content">
+        <div class="profile-section">
+          <h3 class="profile-section__title">账户信息</h3>
+          <div class="profile-info">
+            <div class="profile-info__item">
+              <span class="profile-info__label">用户名</span>
+              <span class="profile-info__value" id="profileUsername">—</span>
+            </div>
+            <div class="profile-info__item">
+              <span class="profile-info__label">角色</span>
+              <span class="profile-info__value" id="profileRole">—</span>
+            </div>
+            <div class="profile-info__item">
+              <span class="profile-info__label">邮箱</span>
+              <span class="profile-info__value" id="profileEmail">—</span>
+            </div>
+          </div>
+        </div>
+        <div class="profile-section">
+          <h3 class="profile-section__title">操作</h3>
+          <div class="profile-actions">
+            <button class="profile-action__btn" id="profileEditBtn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11.3333 2.00001C11.5084 1.8249 11.7163 1.68605 11.9444 1.59123C12.1726 1.49641 12.4167 1.44727 12.6667 1.44727C12.9167 1.44727 13.1607 1.49641 13.3889 1.59123C13.617 1.68605 13.8249 1.8249 14 2.00001C14.1751 2.17512 14.314 2.38301 14.4088 2.61112C14.5036 2.83923 14.5527 3.08334 14.5527 3.33334C14.5527 3.58334 14.5036 3.82745 14.4088 4.05556C14.314 4.28367 14.1751 4.49156 14 4.66668L5.00001 13.6667L1.33334 14.6667L2.33334 11L11.3333 2.00001Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>编辑资料</span>
+            </button>
+            <button class="profile-action__btn" id="profileLogoutBtn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 14H3.33333C2.89131 14 2.46738 13.8244 2.15482 13.5118C1.84226 13.1993 1.66667 12.7754 1.66667 12.3333V3.66668C1.66667 3.22465 1.84226 2.80073 2.15482 2.48817C2.46738 2.17561 2.89131 2.00001 3.33333 2.00001H6M10.6667 11.3333L14.6667 7.33334M14.6667 7.33334L10.6667 3.33334M14.6667 7.33334H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>退出登录</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 个人主页编辑模态框 -->
+  <div id="profileEditModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--large">
+      <button class="modal__close" id="closeProfileEditModal">×</button>
+      <h2 class="modal__title">编辑个人主页</h2>
+      <form class="profile-edit__form" id="profileEditForm">
+        <!-- 基本信息 -->
+        <div class="form-section">
+          <h3 class="form-section__title">基本信息</h3>
+          <div class="form__group">
+            <label for="editDisplayName" class="form__label">显示名称 <span class="required">*</span></label>
+            <input type="text" id="editDisplayName" name="displayName" class="input input--full" required />
+          </div>
+          <div class="form__group">
+            <label for="editTitle" class="form__label">职称/职位</label>
+            <input type="text" id="editTitle" name="title" class="input input--full" />
+          </div>
+          <div class="form__group">
+            <label for="editInstitution" class="form__label">机构/学校</label>
+            <input type="text" id="editInstitution" name="institution" class="input input--full" />
+          </div>
+          <div class="form__group">
+            <label for="editLocation" class="form__label">位置</label>
+            <input type="text" id="editLocation" name="location" class="input input--full" />
+          </div>
+          <div class="form__group">
+            <label for="editAvatarUrl" class="form__label">头像URL</label>
+            <input type="url" id="editAvatarUrl" name="avatarUrl" class="input input--full" placeholder="https://..." />
+          </div>
+          <div class="form__group">
+            <label class="form__label">
+              <input type="checkbox" id="editIsOnline" name="isOnline" />
+              <span style="margin-left: 8px;">显示在线状态</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 时间与可用性 -->
+        <div class="form-section">
+          <h3 class="form-section__title">时间与可用性</h3>
+          <div class="form__group">
+            <label for="editAvailability" class="form__label">可用时间</label>
+            <input type="text" id="editAvailability" name="availability" class="input input--full" placeholder="例如：周一至周五，9:00-18:00" />
+          </div>
+        </div>
+
+        <!-- 研究方向 -->
+        <div class="form-section">
+          <h3 class="form-section__title">研究方向</h3>
+          <div class="form__group">
+            <label for="editResearchAreas" class="form__label">研究方向（用逗号分隔）</label>
+            <input type="text" id="editResearchAreas" name="researchAreas" class="input input--full" placeholder="例如：机器学习, 自然语言处理, 计算机视觉" />
+            <small class="form__hint">多个研究方向请用逗号分隔</small>
+          </div>
+        </div>
+
+        <!-- 技术栈 -->
+        <div class="form-section">
+          <h3 class="form-section__title">技术栈</h3>
+          <div class="form__group">
+            <label for="editTechStack" class="form__label">技术栈（用逗号分隔）</label>
+            <input type="text" id="editTechStack" name="techStack" class="input input--full" placeholder="例如：Python, PyTorch, TensorFlow, React" />
+            <small class="form__hint">多个技术请用逗号分隔</small>
+          </div>
+        </div>
+
+        <!-- 语言 -->
+        <div class="form-section">
+          <h3 class="form-section__title">语言</h3>
+          <div class="form__group">
+            <label for="editLanguages" class="form__label">语言（用逗号分隔）</label>
+            <input type="text" id="editLanguages" name="languages" class="input input--full" placeholder="例如：中文, English, 日本語" />
+            <small class="form__hint">多个语言请用逗号分隔</small>
+          </div>
+        </div>
+
+        <!-- 简介 -->
+        <div class="form-section">
+          <h3 class="form-section__title">简介</h3>
+          <div class="form__group">
+            <label for="editShortBio" class="form__label">简短介绍</label>
+            <textarea id="editShortBio" name="shortBio" class="input input--full" rows="3" placeholder="1-2句话的简短介绍"></textarea>
+          </div>
+          <div class="form__group">
+            <label for="editBackground" class="form__label">背景与经历</label>
+            <textarea id="editBackground" name="background" class="input input--full" rows="6" placeholder="详细介绍您的背景、经历和研究方向"></textarea>
+          </div>
+        </div>
+
+        <!-- 成果展示（仅教师角色） -->
+        <div class="form-section" id="publicationsSection" style="display: none;">
+          <h3 class="form-section__title">成果展示</h3>
+          <div id="publicationsList" class="publications-edit-list"></div>
+          <button type="button" class="btn btn--ghost" id="addPublicationBtn" style="margin-top: 12px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            添加成果
+          </button>
+        </div>
+
+        <!-- 表单操作 -->
+        <div class="form__actions" style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 24px;">
+          <button type="button" class="btn btn--ghost" id="cancelProfileEditBtn">取消</button>
+          <button type="submit" class="btn btn--primary">保存</button>
+        </div>
+      </form>
     </div>
   </div>
 

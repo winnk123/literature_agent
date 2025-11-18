@@ -5,21 +5,27 @@
   const homeView = qs('#home-view');
   const detailView = qs('#detail-view');
   const createViewGlobal = qs('#create-view');  // 用于视图切换
+  const profileView = qs('#profile-view');  // 个人中心页面视图
   const searchInput = qs('#searchInput');
   const searchBtn = qs('#searchBtn');
   const loginModal = qs('#loginModal');
   const registerModal = qs('#registerModal');
+  const profileModal = qs('#profileModal');
   const closeLoginModal = qs('#closeLoginModal');
   const closeRegisterModal = qs('#closeRegisterModal');
+  const closeProfileModal = qs('#closeProfileModal');
   const loginBtn = qs('#loginBtn');
   const registerBtn = qs('#registerBtn');
   const switchToLogin = qs('#switchToLogin');
   const registerForm = qs('#registerForm');
   const featureBar = qs('#featureBar');
+  const featureBarTrigger = qs('#featureBarTrigger');
   const currentRoleEl = qs('#currentRole');
   const createProblemBtn = qs('#createProblemBtn');
   const uploadDataBtn = qs('#uploadDataBtn');
   const logoutBtn = qs('#logoutBtn');
+  const profileLogoutBtn = qs('#profileLogoutBtn');
+  const profileEditBtn = qs('#profileEditBtn');
   const homeNavBtn = qs('#homeNavBtn');
   const projectsNavBtn = qs('#projectsNavBtn');
   const createNavBtn = qs('#createNavBtn');
@@ -3638,19 +3644,342 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
   }
 
   function switchView(view) {
+    console.log('=== switchView被调用 ===');
+    console.log('目标视图:', view);
+    console.log('profileView元素:', profileView);
+    
     // 隐藏所有视图
     if (homeView) homeView.classList.remove('active');
     if (detailView) detailView.classList.remove('active');
     if (createViewGlobal) createViewGlobal.classList.remove('active');
+    if (profileView) profileView.classList.remove('active');
     
     // 显示目标视图
     if (view === 'home' && homeView) {
       homeView.classList.add('active');
+      console.log('✓ 已切换到首页');
     } else if (view === 'detail' && detailView) {
       detailView.classList.add('active');
+      console.log('✓ 已切换到详情页');
     } else if (view === 'create' && createViewGlobal) {
       createViewGlobal.classList.add('active');
+      console.log('✓ 已切换到出题页');
+    } else if (view === 'profile') {
+      if (profileView) {
+        profileView.classList.add('active');
+        console.log('✓ 已切换到个人中心页面');
+        console.log('profileView.classList:', profileView.classList.toString());
+        
+        // 初始化个人中心页面
+        try {
+          initProfilePage();
+          console.log('✓ 个人中心页面初始化完成');
+        } catch (error) {
+          console.error('✗ 个人中心页面初始化失败:', error);
+          alert('个人中心页面初始化失败：' + error.message);
+        }
+      } else {
+        console.error('✗ profileView元素不存在！');
+        alert('个人中心页面未找到，请检查页面结构');
+      }
+    } else {
+      console.warn('未知的视图:', view);
     }
+  }
+  
+  // ============================================
+  // 个人中心页面功能
+  // ============================================
+  
+  // 初始化个人中心页面数据
+  // 保存用户个人主页数据
+  function saveUserProfile(profileData) {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    if (!currentUser || !currentUser.email) {
+      console.warn('无法保存：用户未登录');
+      return false;
+    }
+    const storageKey = `userProfile_${currentUser.email}`;
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(profileData));
+      return true;
+    } catch (e) {
+      console.error('保存个人主页数据失败:', e);
+      return false;
+    }
+  }
+
+  // 加载用户个人主页数据
+  function loadUserProfile() {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    if (!currentUser || !currentUser.email) {
+      return null;
+    }
+    const storageKey = `userProfile_${currentUser.email}`;
+    try {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      console.error('加载个人主页数据失败:', e);
+      return null;
+    }
+  }
+
+  function initProfilePage() {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    const userRole = currentUserRole || (currentUser ? currentUser.role : 'user');
+    const username = currentUser ? currentUser.username : '你';
+    
+    // 优先加载用户保存的数据
+    let savedProfile = loadUserProfile();
+    
+    // 根据角色映射到profile数据模型
+    let profileData = savedProfile || {
+      displayName: username,
+      avatarUrl: `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70) + 1}`,
+      role: userRole === 'teacher' ? 'faculty' : (userRole === 'enterprise' ? 'enterprise' : 'student'),
+      title: getRoleTitle(userRole),
+      institution: getRoleInstitution(userRole),
+      location: '北京',
+      isOnline: true,
+      researchAreas: getDefaultResearchAreas(userRole),
+      techStack: getDefaultTechStack(userRole),
+      languages: ['中文', 'English'],
+      availability: '周一至周五，9:00-18:00',
+      shortBio: getDefaultShortBio(userRole, username),
+      background: getDefaultBackground(userRole, username),
+      publications: userRole === 'teacher' || userRole === 'faculty' ? getDefaultPublications() : []
+    };
+    
+    // 如果没有保存的数据，根据角色添加特定字段
+    if (!savedProfile) {
+      if (profileData.role === 'student') {
+        profileData.major = '计算机科学';
+        profileData.degreeLevel = '硕士';
+        profileData.gradYear = 2025;
+      } else if (profileData.role === 'enterprise') {
+        profileData.companyName = username + ' 公司';
+        profileData.companyType = '企业';
+      } else if (profileData.role === 'faculty') {
+        profileData.researchFocus = '人工智能与机器学习';
+      }
+    }
+    
+    // 确保角色信息正确
+    profileData.role = userRole === 'teacher' ? 'faculty' : (userRole === 'enterprise' ? 'enterprise' : 'student');
+    
+    // 渲染个人中心页面
+    renderProfilePage(profileData);
+    
+    // 更新侧边栏信息
+    updateSidebarProfile(profileData);
+  }
+  
+  // 获取角色标题
+  function getRoleTitle(role) {
+    const titles = {
+      'user': '研究者',
+      'student': '学生',
+      'enterprise': '企业代表',
+      'teacher': '高校教师',
+      'faculty': '教授',
+      'admin': '管理员'
+    };
+    return titles[role] || '用户';
+  }
+  
+  // 获取角色机构
+  function getRoleInstitution(role) {
+    const institutions = {
+      'user': 'AI科创平台',
+      'student': '中国人民大学',
+      'enterprise': '企业',
+      'teacher': '中国人民大学',
+      'faculty': '中国人民大学',
+      'admin': 'AI科创平台'
+    };
+    return institutions[role] || 'AI科创平台';
+  }
+  
+  // 获取默认研究方向
+  function getDefaultResearchAreas(role) {
+    if (role === 'enterprise') {
+      return ['企业AI', '自动化', '数据分析'];
+    } else if (role === 'teacher' || role === 'faculty') {
+      return ['深度学习', '自然语言处理', '计算机视觉', '强化学习'];
+    }
+    return ['机器学习', '自然语言处理', '计算机视觉'];
+  }
+  
+  // 获取默认技术栈
+  function getDefaultTechStack(role) {
+    if (role === 'enterprise') {
+      return ['Python', 'Java', 'Kubernetes', 'AWS', 'TensorFlow'];
+    }
+    return ['Python', 'PyTorch', 'TensorFlow', 'React', 'Node.js'];
+  }
+  
+  // 获取默认简介
+  function getDefaultShortBio(role, username) {
+    if (role === 'enterprise') {
+      return `专注于为企业客户提供AI解决方案，擅长自动化和数据分析。`;
+    } else if (role === 'teacher' || role === 'faculty') {
+      return `拥有12年AI研究经验，专注于深度学习和自然语言处理领域。`;
+    }
+    return `专注于AI研究和开发，对自然语言处理应用充满热情。`;
+  }
+  
+  // 获取默认背景
+  function getDefaultBackground(role, username) {
+    if (role === 'enterprise') {
+      return `${username} 是一家领先的AI企业解决方案提供商。我们帮助企业自动化流程、分析数据并做出数据驱动的决策。我们的团队在规模化部署AI系统方面拥有丰富经验。`;
+    } else if (role === 'teacher' || role === 'faculty') {
+      return `${username} 是一位专注的AI研究者，拥有12年深度学习研究经验。在自然语言处理和计算机视觉领域工作广泛，专注于大语言模型、多模态学习和AI在教育中的应用。${username} 热衷于与学术界和工业界合作，推动AI技术的创新应用，专注于开发实用的AI解决方案来解决现实世界的问题。`;
+    }
+    return `目前正在攻读计算机科学硕士学位，专注于自然语言处理。之前参与过多个涉及情感分析和文本分类的研究项目。对应用AI解决现实世界问题感兴趣。`;
+  }
+  
+  // 获取默认成果
+  function getDefaultPublications() {
+    return [
+      {
+        title: '基于Transformer的大语言模型优化研究',
+        authors: ['当前用户'],
+        venue: 'NeurIPS 2023',
+        year: 2023,
+        type: 'paper'
+      },
+      {
+        title: '多模态学习在教育场景中的应用',
+        authors: ['当前用户'],
+        venue: 'ICML 2024',
+        year: 2024,
+        type: 'paper'
+      },
+      {
+        title: '强化学习在智能推荐系统中的应用',
+        authors: ['当前用户'],
+        venue: 'AAAI 2024',
+        year: 2024,
+        type: 'paper'
+      }
+    ];
+  }
+  
+  // 渲染个人中心页面
+  function renderProfilePage(profile) {
+    // Hero区域
+    const heroAvatar = qs('#profileHeroAvatar');
+    const profileDisplayName = qs('#profileDisplayName');
+    const profileTitle = qs('#profileTitle');
+    const profileInstitutionText = qs('#profileInstitutionText');
+    const profileLocationText = qs('#profileLocationText');
+    const profileOnlineBadge = qs('#profileOnlineBadge');
+    
+    if (heroAvatar) heroAvatar.src = profile.avatarUrl || 'https://i.pravatar.cc/150';
+    if (profileDisplayName) profileDisplayName.textContent = profile.displayName || '—';
+    if (profileTitle) profileTitle.textContent = profile.title || '—';
+    if (profileInstitutionText) profileInstitutionText.textContent = profile.institution || '—';
+    if (profileLocationText) profileLocationText.textContent = profile.location || '—';
+    if (profileOnlineBadge) profileOnlineBadge.style.display = profile.isOnline ? 'flex' : 'none';
+    
+    // 快速信息
+    const profileAvailability = qs('#profileAvailability');
+    if (profileAvailability) profileAvailability.textContent = profile.availability || '—';
+    
+    // 研究方向标签
+    const profileResearchTags = qs('#profileResearchTags');
+    if (profileResearchTags && profile.researchAreas) {
+      profileResearchTags.innerHTML = profile.researchAreas.map(area => 
+        `<span class="tag">${area}</span>`
+      ).join('');
+    }
+    
+    // 技术栈
+    const profileTechStack = qs('#profileTechStack');
+    if (profileTechStack && profile.techStack) {
+      profileTechStack.innerHTML = profile.techStack.map(tech => 
+        `<span class="language-tag">${tech}</span>`
+      ).join('');
+    }
+    
+    // 语言
+    const profileLanguages = qs('#profileLanguages');
+    if (profileLanguages && profile.languages) {
+      profileLanguages.innerHTML = profile.languages.map(lang => 
+        `<span class="language-tag">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="2" y1="12" x2="22" y2="12"></line>
+            <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path>
+          </svg>
+          ${lang}
+        </span>`
+      ).join('');
+    }
+    
+    // 关于
+    const profileShortBio = qs('#profileShortBio');
+    if (profileShortBio) profileShortBio.textContent = profile.shortBio || '—';
+    
+    // 背景
+    const profileBackground = qs('#profileBackground');
+    if (profileBackground) profileBackground.textContent = profile.background || '—';
+    
+    // 研究方向网格
+    const profileResearchGrid = qs('#profileResearchGrid');
+    if (profileResearchGrid && profile.researchAreas) {
+      const icons = [
+        '<path d="M22 12h-4l-3 9L9 3l-3 9H2"></path>',
+        '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87m-4-12a4 4 0 0 1 0 7.75"></path>',
+        '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>',
+        '<polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>'
+      ];
+      profileResearchGrid.innerHTML = profile.researchAreas.map((area, index) => 
+        `<div class="specialty-item">
+          <div class="specialty-icon">
+            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              ${icons[index % icons.length]}
+            </svg>
+          </div>
+          <div class="specialty-text">
+            <h4>${area}</h4>
+            <p>相关研究与应用</p>
+          </div>
+        </div>`
+      ).join('');
+    }
+    
+    // 成果展示
+    const profilePublicationsCard = qs('#profilePublicationsCard');
+    const profilePublicationsList = qs('#profilePublicationsList');
+    if (profile.publications && profile.publications.length > 0) {
+      if (profilePublicationsCard) profilePublicationsCard.style.display = 'block';
+      if (profilePublicationsList) {
+        profilePublicationsList.innerHTML = profile.publications.map(pub => 
+          `<div class="publication-item">
+            <div class="publication-title">${pub.title}</div>
+            <div class="publication-meta">
+              ${pub.authors ? `<span>作者: ${pub.authors.join(', ')}</span>` : ''}
+              ${pub.venue ? `<span>发表: ${pub.venue}</span>` : ''}
+              ${pub.year ? `<span>年份: ${pub.year}</span>` : ''}
+            </div>
+          </div>`
+        ).join('');
+      }
+    } else {
+      if (profilePublicationsCard) profilePublicationsCard.style.display = 'none';
+    }
+  }
+  
+  // 更新侧边栏个人中心信息（已移除侧边栏个人中心，此函数保留以防其他地方调用）
+  function updateSidebarProfile(profile) {
+    // 侧边栏个人中心已移除，此函数现在为空
+  }
+  
+  // 更新所有侧边栏的个人中心信息（用于登录后）- 已移除侧边栏个人中心
+  function updateAllSidebarProfiles() {
+    // 侧边栏个人中心已移除，此函数现在为空
   }
   
   // 暴露到全局（供模块使用）
@@ -3897,7 +4226,7 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
       
       const result = loginUser(username, password);
       if (result.success) {
-        handleLogin(result.user.role, result.user.username);
+        handleLogin(result.user.role, result.user.username, result.user.email);
         loginModal.classList.remove('active');
         alert('登录成功！');
       } else {
@@ -3927,7 +4256,7 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
       
       // 测试模式：直接登录，无需注册
       const username = roleNames[role] || role;
-      handleLogin(role, username);
+      handleLogin(role, username, '');
       
       if (loginModal) loginModal.classList.remove('active');
       
@@ -3935,7 +4264,7 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     });
   });
 
-  function handleLogin(role, username) {
+  function handleLogin(role, username, email) {
     currentUserRole = role;
     window.currentUserRole = role;  // 同步到全局
     const roleNames = {
@@ -3953,6 +4282,17 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
       featureBar.style.display = 'block';
       document.body.classList.add('has-feature-bar');
     }
+    if (featureBarTrigger) {
+      featureBarTrigger.style.display = 'block';
+    }
+    
+    // 更新所有侧边栏的个人中心信息（如果还有的话）
+    updateAllSidebarProfiles();
+    
+    // 重新绑定个人中心按钮事件（登录后按钮才显示）
+    setTimeout(() => {
+      bindProfileButton();
+    }, 200);
 
     // 获取审核按钮
     const adminReviewBtn = qs('#adminReviewBtn');
@@ -3979,6 +4319,540 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
     const profileSubs = qsa('.profile__sub');
     profileSubs.forEach(el => {
       el.textContent = `已登录 · ${roleNames[role]} · ${username}`;
+    });
+
+    // 保存用户信息到localStorage
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    if (currentUser) {
+      currentUser.role = role;
+      currentUser.username = username;
+      if (email) currentUser.email = email;
+      localStorage.setItem('currentUser', JSON.stringify(currentUser));
+    } else {
+      localStorage.setItem('currentUser', JSON.stringify({ role, username, email: email || '' }));
+    }
+  }
+
+  // 更新个人中心模态框信息
+  function updateProfileModal() {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    const roleNames = {
+      'enterprise': '企业',
+      'teacher': '高校教师',
+      'user': '普通使用者',
+      'admin': '管理员'
+    };
+
+    if (currentUser && currentUserRole) {
+      const profileModalAvatar = qs('#profileModalAvatar');
+      const profileModalName = qs('#profileModalName');
+      const profileModalRole = qs('#profileModalRole');
+      const profileUsername = qs('#profileUsername');
+      const profileRole = qs('#profileRole');
+      const profileEmail = qs('#profileEmail');
+
+      if (profileModalAvatar) {
+        profileModalAvatar.textContent = (currentUser.username || '你').charAt(0).toUpperCase();
+      }
+      if (profileModalName) {
+        profileModalName.textContent = currentUser.username || '个人中心';
+      }
+      if (profileModalRole) {
+        profileModalRole.textContent = `已登录 · ${roleNames[currentUserRole] || currentUserRole}`;
+      }
+      if (profileUsername) {
+        profileUsername.textContent = currentUser.username || '—';
+      }
+      if (profileRole) {
+        profileRole.textContent = roleNames[currentUserRole] || currentUserRole || '—';
+      }
+      if (profileEmail) {
+        profileEmail.textContent = currentUser.email || '—';
+      }
+    }
+  }
+
+  // 个人中心按钮点击事件 - 完全重写，确保可靠工作
+  function handleProfilePageClick(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    console.log('=== 个人中心按钮点击事件触发 ===');
+    console.log('当前角色:', currentUserRole);
+    console.log('profileView元素:', profileView);
+    console.log('switchView函数:', typeof switchView);
+    
+    if (!currentUserRole) {
+      console.log('未登录，显示登录模态框');
+      if (loginModal) {
+        loginModal.classList.add('active');
+      }
+      return;
+    }
+    
+    // 已登录，跳转到个人中心页面
+    console.log('准备跳转到个人中心页面');
+    
+    // 确保profileView存在
+    if (!profileView) {
+      console.error('错误：profileView元素不存在！');
+      alert('个人中心页面未找到，请刷新页面重试');
+      return;
+    }
+    
+    // 调用switchView
+    try {
+      console.log('调用 switchView("profile")');
+      switchView('profile');
+      console.log('switchView调用完成');
+      
+      // 验证视图是否切换成功
+      setTimeout(() => {
+        if (profileView && profileView.classList.contains('active')) {
+          console.log('✓ 个人中心页面已成功显示');
+        } else {
+          console.error('✗ 个人中心页面显示失败');
+          console.log('profileView.classList:', profileView ? profileView.classList.toString() : 'null');
+        }
+      }, 100);
+    } catch (error) {
+      console.error('跳转个人中心页面时出错:', error);
+      alert('跳转失败：' + error.message);
+    }
+  }
+  
+  // 使用事件委托，确保按钮显示后也能响应
+  document.addEventListener('click', function(e) {
+    const clickedBtn = e.target.closest('#profilePageBtn');
+    if (clickedBtn) {
+      handleProfilePageClick(e);
+    }
+  }, true);
+  
+  // 也直接绑定到按钮上（双重保险）
+  function bindProfileButton() {
+    const profilePageBtn = qs('#profilePageBtn');
+    if (profilePageBtn) {
+      // 移除所有旧的事件监听器
+      const newBtn = profilePageBtn.cloneNode(true);
+      profilePageBtn.parentNode.replaceChild(newBtn, profilePageBtn);
+      
+      // 绑定新的事件
+      newBtn.addEventListener('click', handleProfilePageClick);
+      console.log('✓ 个人中心按钮直接绑定成功');
+    } else {
+      console.log('个人中心按钮尚未显示（登录后才会显示）');
+    }
+  }
+  
+  // 立即尝试绑定
+  bindProfileButton();
+  
+  // DOM加载后再次绑定
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bindProfileButton);
+  }
+  
+  // 登录后重新绑定
+  const originalHandleLogin = handleLogin;
+  
+  // 个人中心页面事件监听器
+  const profileBackBtn = qs('#profileBackBtn');
+  const backFromProfileBtn = qs('#backFromProfileBtn');
+  const collaborationBtn = qs('#collaborationBtn');
+  const collaborationModal = qs('#collaborationModal');
+  const closeCollaborationModal = qs('#closeCollaborationModal');
+  const cancelCollaborationBtn = qs('#cancelCollaborationBtn');
+  const collaborationForm = qs('#collaborationForm');
+  const themeToggle4 = qs('#themeToggle4');
+  
+  // 返回按钮
+  if (profileBackBtn) {
+    profileBackBtn.addEventListener('click', () => {
+      switchView('home');
+    });
+  }
+  
+  if (backFromProfileBtn) {
+    backFromProfileBtn.addEventListener('click', () => {
+      switchView('home');
+    });
+  }
+  
+  // 合作按钮
+  if (collaborationBtn) {
+    collaborationBtn.addEventListener('click', () => {
+      if (collaborationModal) collaborationModal.classList.add('active');
+    });
+  }
+  
+  // 关闭合作弹窗
+  if (closeCollaborationModal) {
+    closeCollaborationModal.addEventListener('click', () => {
+      if (collaborationModal) collaborationModal.classList.remove('active');
+    });
+  }
+  
+  if (cancelCollaborationBtn) {
+    cancelCollaborationBtn.addEventListener('click', () => {
+      if (collaborationModal) collaborationModal.classList.remove('active');
+    });
+  }
+  
+  // 合作表单提交
+  if (collaborationForm) {
+    collaborationForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const formData = new FormData(collaborationForm);
+      const data = {
+        projectType: formData.get('projectType'),
+        timeline: formData.get('timeline'),
+        message: formData.get('message')
+      };
+      
+      // 这里可以添加提交逻辑
+      console.log('合作请求:', data);
+      alert('合作请求已提交！');
+      
+      if (collaborationModal) collaborationModal.classList.remove('active');
+      collaborationForm.reset();
+    });
+  }
+  
+  // 主题切换（个人中心页面）
+  if (themeToggle4) {
+    themeToggle4.addEventListener('click', () => {
+      document.body.classList.toggle('theme-dark');
+      document.body.classList.toggle('theme-light');
+    });
+  }
+
+  // ============================================
+  // 个人主页编辑功能
+  // ============================================
+  
+  const profilePageEditBtn = qs('#profilePageEditBtn');
+  const profileEditModal = qs('#profileEditModal');
+  const closeProfileEditModal = qs('#closeProfileEditModal');
+  const cancelProfileEditBtn = qs('#cancelProfileEditBtn');
+  const profileEditForm = qs('#profileEditForm');
+  const addPublicationBtn = qs('#addPublicationBtn');
+  const publicationsList = qs('#publicationsList');
+  const publicationsSection = qs('#publicationsSection');
+
+  // 打开编辑模态框
+  if (profilePageEditBtn) {
+    profilePageEditBtn.addEventListener('click', () => {
+      if (!profileEditModal) return;
+      
+      // 加载当前数据到表单
+      loadProfileToEditForm();
+      
+      // 显示模态框
+      profileEditModal.classList.add('active');
+    });
+  }
+
+  // 关闭编辑模态框
+  if (closeProfileEditModal) {
+    closeProfileEditModal.addEventListener('click', () => {
+      if (profileEditModal) profileEditModal.classList.remove('active');
+    });
+  }
+
+  if (cancelProfileEditBtn) {
+    cancelProfileEditBtn.addEventListener('click', () => {
+      if (profileEditModal) profileEditModal.classList.remove('active');
+    });
+  }
+
+  // 点击背景关闭
+  if (profileEditModal) {
+    profileEditModal.addEventListener('click', (e) => {
+      if (e.target === profileEditModal || e.target.classList.contains('modal__overlay')) {
+        profileEditModal.classList.remove('active');
+      }
+    });
+  }
+
+  // 加载当前个人主页数据到编辑表单
+  function loadProfileToEditForm() {
+    const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+    const userRole = currentUserRole || (currentUser ? currentUser.role : 'user');
+    
+    // 加载保存的数据或使用默认数据
+    let savedProfile = loadUserProfile();
+    let currentProfile;
+    
+    if (savedProfile) {
+      currentProfile = savedProfile;
+    } else {
+      // 从页面获取当前显示的数据
+      currentProfile = {
+        displayName: qs('#profileDisplayName')?.textContent || currentUser?.username || '你',
+        title: qs('#profileTitle')?.textContent || getRoleTitle(userRole),
+        institution: qs('#profileInstitutionText')?.textContent || getRoleInstitution(userRole),
+        location: qs('#profileLocationText')?.textContent || '北京',
+        avatarUrl: qs('#profileHeroAvatar')?.src || `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70) + 1}`,
+        isOnline: qs('#profileOnlineBadge')?.style.display !== 'none',
+        availability: qs('#profileAvailability')?.textContent || '周一至周五，9:00-18:00',
+        researchAreas: [],
+        techStack: [],
+        languages: [],
+        shortBio: qs('#profileShortBio')?.textContent || '',
+        background: qs('#profileBackground')?.textContent || '',
+        publications: []
+      };
+      
+      // 从标签中提取数据
+      const researchTags = qsa('#profileResearchTags .tag');
+      currentProfile.researchAreas = researchTags.map(tag => tag.textContent.trim());
+      
+      const techTags = qsa('#profileTechStack .language-tag');
+      currentProfile.techStack = techTags.map(tag => tag.textContent.trim());
+      
+      const langTags = qsa('#profileLanguages .language-tag');
+      currentProfile.languages = langTags.map(tag => {
+        const text = tag.textContent.trim();
+        // 移除可能的图标字符
+        return text.replace(/[🌐🌍]/g, '').trim();
+      }).filter(lang => lang);
+      
+      // 从页面获取成果数据（如果有）
+      const publicationItems = qsa('#profilePublicationsList .publication-item');
+      currentProfile.publications = publicationItems.map(item => {
+        const title = qs('.publication-title', item)?.textContent || '';
+        const meta = qs('.publication-meta', item);
+        if (!meta || !title) return null;
+        
+        const metaText = meta.textContent;
+        const authorsMatch = metaText.match(/作者:\s*([^发表年份]+)/);
+        const venueMatch = metaText.match(/发表:\s*([^年份]+)/);
+        const yearMatch = metaText.match(/年份:\s*(\d+)/);
+        
+        return {
+          title: title.trim(),
+          authors: authorsMatch ? authorsMatch[1].split(',').map(a => a.trim()) : undefined,
+          venue: venueMatch ? venueMatch[1].trim() : undefined,
+          year: yearMatch ? parseInt(yearMatch[1]) : undefined,
+          type: 'paper'
+        };
+      }).filter(pub => pub !== null);
+    }
+    
+    // 填充表单
+    if (qs('#editDisplayName')) qs('#editDisplayName').value = currentProfile.displayName || '';
+    if (qs('#editTitle')) qs('#editTitle').value = currentProfile.title || '';
+    if (qs('#editInstitution')) qs('#editInstitution').value = currentProfile.institution || '';
+    if (qs('#editLocation')) qs('#editLocation').value = currentProfile.location || '';
+    if (qs('#editAvatarUrl')) qs('#editAvatarUrl').value = currentProfile.avatarUrl || '';
+    if (qs('#editIsOnline')) qs('#editIsOnline').checked = currentProfile.isOnline || false;
+    if (qs('#editAvailability')) qs('#editAvailability').value = currentProfile.availability || '';
+    if (qs('#editResearchAreas')) qs('#editResearchAreas').value = Array.isArray(currentProfile.researchAreas) ? currentProfile.researchAreas.join(', ') : '';
+    if (qs('#editTechStack')) qs('#editTechStack').value = Array.isArray(currentProfile.techStack) ? currentProfile.techStack.join(', ') : '';
+    if (qs('#editLanguages')) qs('#editLanguages').value = Array.isArray(currentProfile.languages) ? currentProfile.languages.join(', ') : '';
+    if (qs('#editShortBio')) qs('#editShortBio').value = currentProfile.shortBio || '';
+    if (qs('#editBackground')) qs('#editBackground').value = currentProfile.background || '';
+    
+    // 处理成果展示（仅教师角色）
+    if (userRole === 'teacher' || userRole === 'faculty') {
+      if (publicationsSection) publicationsSection.style.display = 'block';
+      renderPublicationsEditList(currentProfile.publications || []);
+    } else {
+      if (publicationsSection) publicationsSection.style.display = 'none';
+    }
+  }
+
+  // 渲染成果编辑列表
+  function renderPublicationsEditList(publications) {
+    if (!publicationsList) return;
+    
+    publicationsList.innerHTML = '';
+    
+    publications.forEach((pub, index) => {
+      const item = document.createElement('div');
+      item.className = 'publication-edit-item';
+      item.innerHTML = `
+        <div class="publication-edit-item__header">
+          <div class="publication-edit-item__title">成果 ${index + 1}</div>
+          <button type="button" class="publication-edit-item__remove" data-index="${index}">删除</button>
+        </div>
+        <div class="form__group">
+          <label class="form__label">标题</label>
+          <input type="text" class="input input--full pub-title" value="${pub.title || ''}" placeholder="成果标题" />
+        </div>
+        <div class="form__group">
+          <label class="form__label">作者（用逗号分隔）</label>
+          <input type="text" class="input input--full pub-authors" value="${pub.authors ? pub.authors.join(', ') : ''}" placeholder="作者1, 作者2" />
+        </div>
+        <div class="form__group">
+          <label class="form__label">发表场所/会议</label>
+          <input type="text" class="input input--full pub-venue" value="${pub.venue || ''}" placeholder="期刊/会议名称" />
+        </div>
+        <div class="form__group">
+          <label class="form__label">年份</label>
+          <input type="number" class="input input--full pub-year" value="${pub.year || ''}" placeholder="2024" min="1900" max="2100" />
+        </div>
+      `;
+      
+      // 删除按钮事件
+      const removeBtn = item.querySelector('.publication-edit-item__remove');
+      if (removeBtn) {
+        removeBtn.addEventListener('click', () => {
+          item.remove();
+        });
+      }
+      
+      publicationsList.appendChild(item);
+    });
+  }
+
+  // 添加成果
+  if (addPublicationBtn) {
+    addPublicationBtn.addEventListener('click', () => {
+      const newPub = { title: '', authors: [], venue: '', year: new Date().getFullYear() };
+      const currentPubs = getPublicationsFromEditForm();
+      currentPubs.push(newPub);
+      renderPublicationsEditList(currentPubs);
+    });
+  }
+
+  // 从编辑表单获取成果数据
+  function getPublicationsFromEditForm() {
+    if (!publicationsList) return [];
+    
+    const items = qsa('.publication-edit-item', publicationsList);
+    return items.map(item => {
+      const title = qs('.pub-title', item)?.value || '';
+      const authorsStr = qs('.pub-authors', item)?.value || '';
+      const authors = authorsStr.split(',').map(a => a.trim()).filter(a => a);
+      const venue = qs('.pub-venue', item)?.value || '';
+      const year = parseInt(qs('.pub-year', item)?.value || '0') || null;
+      
+      if (!title) return null;
+      
+      return {
+        title,
+        authors: authors.length > 0 ? authors : undefined,
+        venue: venue || undefined,
+        year: year || undefined,
+        type: 'paper'
+      };
+    }).filter(pub => pub !== null);
+  }
+
+  // 提交编辑表单
+  if (profileEditForm) {
+    profileEditForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      
+      const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+      if (!currentUser || !currentUser.email) {
+        alert('请先登录');
+        return;
+      }
+      
+      const formData = new FormData(profileEditForm);
+      
+      // 解析数组字段
+      const researchAreasStr = formData.get('researchAreas') || '';
+      const researchAreas = researchAreasStr.split(',').map(s => s.trim()).filter(s => s);
+      
+      const techStackStr = formData.get('techStack') || '';
+      const techStack = techStackStr.split(',').map(s => s.trim()).filter(s => s);
+      
+      const languagesStr = formData.get('languages') || '';
+      const languages = languagesStr.split(',').map(s => s.trim()).filter(s => s);
+      
+      // 获取成果数据
+      const publications = getPublicationsFromEditForm();
+      
+      // 构建profile数据
+      const userRole = currentUserRole || (currentUser ? currentUser.role : 'user');
+      const profileData = {
+        displayName: formData.get('displayName') || currentUser.username,
+        title: formData.get('title') || '',
+        institution: formData.get('institution') || '',
+        location: formData.get('location') || '',
+        avatarUrl: formData.get('avatarUrl') || `https://i.pravatar.cc/150?img=${Math.floor(Math.random() * 70) + 1}`,
+        isOnline: formData.get('isOnline') === 'on',
+        availability: formData.get('availability') || '',
+        researchAreas: researchAreas,
+        techStack: techStack,
+        languages: languages,
+        shortBio: formData.get('shortBio') || '',
+        background: formData.get('background') || '',
+        publications: publications,
+        role: userRole === 'teacher' ? 'faculty' : (userRole === 'enterprise' ? 'enterprise' : 'student')
+      };
+      
+      // 保存数据
+      if (saveUserProfile(profileData)) {
+        // 重新渲染页面
+        renderProfilePage(profileData);
+        
+        // 关闭模态框
+        if (profileEditModal) profileEditModal.classList.remove('active');
+        
+        alert('个人主页已保存！');
+      } else {
+        alert('保存失败，请重试');
+      }
+    });
+  }
+
+  // 关闭个人中心模态框
+  if (closeProfileModal) {
+    closeProfileModal.addEventListener('click', () => {
+      if (profileModal) profileModal.classList.remove('active');
+    });
+  }
+
+  // 点击背景关闭个人中心模态框
+  if (profileModal) {
+    profileModal.addEventListener('click', (e) => {
+      if (e.target === profileModal || e.target.classList.contains('modal__overlay')) {
+        profileModal.classList.remove('active');
+      }
+    });
+  }
+
+  // 个人中心编辑资料按钮（profileModal中的按钮）
+  if (profileEditBtn) {
+    profileEditBtn.addEventListener('click', () => {
+      // 打开个人主页编辑模态框
+      const profilePageEditBtn = qs('#profilePageEditBtn');
+      if (profilePageEditBtn) {
+        profilePageEditBtn.click();
+      }
+    });
+  }
+
+  // 个人中心退出登录按钮
+  if (profileLogoutBtn) {
+    profileLogoutBtn.addEventListener('click', () => {
+      currentUserRole = null;
+      window.currentUserRole = null;
+      localStorage.removeItem('currentUser');
+      
+      if (featureBar) {
+        featureBar.style.display = 'none';
+        document.body.classList.remove('has-feature-bar');
+      }
+      if (featureBarTrigger) {
+        featureBarTrigger.style.display = 'none';
+      }
+      
+      const profileSubs = qsa('.profile__sub');
+      profileSubs.forEach(el => {
+        el.textContent = '未登录 · 访客';
+      });
+
+      if (profileModal) {
+        profileModal.classList.remove('active');
+      }
+
+      alert('已退出登录');
     });
   }
 
@@ -4007,14 +4881,25 @@ print(f"输入: {x.shape}, 输出: {out.shape}")</code></pre>
   if (logoutBtn) {
     logoutBtn.addEventListener('click', () => {
       currentUserRole = null;
+      window.currentUserRole = null;
+      localStorage.removeItem('currentUser');
+      
       if (featureBar) {
         featureBar.style.display = 'none';
         document.body.classList.remove('has-feature-bar');
       }
+      if (featureBarTrigger) {
+        featureBarTrigger.style.display = 'none';
+      }
+      
       const profileSubs = qsa('.profile__sub');
       profileSubs.forEach(el => {
         el.textContent = '未登录 · 访客';
       });
+
+      if (profileModal) {
+        profileModal.classList.remove('active');
+      }
     });
   }
 
@@ -7036,6 +7921,58 @@ main();`;
 
   // 初始化
   showHomeView();
+  
+  // 页面加载时更新侧边栏个人中心信息
+  const currentUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  if (currentUser) {
+    updateAllSidebarProfiles();
+  }
+  
+  // 恢复登录状态
+  const savedUser = JSON.parse(localStorage.getItem('currentUser') || 'null');
+  if (savedUser && savedUser.role && savedUser.username) {
+    currentUserRole = savedUser.role;
+    window.currentUserRole = savedUser.role;
+    const roleNames = {
+      'enterprise': '企业',
+      'teacher': '高校教师',
+      'user': '普通使用者',
+      'admin': '管理员'
+    };
+    
+    if (currentRoleEl) {
+      currentRoleEl.textContent = roleNames[savedUser.role] || savedUser.role;
+    }
+    
+    if (featureBar) {
+      featureBar.style.display = 'block';
+      document.body.classList.add('has-feature-bar');
+    }
+    if (featureBarTrigger) {
+      featureBarTrigger.style.display = 'block';
+    }
+    
+    const adminReviewBtn = qs('#adminReviewBtn');
+    if (savedUser.role === 'enterprise' || savedUser.role === 'teacher') {
+      if (createProblemBtn) createProblemBtn.style.display = 'inline-block';
+      if (uploadDataBtn) uploadDataBtn.style.display = 'inline-block';
+      if (adminReviewBtn) adminReviewBtn.style.display = 'none';
+    } else if (savedUser.role === 'admin') {
+      if (createProblemBtn) createProblemBtn.style.display = 'inline-block';
+      if (uploadDataBtn) uploadDataBtn.style.display = 'inline-block';
+      if (adminReviewBtn) adminReviewBtn.style.display = 'inline-block';
+    } else {
+      if (createProblemBtn) createProblemBtn.style.display = 'none';
+      if (uploadDataBtn) uploadDataBtn.style.display = 'none';
+      if (adminReviewBtn) adminReviewBtn.style.display = 'none';
+    }
+    
+    const profileSubs = qsa('.profile__sub');
+    profileSubs.forEach(el => {
+      el.textContent = `已登录 · ${roleNames[savedUser.role]} · ${savedUser.username}`;
+    });
+  }
+  
   // 恢复主题
   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
     document.body.classList.remove('theme-light');

@@ -7,6 +7,7 @@ Generates structured survey reports from collected paper metadata and search his
 import json
 import logging
 from typing import Any, Dict, List, Optional
+from pathlib import Path
 
 from .base_agent import BaseAgent, AgentExecutionError
 
@@ -76,7 +77,7 @@ class LiteratureSummaryAgent(BaseAgent):
 
       max_papers = context.get("max_papers")
       if not isinstance(max_papers, int) or max_papers <= 0:
-        max_papers = self.config.get("max_papers", 10)
+        max_papers = self.config.get("max_papers", 30)
 
       sorted_papers = sorted(papers, key=lambda x: x.get("score", 0), reverse=True)
       top_papers = sorted_papers[: min(len(sorted_papers), max_papers)]
@@ -236,7 +237,57 @@ class LiteratureSummaryAgent(BaseAgent):
 
     # Add full report and references to response
       response["full_report"] = full_report
-      response["references"] = references_list
+      # References for citation list: prefer all_selected_papers (full set), fallback to sorted list
+      all_papers_for_refs = context.get("all_selected_papers") or sorted_papers
+      # Build references from the full set (capped by max_papers if provided)
+      full_refs: List[Dict[str, Any]] = []
+      for idx, paper in enumerate(all_papers_for_refs[:max_papers], 1):
+        authors = paper.get("authors", [])
+        if isinstance(authors, str):
+            authors = [authors]
+        author_str = ", ".join(authors[:3]) + (" et al." if len(authors) > 3 else "") if authors else "Unknown"
+        full_refs.append({
+            "id": idx,
+            "title": paper.get("title", "Untitled"),
+            "authors": author_str,
+            "year": paper.get("year"),
+            "journal": paper.get("journal") or paper.get("venue", ""),
+            "doi": paper.get("doi", ""),
+            "url": paper.get("url", ""),
+            "citation_count": paper.get("citations", 0),
+            "score": paper.get("score", 0),
+        })
+      response["references"] = full_refs
+      # Replace author-year citations in full_report with numeric [n] based on full_refs order
+      try:
+        mapping = self._build_author_year_index(full_refs)
+        response["full_report"] = self._replace_author_year_with_numeric(response.get("full_report", ""), mapping)
+      except Exception as _exc:
+        logger.warning(f"Failed to normalize citations in literature report: {_exc}")
+
+      # Write standalone literature summary report (Markdown) with required sections and all references
+      try:
+        report_md = self._compose_literature_summary_markdown(
+          context=context,
+          structured=response,
+          references=full_refs
+        )
+        if report_md and report_md.strip():
+          work_dir = (self.config.get("_global_config", {}) or {}).get("work_dir") or self.config.get("work_dir")
+          if work_dir:
+            out_dir = Path(work_dir)
+            out_dir.mkdir(parents=True, exist_ok=True)
+            out_path = out_dir / "LITERATURE_SUMMARY.md"
+            # Apply numeric citation mapping for the standalone report as well
+            try:
+              mapping2 = self._build_author_year_index(full_refs)
+              report_md = self._replace_author_year_with_numeric(report_md, mapping2)
+            except Exception:
+              pass
+            out_path.write_text(report_md, encoding="utf-8")
+            logger.info(f"Literature summary saved to: {out_path}")
+      except Exception as exc:
+        logger.warning(f"Failed to write LITERATURE_SUMMARY.md: {exc}")
 
       return response
 
@@ -337,3 +388,121 @@ class LiteratureSummaryAgent(BaseAgent):
           report_lines.append(ref_line + "\n\n")
     
         return "".join(report_lines)
+
+    def _derive_title_from_text_plain(self, text: str) -> str:
+        if not isinstance(text, str) or not text.strip():
+            return "文献调研"
+        base = text.strip().rstrip("？?。.")
+        for prefix in ["如何", "怎样", "怎么", "请问", "基于", "面向"]:
+            if base.startswith(prefix):
+                base = base[len(prefix):].strip()
+                break
+        if len(base) > 14:
+            base = base[:14].strip()
+        return base or "文献调研"
+
+    def _compose_literature_summary_markdown(
+        self,
+        context: Dict[str, Any],
+        structured: Dict[str, Any],
+        references: List[Dict[str, Any]]
+    ) -> str:
+        # Title from problem formulation/description
+        problem_text = (
+            structured.get("problem_formulation")
+            or context.get("description")
+            or ""
+        )
+        title = self._derive_title_from_text_plain(problem_text)
+        lines: List[str] = []
+        lines.append(f"# {title}\n\n")
+        
+        # Use full_report if available (complete generated text), otherwise fallback to structured fields
+        full_report = structured.get("full_report", "")
+        if full_report and full_report.strip():
+            # Extract main content from full_report (remove references section if present)
+            import re
+            # Remove references section if it exists
+            report_content = re.sub(r'\n## References.*$', '', full_report, flags=re.DOTALL)
+            report_content = re.sub(r'\n## 参考文献.*$', '', report_content, flags=re.DOTALL)
+            # Reorganize to match required format with level-2 headings
+            # Try to extract sections from full_report, or use structured fields as fallback
+            # For now, use structured fields to ensure proper format, but we could parse full_report
+            # Since full_report format may vary, we'll use structured fields but ensure they're complete
+            lines.append("## 问题定义\n\n")
+            lines.append(f"{structured.get('problem_formulation','')}\n\n")
+            lines.append("## 研究现状\n\n")
+            lines.append(f"{structured.get('current_landscape','')}\n\n")
+            lines.append("## 方法分类\n\n")
+            lines.append(f"{structured.get('approach_taxonomy','')}\n\n")
+            lines.append("## 研究缺口\n\n")
+            lines.append(f"{structured.get('critical_gaps','')}\n\n")
+            lines.append("## 未来方向\n\n")
+            lines.append(f"{structured.get('forward_path','')}\n\n")
+        else:
+            # Fallback: use structured fields directly
+            lines.append("## 问题定义\n\n")
+            lines.append(f"{structured.get('problem_formulation','')}\n\n")
+            lines.append("## 研究现状\n\n")
+            lines.append(f"{structured.get('current_landscape','')}\n\n")
+            lines.append("## 方法分类\n\n")
+            lines.append(f"{structured.get('approach_taxonomy','')}\n\n")
+            lines.append("## 研究缺口\n\n")
+            lines.append(f"{structured.get('critical_gaps','')}\n\n")
+            lines.append("## 未来方向\n\n")
+            lines.append(f"{structured.get('forward_path','')}\n\n")
+        
+        # References (list all, include URLs/DOIs)
+        if references:
+            lines.append("## 参考文献\n\n")
+            for idx, ref in enumerate(references, 1):
+                line = f"- [{idx}] {ref.get('authors','Unknown')} ({ref.get('year','n.d.')}). *{ref.get('title','Untitled')}*"
+                journal = ref.get("journal")
+                if journal:
+                    line += f". {journal}"
+                doi = ref.get("doi")
+                url = ref.get("url")
+                if doi:
+                    line += f". DOI: {doi}"
+                if url:
+                    line += f". {url}"
+                lines.append(line + "\n")
+        return "".join(lines)
+
+    def _make_author_year_key(self, authors: str, year: Any) -> str:
+        # authors like "Jonathan Ho, Ajay Jain, P. Abbeel" → use first surname token letters only
+        import re
+        if not isinstance(authors, str):
+            authors = str(authors or "")
+        year_str = str(year or "").strip()
+        first = authors.split(",")[0] if authors else ""
+        surname = re.sub(r"[^A-Za-z\-]", "", first).lower()
+        return f"{surname}:{year_str}"
+
+    def _build_author_year_index(self, references: List[Dict[str, Any]]) -> Dict[str, int]:
+        """
+        Build mapping from author-year key to numeric index based on provided references order.
+        """
+        mapping: Dict[str, int] = {}
+        for idx, ref in enumerate(references, 1):
+            key = self._make_author_year_key(ref.get("authors", ""), ref.get("year", ""))
+            if key and key not in mapping:
+                mapping[key] = idx
+        return mapping
+
+    def _replace_author_year_with_numeric(self, text: str, author_year_to_num: Dict[str, int]) -> str:
+        """
+        Replace occurrences like [Surname, 2020] or [Surname 2020] with numeric [n] using mapping.
+        """
+        import re
+        if not text:
+            return text
+        pattern = re.compile(r"\[([A-Za-z\-\.\s]+),?\s*(\d{4})\]")
+        def repl(m):
+            surname_raw = m.group(1)
+            year = m.group(2)
+            surname = re.sub(r"[^A-Za-z\-]", "", surname_raw).lower()
+            key = f"{surname}:{year}"
+            n = author_year_to_num.get(key)
+            return f"[{n}]" if n is not None else m.group(0)
+        return pattern.sub(repl, text)

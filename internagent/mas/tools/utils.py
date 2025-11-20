@@ -27,6 +27,7 @@ from urllib.parse import urljoin
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Any
 import random
+from datetime import datetime
 
 from bs4 import BeautifulSoup
 
@@ -253,8 +254,27 @@ def fetch_arxiv_papers(query: str, max_results: int = 20, sort: str = "relevance
         cat_filter = " AND (" + " OR ".join([f"cat:{cat}" for cat in categories]) + ")"
     
     # Search parameters
+    search_query = f"all:{query}{cat_filter}"
+    
+    min_year = kwargs.get("min_year")
+    max_year = kwargs.get("max_year")
+    if min_year or max_year:
+        try:
+            min_year_int = int(min_year) if min_year else None
+        except (ValueError, TypeError):
+            min_year_int = None
+        try:
+            max_year_int = int(max_year) if max_year else None
+        except (ValueError, TypeError):
+            max_year_int = None
+        
+        start_date = f"{min_year_int:04d}0101" if min_year_int else "19000101"
+        end_year = max_year_int if max_year_int else datetime.utcnow().year + 5
+        end_date = f"{end_year:04d}1231"
+        search_query += f" AND submittedDate:[{start_date} TO {end_date}]"
+    
     search_params = {
-        "search_query": f"all:{query}{cat_filter}",
+        "search_query": search_query,
         "max_results": max_results,
         "sortBy": sort_param,
         "sortOrder": "descending"

@@ -1,0 +1,89 @@
+{
+  "package": {
+    "package_title": "Package 5: Vision Transformer 主干网络堆叠与完整模型构建",
+    "overview": "本教程将指导你完成 Vision Transformer（ViT）架构的最后关键一步：堆叠多个 Transformer 编码器层以形成强大的主干特征提取器，并整合 class token 与 MLP 分类头，构建端到端的 ViT 模型。我们将基于前四讲已实现的模块（图像分块、位置编码、多头自注意力、单个编码器层），聚焦于如何将这些组件有机组合成一个完整的视觉识别系统。重点在于理解模型整体结构的设计逻辑、信息流动路径以及分类任务的输出机制，为后续的推理或训练奠定坚实基础。",
+    "project_structure": "package-05-vit-complete-architecture/\n├── README.md\n├── requirements.txt\n├── src/\n│   ├── vit_encoder_stack.py\n│   └── vision_transformer.py\n└── configs/\n    └── vit_config.yaml",
+    "theoretical_foundation": "同学们好！今天我们终于要将 Vision Transformer 的所有“器官”组装成一个完整的“生命体”了。在前四讲中，我们分别打造了它的“眼睛”（图像分块嵌入）、“空间感”（位置编码）、“大脑核心”（多头自注意力）和“神经元单元”（单个 Transformer 编码器层）。现在，我们要做的就是把这些单元像搭积木一样堆叠起来，并赋予它“决策能力”——这就是本讲的核心任务。\n\n首先，为什么需要堆叠多个编码器层？这源于深度学习的基本哲学：**层次化特征抽象**。浅层编码器捕捉局部模式（如边缘、纹理），而深层编码器则整合全局语义信息（如物体部件、整体类别）。在 ViT 中，这种层次性通过 $L$ 个连续的编码器层实现，每一层都对前一层的输出进行更复杂的变换。设第 $l$ 层的输入为 $\boldsymbol{Z}^{(l)} \\\\[ \\in \\mathbb{R}^{(N+1) \\times D}$（其中 $N$ 是图像块数，$+1$ 对应 class token），则其输出为：\n$$\\boldsymbol{Z}^{(l+1)} = \\text{TransformerEncoderLayer}(\\boldsymbol{Z}^{(l)})$$\n经过 $L$ 次迭代后，最终的 class token 表示 $\\boldsymbol{z}_0^{(L)}$ 蕴含了整幅图像的全局语义信息 [Dosovitskiy et al., 2020]。\n\n接下来是 **class token 的引入机制**。这是 ViT 区别于原始 Transformer 的关键设计之一。我们在序列最前端插入一个可学习的向量 $\\boldsymbol{z}_{\\text{cls}} \\in \\mathbb{R}^D$，它不对应任何图像块，而是作为“全局信息聚合器”。在每一层自注意力计算中，class token 都能与所有图像块交互，逐步吸收全局上下文。最终，我们只取这个 token 的输出用于分类，而非平均池化所有 token。这种设计简洁而高效，避免了复杂的池化策略 [Touvron et al., 2021]。\n\n然后是 **MLP 分类头**（Classification Head）。这是一个简单的两层全连接网络，通常包含一个隐藏层和输出层。设最终 class token 为 $\\boldsymbol{z}_{\\text{cls}}^{(L)}$，则分类 logits 为：\n$$\\boldsymbol{y} = \\boldsymbol{W}_2 \\cdot \\text{GELU}(\\boldsymbol{W}_1 \\cdot \\boldsymbol{z}_{\\text{cls}}^{(L)} + \\boldsymbol{b}_1) + \\boldsymbol{b}_2$$\n其中 $\\boldsymbol{W}_1 \\in \\mathbb{R}^{D_h \\times D}$, $\\boldsymbol{W}_2 \\in \\mathbb{R}^{C \\times D_h}$，$C$ 是类别数，$D_h$ 是隐藏维度（常等于 $D$ 或略小）。值得注意的是，在纯结构搭建阶段，我们不涉及训练，因此分类头仅需定义其结构。\n\n为什么选择这种“class token + MLP head”的范式？因为它完美继承了 Transformer 的序列建模能力，同时适配了图像分类任务的需求。相比 CNN 中的空间池化，class token 提供了一种更灵活、更可学习的全局表示方式。近期研究如 [Chen et al., 2024] 进一步证明，在大规模预训练下，这种简单设计足以媲美甚至超越复杂架构。当然，也有工作探索无 class token 的设计（如使用全局平均池化），但在标准 ViT 中，class token 仍是主流 [Beyer et al., 2022]。\n\n最后，整个 ViT 的前向传播流程可概括为：\n1. 输入图像 $\\boldsymbol{x} \\in \\mathbb{R}^{H \\times W \\times 3}$ → 分块并线性投影 → $\\boldsymbol{E} \\in \\mathbb{R}^{N \\times D}$\n2. 添加 class token 和位置编码 → $\\boldsymbol{Z}^{(0)} = [\\boldsymbol{z}_{\\text{cls}}; \\boldsymbol{E}] + \\boldsymbol{E}_{\\text{pos}}$\n3. 通过 $L$ 层编码器堆叠 → $\\boldsymbol{Z}^{(L)}$\n4. 取 $\\boldsymbol{z}_0^{(L)}$ 输入 MLP 分类头 → 输出 logits\n\n这一流程体现了 ViT “将图像视为词序列”的核心思想。虽然我们不在此训练模型，但清晰的结构是理解其工作原理和后续实验的基础。记住，好的架构设计本身就是一种强大的归纳偏置 [Zhou et al., 2025]。",
+    "concept_explanations": [
+      {
+        "concept_name": "Class Token",
+        "explanation": "同学们，想象一下你要写一篇关于一幅画的总结。你不会逐字描述每个像素，而是会先观察整幅画，然后提炼出一个核心观点。在 Vision Transformer（ViT）中，**class token** 就扮演着这个“核心观点提炼者”的角色。\n\n具体来说，class token 是一个**可学习的向量**，它的长度与其他图像块嵌入（patch embeddings）相同，比如都是 768 维。但它本身**不对应图像中的任何实际区域**。在模型开始处理图像之前，我们会把这个特殊的 token 插入到图像块序列的最前面。所以，如果原始图像被分成了 196 个块（例如 14x14），那么加上 class token 后，整个输入序列的长度就变成了 197。\n\n这个设计的精妙之处在于自注意力机制。在每一层 Transformer 编码器中，class token 都会和其他所有的图像块 token 进行“对话”（即计算注意力权重）。通过这种持续的交互，class token 会不断地从各个图像块中收集信息，逐步融合成一个代表整幅图像全局语义的向量。你可以把它想象成一个“会议主持人”，在会议（每一层编码器）中听取所有与会者（图像块）的意见，最终形成一个综合结论。\n\n数学上，假设我们的输入嵌入序列为 $\\boldsymbol{E} = [\\boldsymbol{e}_1, \\boldsymbol{e}_2, ..., \\boldsymbol{e}_N] \\in \\mathbb{R}^{N \\times D}$，其中 $N$ 是块的数量，$D$ 是嵌入维度。我们引入一个可学习的参数 $\\boldsymbol{z}_{\\text{cls}} \\in \\mathbb{R}^D$。那么，加入 class token 后的初始序列为：\n$$\\boldsymbol{Z}^{(0)} = [\\boldsymbol{z}_{\\text{cls}}, \\boldsymbol{e}_1, \\boldsymbol{e}_2, ..., \\boldsymbol{e}_N] + \\boldsymbol{E}_{\\text{pos}}$$\n这里 $\\boldsymbol{E}_{\\text{pos}}$ 是位置编码。经过 $L$ 层编码器后，我们只取序列的第一个元素，即 $\\boldsymbol{z}_0^{(L)}$，作为最终的图像表示用于分类。这种设计由 [Dosovitskiy et al., 2020] 首次在 ViT 中提出，并迅速成为标准做法。后续研究如 [Touvron et al., 2021] 的 DeiT 模型也证实了其有效性，尤其是在数据效率方面。\n\n为什么不用所有 token 的平均值呢？因为 class token 是一个**专门优化用于分类任务**的载体。它在训练过程中会学习如何最有效地聚合信息，而平均池化是一种固定的、非可学习的策略，可能无法捕捉到对分类最关键的细微差别。这就像一个专业的摘要员（class token）比简单地把所有句子加起来求平均（平均池化）更能写出精准的摘要一样。",
+        "why_important": "Class token 是 ViT 架构中连接特征提取和分类任务的桥梁。没有它，我们就无法直接从 Transformer 的序列输出中得到一个单一的、用于分类的全局图像表示。理解其作用机制对于掌握 ViT 的整体工作流程至关重要，也是后续实现完整模型的关键一步。",
+        "related_concepts": [
+          "序列到序列建模",
+          "全局平均池化 (Global Average Pooling)",
+          "可学习参数"
+        ],
+        "examples": [
+          "会议主持人：class token 像主持人一样，汇总所有参会者（图像块）的观点，形成最终决议（分类结果）。",
+          "班级代表：在一个班级（图像）中，class token 就像班长，他/她了解所有同学（图像块）的情况，并代表整个班级发言（输出分类）。",
+          "新闻摘要：一篇长文章（图像块序列）的摘要（class token）包含了全文的核心信息，而不是简单地拼接所有句子。"
+        ]
+      },
+      {
+        "concept_name": "MLP 分类头 (MLP Classification Head)",
+        "explanation": "当我们通过堆叠的 Transformer 编码器得到了一个强大的全局图像表示（即 class token 的最终输出）后，下一步就是如何利用这个表示来做出具体的分类决策。这就需要用到 **MLP 分类头**。\n\nMLP 是 **多层感知机**（Multi-Layer Perceptron）的缩写，它是最基础也是最强大的神经网络结构之一。在 ViT 的上下文中，分类头通常是一个非常简单的 MLP，常常只包含**两层**：一个隐藏层和一个输出层。它的任务很明确：将高维的特征向量（例如 768 维）映射到类别空间（例如 1000 维，对应 ImageNet 的 1000 个类别）。\n\n让我们一步步拆解它的工作过程。假设我们从编码器堆叠中得到的最终 class token 是 $\\boldsymbol{z} \\in \\mathbb{R}^D$。首先，它会通过第一个线性变换（全连接层）：\n$$\\boldsymbol{h} = \\boldsymbol{W}_1 \\boldsymbol{z} + \\boldsymbol{b}_1$$\n这里 $\\boldsymbol{W}_1 \\in \\mathbb{R}^{D_h \\times D}$ 是权重矩阵，$\\boldsymbol{b}_1 \\in \\mathbb{R}^{D_h}$ 是偏置项，$D_h$ 是隐藏层的维度（通常 $D_h = D$ 或 $D_h = D/2$）。接着，我们会对 $\\boldsymbol{h}$ 应用一个**非线性激活函数**，最常用的是 GELU（Gaussian Error Linear Unit）：\n$$\\boldsymbol{a} = \\text{GELU}(\\boldsymbol{h})$$\nGELU 比传统的 ReLU 更平滑，能提供更好的梯度流，这在深层网络中尤为重要 [Hendrycks & Gimpel, 2016]。最后，$\\boldsymbol{a}$ 会通过第二个线性变换得到最终的 logits：\n$$\\boldsymbol{y} = \\boldsymbol{W}_2 \\boldsymbol{a} + \\boldsymbol{b}_2$$\n其中 $\\boldsymbol{W}_2 \\in \\mathbb{R}^{C \\times D_h}$，$C$ 是类别总数。这些 logits 会被送入 softmax 函数以得到概率分布。\n\n为什么需要这个额外的 MLP 头，而不是直接用 class token 做分类？原因有二。第一，**维度匹配**：class token 的维度 $D$ 通常很大（为了保留丰富信息），而类别数 $C$ 可能很小（如 CIFAR-10 的 10 类）或很大（如 ImageNet 的 1000 类），直接映射不现实。第二，**非线性决策边界**：现实世界的分类问题往往是非线性的。单一线性层只能学习线性决策边界，而加入一个隐藏层和非线性激活函数后，MLP 理论上可以逼近任何复杂的函数，从而更好地分离不同类别的特征 [Cybenko, 1989]。在最新的实践中，如 [Chen et al., 2024] 所示，即使是一个简单的两层 MLP 头，在配合强大的 ViT 主干时，也能达到顶尖的性能。\n\n你可以把 MLP 分类头想象成一个“翻译官”。Transformer 主干产生了一种高度抽象的“内部语言”（class token），而分类头的任务就是将这种内部语言“翻译”成我们人类能理解的“类别标签”。没有这个翻译官，再强大的主干也无法告诉我们它到底“看到”了什么。",
+        "why_important": "MLP 分类头是 ViT 模型完成从特征提取到具体任务（分类）转换的最后一环。它是模型输出的直接来源，其结构设计直接影响模型的表达能力和最终性能。在搭建完整 ViT 架构时，正确实现这个组件是必不可少的。",
+        "related_concepts": [
+          "全连接层 (Fully Connected Layer)",
+          "GELU 激活函数",
+          "Logits",
+          "Softmax 函数"
+        ],
+        "examples": [
+          "翻译官：将 Transformer 内部的抽象特征“翻译”成具体的类别名称。",
+          "解码器：就像收音机接收电磁波（特征）后，需要一个解码器将其转换成我们能听到的声音（类别）。",
+          "决策委员会：class token 是委员会收集到的所有信息，MLP 头则是委员会根据这些信息进行最终投票和决策的过程。"
+        ]
+      }
+    ],
+    "estimated_steps": 8,
+    "dependencies": [
+      {
+        "name": "torch",
+        "version": ">=2.0.0",
+        "purpose": "PyTorch 深度学习框架，用于构建和定义神经网络模型"
+      },
+      {
+        "name": "torchvision",
+        "version": ">=0.15.0",
+        "purpose": "提供计算机视觉相关的工具和预定义模型，方便测试和验证"
+      },
+      {
+        "name": "PyYAML",
+        "version": ">=6.0",
+        "purpose": "用于解析 configs/vit_config.yaml 配置文件"
+      }
+    ],
+    "setup_instructions": [
+      "克隆本项目仓库",
+      "创建并激活 Python 虚拟环境（推荐使用 conda 或 venv）",
+      "运行 `pip install -r requirements.txt` 安装依赖",
+      "查看 `configs/vit_config.yaml` 了解模型配置参数"
+    ],
+    "usage_examples": [
+      {
+        "title": "初始化并打印 ViT 模型结构",
+        "scenario": "快速验证模型是否能正确构建",
+        "code": "from src.vision_transformer import VisionTransformer\nimport torch\n\n# 使用默认配置创建模型\nmodel = VisionTransformer(\n    img_size=224,\n    patch_size=16,\n    in_channels=3,\n    num_classes=1000,\n    embed_dim=768,\n    depth=12,  # 12层编码器\n    num_heads=12,\n    mlp_ratio=4.\n)\n\nprint(model)\n\n# 创建一个假的输入张量\nx = torch.randn(1, 3, 224, 224)\noutput = model(x)\nprint(f\"Output shape: {output.shape}\")  # 应为 [1, 1000]",
+        "expected_output": "打印出完整的模型结构树，并显示输出形状为 torch.Size([1, 1000])"
+      },
+      {
+        "title": "检查编码器堆叠模块",
+        "scenario": "单独测试编码器堆叠部分的功能",
+        "code": "from src.vit_encoder_stack import VisionTransformerEncoderStack\nimport torch\n\n# 假设我们已经有了嵌入后的序列 (batch_size, seq_len, embed_dim)\nbatch_size, seq_len, embed_dim = 2, 197, 768\nembedded_patches = torch.randn(batch_size, seq_len, embed_dim)\n\nencoder_stack = VisionTransformerEncoderStack(\n    embed_dim=embed_dim,\n    depth=6,  # 6层\n    num_heads=12,\n    mlp_ratio=4.\n)\n\noutput = encoder_stack(embedded_patches)\nprint(f\"Encoder stack output shape: {output.shape}\")",
+        "expected_output": "输出形状为 torch.Size([2, 197, 768])，与输入形状一致，表明信息流正确"
+      }
+    ],
+    "action_item": "[step_5] 堆叠编码器层构建ViT : 将多个Transformer编码器层按顺序堆叠，形成完整的ViT主干网络。最后添加分类头（class token）和MLP分类器，完成整个网络结构的搭建。",
+    "action_index": 5,
+    "status": "framework",
+    "implementation_steps": []
+  },
+  "batch_info": {
+    "current_batch": 0,
+    "total_batches": 2,
+    "steps_generated": 0,
+    "status": "framework"
+  }
+}

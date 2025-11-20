@@ -1,0 +1,89 @@
+{
+  "package": {
+    "package_title": "Package 3: Vision Transformer 核心机制 — 多头自注意力模块实现",
+    "overview": "同学们好！在本教程包中，我们将聚焦于 Vision Transformer 的核心计算单元——多头自注意力机制（Multi-Head Self-Attention, MHSA）。该模块负责建模图像分块之间的全局依赖关系，是 ViT 实现长距离视觉理解的关键。我们将从最基础的缩放点积注意力开始，逐步构建完整的多头结构，包括 Q/K/V 的线性投影、并行注意力头计算、拼接与输出投影。这一实现完全遵循原始 Transformer 架构，并为后续集成到完整 ViT 模型奠定坚实基础。",
+    "project_structure": "package-03-multi-head-self-attention/\n├── README.md\n├── requirements.txt\n├── src/\n│   ├── scaled_dot_product_attention.py\n│   └── multi_head_self_attention.py\n└── tests/\n    └── test_attention.py",
+    "theoretical_foundation": "同学们，今天我们深入探讨 Vision Transformer 的“大脑”——多头自注意力机制。如果说图像分块嵌入将像素转化为语义单元，位置编码赋予它们空间顺序，那么多头自注意力就是让这些单元彼此“对话”、协同理解全局场景的核心引擎。\n\n自注意力机制的核心思想源于信息检索中的查询-键匹配：给定一个查询（Query），我们希望从一组键（Key）中找到最相关的项，并返回对应的值（Value）。在 Transformer 中，这种机制被巧妙地应用于序列内部，使得每个元素都能动态地关注序列中其他所有元素。其数学表达为：$$\\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V$$ 其中 $Q, K, V \\in \\mathbb{R}^{n \\times d_k}$ 分别代表查询、键和值矩阵，$n$ 是序列长度（即图像分块数），$d_k$ 是每个注意力头的维度。分母中的 $\\sqrt{d_k}$ 是关键的缩放因子，用于缓解高维空间中点积结果过大导致 softmax 梯度消失的问题 [Vaswani et al., 2017]。\n\n然而，单头注意力存在表达能力瓶颈。多头机制通过并行使用多个注意力头，允许模型在不同的表示子空间中联合关注来自不同位置的信息。具体而言，输入 $X \\in \\mathbb{R}^{n \\times d_{\\text{model}}}$ 首先被线性投影到 $h$ 个不同的子空间，生成 $h$ 组 $(Q_i, K_i, V_i)$，每组维度为 $d_k = d_{\\text{model}} / h$。然后对每组独立计算注意力：$$\\text{head}_i = \\text{Attention}(Q_i, K_i, V_i)$$ 最终将所有头的输出拼接并通过一个线性层融合：$$\\text{MultiHead}(Q, K, V) = \\text{Concat}(\\text{head}_1, \\dots, \\text{head}_h)W^O$$ 其中 $W^O \\in \\mathbb{R}^{h d_k \\times d_{\\text{model}}}$ 是可学习的输出投影矩阵。\n\n为什么选择这种设计？首先，多头结构显著增强了模型的表达能力，使其能够同时捕获多种类型的依赖关系（例如局部纹理与全局结构）。其次，缩放点积注意力在计算上高效且易于并行化，非常适合现代 GPU 架构。尽管近年来出现了稀疏注意力、线性注意力等变体 [Dao et al., 2022; Peng et al., 2023]，但标准多头自注意力因其简洁性、稳定性和强大性能，仍是 2024-2025 年绝大多数 ViT 变体的基础组件 [Chen et al., 2024]。\n\n在实现时，我们需要特别注意维度对齐和数值稳定性。例如，确保 $d_{\\text{model}}$ 能被头数 $h$ 整除，避免维度不匹配；在 softmax 前使用缩放因子防止梯度饱和；以及在反向传播中正确处理梯度流经多个并行路径。这些细节虽小，却直接影响模型的收敛性和最终性能。\n\n值得注意的是，如 Package 1 和 Package 2 所述，我们的输入 $X$ 已经包含了图像分块嵌入和可学习位置编码。因此，多头自注意力模块只需专注于建模这些已嵌入 token 之间的交互，无需再处理原始像素或位置信息。这种模块化设计正是 Transformer 架构优雅与强大的体现——每个组件各司其职，共同构建出强大的视觉理解系统。",
+    "concept_explanations": [
+      {
+        "concept_name": "缩放点积注意力 (Scaled Dot-Product Attention)",
+        "explanation": "让我们从零开始理解缩放点积注意力。想象你正在图书馆找一本书，但你只记得模糊的关键词。你会怎么做？你可能会浏览书架上的书名（相当于“键”Key），看哪些与你的记忆（“查询”Query）匹配，然后取出内容最相关的那本书（“值”Value）。这就是注意力机制的基本思想——根据相关性加权聚合信息。\n\n在数学上，对于一个序列（比如 ViT 中的图像分块序列），我们首先为每个元素生成三个向量：查询向量 $q_i$、键向量 $k_j$ 和值向量 $v_j$。要计算第 $i$ 个元素对第 $j$ 个元素的关注度，我们计算它们的点积 $q_i \\cdot k_j$。点积越大，说明两者越相关。但这里有个问题：当向量维度 $d_k$ 很大时，点积的方差会变得很大，导致 softmax 函数的输出接近 one-hot（即只关注一个位置），这会使梯度几乎为零，难以训练。为了解决这个问题，Vaswani 等人在 2017 年提出了缩放技巧：将点积除以 $\\sqrt{d_k}$。这样，注意力权重的分布会更平滑，梯度也更稳定。\n\n完整的计算公式如下：$$\\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V$$ 其中 $Q, K, V$ 是所有查询、键、值向量堆叠成的矩阵。$QK^\\top$ 计算所有元素对之间的相似度，得到一个 $n \\times n$ 的注意力分数矩阵。经过 softmax 归一化后，每一行变成一个概率分布，表示当前元素对序列中所有元素的关注权重。最后，用这个权重对值矩阵 $V$ 加权求和，得到每个元素的上下文感知表示。\n\n举个具体例子：假设我们有 4 个图像分块，每个分块嵌入维度为 64。那么 $Q, K, V \\in \\mathbb{R}^{4 \\times 64}$。计算 $QK^\\top$ 得到 $4 \\times 4$ 矩阵，每个元素 $(i,j)$ 表示分块 $i$ 对分块 $j$ 的原始关注度。除以 $\\sqrt{64}=8$ 后，再经过 softmax，得到归一化的注意力权重。最后乘以 $V$，输出仍然是 $4 \\times 64$ 的矩阵，但每个分块现在都融合了其他分块的信息。\n\n这种机制的强大之处在于它是完全数据驱动的——模型自己学习哪些区域应该被关注，而不需要人为设计规则。这也是为什么它能在各种任务中取得成功 [Vaswani et al., 2017]。在 2024 年的研究中，尽管出现了更高效的注意力变体，缩放点积注意力因其理论清晰、实现简单、效果稳定，仍然是大多数视觉 Transformer 的默认选择 [Chen et al., 2024]。",
+        "why_important": "缩放点积注意力是多头自注意力的基础计算单元。理解其原理和实现细节是正确构建 MHSA 模块的前提。它解决了高维点积带来的数值不稳定问题，确保了模型的有效训练。",
+        "related_concepts": [
+          "Softmax 函数",
+          "点积相似度",
+          "梯度消失问题",
+          "上下文建模"
+        ],
+        "examples": [
+          "图书馆找书类比：Query 是你的记忆关键词，Key 是书名，Value 是书的内容",
+          "会议讨论：每个人（Query）倾听其他人（Key）的发言，并根据相关性（点积）决定采纳谁的观点（Value）"
+        ]
+      },
+      {
+        "concept_name": "多头自注意力机制 (Multi-Head Self-Attention)",
+        "explanation": "现在我们来理解多头自注意力。想象你是一位侦探，正在分析一个复杂的案件。如果你只从一个角度（比如时间线）思考，可能会遗漏重要线索。但如果你同时从多个角度——动机、机会、物证、证人证词——分别分析，再综合所有视角的结论，就能得到更全面、准确的判断。多头注意力正是这个思想的体现。\n\n在技术上，单头注意力只能在一个固定的表示子空间中计算相关性。而多头机制通过并行使用多个注意力头，让模型能够同时关注不同类型的模式。具体来说，输入嵌入 $X \\in \\mathbb{R}^{n \\times d_{\\text{model}}}$ 会被三个不同的线性变换分别映射到 $h$ 个子空间，生成 $h$ 组 $Q_i, K_i, V_i$，每组维度为 $d_k = d_{\\text{model}} / h$。然后，每个头独立计算自己的注意力输出：$$\\text{head}_i = \\text{Attention}(Q_i W_i^Q, K_i W_i^K, V_i W_i^V)$$ 其中 $W_i^Q, W_i^K, W_i^V$ 是每个头专属的可学习权重矩阵。\n\n计算完所有头后，我们将它们的输出沿特征维度拼接起来，得到一个 $n \\times (h \\cdot d_k)$ 的矩阵。由于 $h \\cdot d_k = d_{\\text{model}}$，这个拼接后的矩阵维度与输入一致。最后，再通过一个线性变换 $W^O$ 进行融合和微调：$$\\text{MultiHead}(Q, K, V) = \\text{Concat}(\\text{head}_1, \\dots, \\text{head}_h) W^O$$ 这个输出投影层允许模型学习如何最优地组合来自不同头的信息。\n\n为什么需要多头？研究表明，不同的注意力头往往会学习到不同的关注模式。例如，在视觉任务中，某些头可能关注局部细节（如边缘、纹理），而另一些头则关注全局结构（如物体形状、空间布局）[Voita et al., 2019]。通过多头机制，模型获得了更强的表达能力，能够同时捕获多种类型的依赖关系。在 2024 年的最新研究中，即使面对计算效率的挑战，多头结构因其不可替代的表达能力，仍然是高性能 ViT 模型的标准配置 [Chen et al., 2024]。\n\n实现时要注意：头数 $h$ 必须能整除模型维度 $d_{\\text{model}}$，否则会出现维度不匹配。常见的设置如 $d_{\\text{model}}=768$, $h=12$，这样每个头的维度 $d_k=64$。这种设计不仅保证了计算的规整性，也符合硬件（如 GPU）对内存对齐的优化要求。",
+        "why_important": "多头自注意力是 Transformer 架构的核心创新之一，它极大地增强了模型的表达能力，使其能够同时建模多种类型的依赖关系。在 ViT 中，这是实现全局视觉理解的关键。",
+        "related_concepts": [
+          "表示子空间",
+          "并行计算",
+          "特征拼接",
+          "线性投影"
+        ],
+        "examples": [
+          "侦探破案类比：多个调查角度（头）综合得出结论",
+          "交响乐团：不同乐器组（头）各自演奏，最终由指挥（输出投影）融合成和谐乐章"
+        ]
+      }
+    ],
+    "estimated_steps": 8,
+    "dependencies": [
+      {
+        "name": "torch",
+        "version": ">=2.0.0",
+        "purpose": "PyTorch 深度学习框架，用于张量操作和自动微分"
+      },
+      {
+        "name": "numpy",
+        "version": ">=1.21.0",
+        "purpose": "用于数值计算和测试数据生成"
+      },
+      {
+        "name": "pytest",
+        "version": ">=7.0.0",
+        "purpose": "用于编写和运行单元测试"
+      }
+    ],
+    "setup_instructions": [
+      "克隆项目仓库",
+      "创建 Python 虚拟环境：`python -m venv vit-env`",
+      "激活虚拟环境：`source vit-env/bin/activate` (Linux/Mac) 或 `vit-env\\Scripts\\activate` (Windows)",
+      "安装依赖：`pip install -r requirements.txt`",
+      "运行测试验证安装：`pytest tests/`"
+    ],
+    "usage_examples": [
+      {
+        "title": "基本多头注意力使用",
+        "scenario": "创建一个标准的多头自注意力模块并处理随机输入",
+        "code": "import torch\nfrom src.multi_head_self_attention import MultiHeadSelfAttention\n\n# 创建模块：嵌入维度768，头数12\nmhsa = MultiHeadSelfAttention(embed_dim=768, num_heads=12)\n\n# 模拟输入：batch_size=2, seq_len=197 (16x16 patches + cls token), embed_dim=768\nx = torch.randn(2, 197, 768)\n\n# 前向传播\noutput = mhsa(x)\nprint(f\"Output shape: {output.shape}\")  # 应该输出 torch.Size([2, 197, 768])",
+        "expected_output": "Output shape: torch.Size([2, 197, 768])"
+      },
+      {
+        "title": "缩放点积注意力单独测试",
+        "scenario": "直接测试缩放点积注意力组件",
+        "code": "import torch\nfrom src.scaled_dot_product_attention import ScaledDotProductAttention\n\n# 创建注意力模块\nattn = ScaledDotProductAttention()\n\n# 模拟 Q, K, V：seq_len=4, head_dim=64\nQ = torch.randn(2, 4, 64)\nK = torch.randn(2, 4, 64)\nV = torch.randn(2, 4, 64)\n\n# 计算注意力\noutput, attn_weights = attn(Q, K, V)\nprint(f\"Output shape: {output.shape}\")\nprint(f\"Attention weights shape: {attn_weights.shape}\")",
+        "expected_output": "Output shape: torch.Size([2, 4, 64])\nAttention weights shape: torch.Size([2, 4, 4])"
+      }
+    ],
+    "action_item": "[step_3] 构建多头自注意力机制 : 实现标准的多头自注意力模块，包括查询（Q）、键（K）、值（V）的线性变换、缩放点积注意力计算以及多头拼接。该模块是Transformer的核心组件。",
+    "action_index": 3,
+    "status": "framework",
+    "implementation_steps": []
+  },
+  "batch_info": {
+    "current_batch": 0,
+    "total_batches": 2,
+    "steps_generated": 0,
+    "status": "framework"
+  }
+}

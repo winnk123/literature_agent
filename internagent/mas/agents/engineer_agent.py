@@ -6,6 +6,7 @@ import logging
 import os
 import json
 import re
+import time
 from typing import Any, Dict, List, Optional, Tuple
 import asyncio
 from pathlib import Path
@@ -30,7 +31,7 @@ class EngineerAgent(BaseAgent):
 
     def __init__(self, model, config: Dict[str, Any]):
         super().__init__(model, config)
-        self.max_actions = config.get("max_actions", 5)
+        self.max_actions = config.get("max_actions", 6)
         self.default_language = config.get("default_language", "python")
         self.process_parallel = config.get("process_parallel", False)
         self.output_dir = config.get("output_dir", "./output")
@@ -42,9 +43,6 @@ class EngineerAgent(BaseAgent):
         if not goal_description:
             raise AgentExecutionError("需要 goal_description")
 
-        literature_sections = context.get("literature_sections") or {}
-        summary_bundle = context.get("literature_summary") or {}
-        
         # 从多个来源收集references
         all_references_sources = []
         
@@ -53,34 +51,34 @@ class EngineerAgent(BaseAgent):
             refs = context.get("references")
             if isinstance(refs, list):
                 all_references_sources.extend(refs)
+                logger.info(f"来源1 (context.references): 获取到 {len(refs)} 篇参考文献")
+            else:
+                logger.warning(f"来源1 (context.references): 类型错误，期望list，实际得到 {type(refs)}")
         
-        # 来源2: summary_bundle中的references
-        if summary_bundle.get("references"):
-            refs = summary_bundle.get("references")
-            if isinstance(refs, list):
-                all_references_sources.extend(refs)
-        
-        # 来源3: summary_report中的references
+        # 来源2: summary_report中的references
         if context.get("summary_report", {}).get("references"):
             refs = context.get("summary_report", {}).get("references")
             if isinstance(refs, list):
                 all_references_sources.extend(refs)
+                logger.info(f"来源2 (summary_report.references): 获取到 {len(refs)} 篇参考文献")
+            else:
+                logger.warning(f"来源2 (summary_report.references): 类型错误，期望list，实际得到 {type(refs)}")
         
-        # 来源4: 从papers中提取
+        # 来源3: 从papers中提取
         papers = context.get("papers") or context.get("paper_lst") or []
         if papers:
             extracted_refs = self._extract_references_from_papers(papers)
             if extracted_refs:
                 all_references_sources.extend(extracted_refs)
-                logger.info(f"从papers中提取了 {len(extracted_refs)} 篇参考文献")
+                logger.info(f"来源3 (从papers提取): 提取了 {len(extracted_refs)} 篇参考文献")
+        else:
+            logger.warning("来源3 (从papers提取): 未找到papers字段")
         
         # 去重合并所有references
         references = self._deduplicate_references(all_references_sources)
         if all_references_sources and len(all_references_sources) > len(references):
             logger.info(f"参考文献去重: 从 {len(all_references_sources)} 篇去重到 {len(references)} 篇")
         
-        full_report = context.get("full_report") or summary_bundle.get("full_report") or ""
-
         # 记录文献调研结果
         logger.info(f"📚 文献调研结果:")
         logger.info(f"  - 参考文献数量: {len(references)}")
@@ -91,17 +89,22 @@ class EngineerAgent(BaseAgent):
                 authors = ref.get("authors", "Unknown")
                 year = ref.get("year", "n.d.")
                 logger.info(f"    [{idx}] {authors} ({year}). {title[:60]}...")
-        if literature_sections:
-            logger.info(f"  - 文献章节: {list(literature_sections.keys())}")
-        if summary_bundle:
-            logger.info(f"  - 摘要包含: {list(summary_bundle.keys())}")
 
         # 获取 task decomposition 信息
         task_decomposition = (
             context.get("task_decomposition")
-            or context.get("literature_summary", {}).get("task_decomposition_context")
             or {}
         )
+        
+        # 获取任务难度用于动态调整生成策略
+        task_difficulty = task_decomposition.get("task_difficulty", 3)  # Default to moderate (3)
+        if not isinstance(task_difficulty, (int, float)):
+            try:
+                task_difficulty = int(task_difficulty)
+            except (ValueError, TypeError):
+                task_difficulty = 3
+        task_difficulty = max(1, min(5, task_difficulty))  # Clamp to 1-5
+        logger.info(f"Task difficulty detected in EngineerAgent: {task_difficulty}/5")
         
         # 从 task_decomposition 中提取关键步骤（取代 action_items 输入）
         candidate_keys = [
@@ -173,10 +176,12 @@ class EngineerAgent(BaseAgent):
 
         shared_context = {
             "goal_description": goal_description,
-            "sections": {**summary_bundle, **literature_sections},
+            "sections": {},
             "references": references,
-            "full_report": full_report,
             "task_decomposition": task_decomposition,
+            "task_difficulty": task_difficulty,  # 用于动态调整生成策略
+            "used_files": set(),
+            "implemented_files": {},
         }
 
         logger.info(f"开始处理 {len(trimmed_actions)} 个步骤...")
@@ -188,12 +193,39 @@ class EngineerAgent(BaseAgent):
         
         # 逐个处理
         project_packages = []
+        package_timings = []
+        implemented_files = shared_context.get("implemented_files")
+        
         for idx, action in enumerate(trimmed_actions, 1):
             try:
+                pkg_start = time.time()
                 result = await self._process_single_action(
-                    action, idx, shared_context, params, seen_concepts, seen_theory_topics
+                    action, idx, shared_context, params, seen_concepts, seen_theory_topics, shared_context.get("used_files"), implemented_files
                 )
+                pkg_time = time.time() - pkg_start
+                package_timings.append((idx, pkg_time))
+                logger.info(f"  ⏱️  Package {idx} 总耗时: {pkg_time:.1f}秒 ({pkg_time/60:.1f}分钟)")
                 project_packages.append(result)
+                used_files = shared_context.get("used_files")
+                implemented_files = shared_context.get("implemented_files")
+                if isinstance(used_files, set):
+                    for step in result.get("implementation_steps", []):
+                        fp = step.get("file_path")
+                        if fp:
+                            used_files.add(fp)
+                            if isinstance(implemented_files, dict):
+                                if not self._is_non_tutorial_file(fp):
+                                    implemented_files[fp] = {
+                                        "package_index": idx,
+                                        "file_path": fp,
+                                        "component_name": step.get("component_name", ""),
+                                        "purpose": step.get("purpose", ""),
+                                        "code": step.get("code", ""),
+                                        "language": step.get("language", "python"),
+                                        "action_index": idx,
+                                        "step_number": step.get("step_number"),
+                                        "package_title": result.get("package_title"),
+                                    }
                 
                 # 更新已生成的概念列表和理论基础主题
                 if result.get("status") == "success":
@@ -208,8 +240,8 @@ class EngineerAgent(BaseAgent):
                     package_title = result.get("package_title", f"Package {idx}")
                     theory_foundation = result.get("theoretical_foundation", "")
                     if theory_foundation:
-                        # 提取理论基础的关键主题（前200字作为摘要）
-                        theory_summary = theory_foundation[:200].strip()
+                        # 提取理论基础的关键主题（前80字作为摘要，减少prompt长度）
+                        theory_summary = theory_foundation[:80].strip()
                         seen_theory_topics.append({
                             "package_index": idx,
                             "package_title": package_title,
@@ -217,11 +249,25 @@ class EngineerAgent(BaseAgent):
                         })
             except Exception as exc:
                 logger.error(f"处理步骤 {idx} 失败: {exc}")
+                pkg_time = time.time() - pkg_start if 'pkg_start' in locals() else 0
+                package_timings.append((idx, pkg_time))
                 project_packages.append({
                     "action_item": action,
                     "error": str(exc),
                     "status": "failed"
                 })
+
+        # 输出所有package的时间统计
+        if package_timings:
+            total_pkg_time = sum(t for _, t in package_timings)
+            logger.info("=" * 80)
+            logger.info("⏱️  Engineer Agent Package 时间统计")
+            logger.info("=" * 80)
+            for pkg_idx, pkg_time in package_timings:
+                percentage = (pkg_time / total_pkg_time) * 100 if total_pkg_time > 0 else 0
+                logger.info(f"  Package {pkg_idx}: {pkg_time:.1f}秒 ({pkg_time/60:.1f}分钟, {percentage:.1f}%)")
+            logger.info(f"总计: {total_pkg_time:.1f}秒 ({total_pkg_time/60:.1f}分钟)")
+            logger.info("=" * 80)
 
         # 获取 task_decomposition 信息
         task_decomposition = shared_context.get("task_decomposition", {})
@@ -270,6 +316,8 @@ class EngineerAgent(BaseAgent):
         params: Dict[str, Any],
         seen_concepts: set = None,
         seen_theory_topics: List[Dict[str, Any]] = None,
+        used_files: Optional[set] = None,
+        implemented_files: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """
         处理单个 action item（支持分块处理）
@@ -280,11 +328,93 @@ class EngineerAgent(BaseAgent):
         3. 逐步构建完整的package
         """
         logger.info(f"正在处理步骤 {action_index}: {action_item[:50]}...")
+        pkg_start_time = time.time()
+        params = params or {}
         
         max_steps_per_batch = params.get("max_steps_per_batch", 5)
+        single_step_mode = params.get("single_step_generation", True)
+        if single_step_mode:
+            max_steps_per_batch = 1
         
-        # 第一步：生成整体框架
-        logger.info(f"  Step 1: 生成 Package {action_index} 的整体框架...")
+        # 第零步：预先规划所有拆解步骤及其对应的文件
+        logger.info(f"  Step 0: 预先规划 Package {action_index} 的所有拆解步骤...")
+        planning_start = time.time()
+        global_used_files = used_files if isinstance(used_files, set) else set()
+        implemented_files = implemented_files if isinstance(implemented_files, dict) else {}
+        used_files_hint = ""
+        if global_used_files:
+            filtered_used = [
+                fp for fp in sorted(list(global_used_files))
+                if not self._is_non_tutorial_file(fp)
+            ]
+            if filtered_used:
+                preview = "\n".join(f"- `{fp}`" for fp in filtered_used[:20])
+                extra = ""
+                if len(filtered_used) > 20:
+                    extra = f"\n- ...（还有 {len(filtered_used) - 20} 个文件已使用）"
+                used_files_hint = (
+                    "\n\n**CRITICAL - 已实现的文件（前序Package）:**\n"
+                    "以下文件已经在之前的Package中实现，**不得在本Package中重新规划实现**。"
+                    "如果需要相同功能，请规划为复用前序实现，而不是重新编写。\n"
+                    f"{preview}{extra}\n"
+                )
+        
+        step_plan = await self._plan_implementation_steps(
+            action_item=action_item,
+            action_index=action_index,
+            goal_description=shared_context["goal_description"],
+            sections=shared_context["sections"],
+            references=shared_context["references"],
+            task_difficulty=shared_context.get("task_difficulty", 3),
+            params=params,
+            used_files=global_used_files,
+            used_files_hint=used_files_hint,
+        )
+        
+        planning_time = time.time() - planning_start
+        logger.info(f"    ⏱️  步骤规划耗时: {planning_time:.1f}秒")
+        
+        if not step_plan or not step_plan.get("steps"):
+            raise AgentExecutionError(f"无法为步骤 {action_index} 生成实现步骤规划")
+        
+        # 验证步骤规划
+        validation_result = self._validate_step_plan(step_plan, action_item)
+        if not validation_result.get("valid", False):
+            issues = validation_result.get("issues", [])
+            logger.warning(f"步骤规划验证发现问题: {issues}")
+            # 可以选择继续或重新规划
+        
+        # 打印步骤规划
+        raw_planned_steps = step_plan.get("steps", []) if step_plan else []
+        planned_steps = self._sort_planned_steps(raw_planned_steps)
+        if not planned_steps:
+            planned_steps = raw_planned_steps
+        planned_steps_count = len(planned_steps)
+        logger.info(f"  ✓ 已规划 {planned_steps_count} 个拆解步骤:")
+        for idx, step_info in enumerate(planned_steps, 1):
+            step_name = step_info.get("step_name", "未知步骤")
+            file_path = step_info.get("file_path", "未分配")
+            component = step_info.get("component_name", "未知组件")
+            logger.info(f"    步骤 {idx}: {step_name} ({component}) -> {file_path}")
+        
+        reuse_steps_map: Dict[int, Dict[str, Any]] = {}
+        if implemented_files:
+            for idx_sorted, step_info in enumerate(planned_steps, 1):
+                file_path = (step_info.get("file_path") or "").strip()
+                if file_path and file_path in implemented_files:
+                    reuse_steps_map[idx_sorted] = {
+                        "step_info": step_info,
+                        "existing_info": implemented_files[file_path],
+                    }
+                    source_pkg = implemented_files[file_path].get("package_index", "?")
+                    logger.info(
+                        f"    ↺ 步骤 {step_info.get('step_number', idx_sorted)} 的文件 {file_path} "
+                        f"已在 Package {source_pkg} 中实现，将复用该实现。"
+                    )
+        
+        # 第一步：基于步骤规划生成整体框架
+        logger.info(f"  Step 1: 基于步骤规划生成 Package {action_index} 的整体框架...")
+        framework_start = time.time()
         if seen_concepts is None:
             seen_concepts = set()
         if seen_theory_topics is None:
@@ -296,6 +426,7 @@ class EngineerAgent(BaseAgent):
         if shared_context.get("references"):
             logger.info(f"    将使用 {len(shared_context['references'])} 篇参考文献")
         
+        task_difficulty = shared_context.get("task_difficulty", 3)
         framework_prompt = self._build_framework_prompt(
             action_item=action_item,
             action_index=action_index,
@@ -304,7 +435,9 @@ class EngineerAgent(BaseAgent):
             references=shared_context["references"],
             seen_concepts=seen_concepts,
             seen_theory_topics=seen_theory_topics,
+            task_difficulty=task_difficulty,
             params=params,
+            step_plan=step_plan,  # 传入步骤规划
         )
         
         framework_schema = self._build_framework_schema()
@@ -316,6 +449,8 @@ class EngineerAgent(BaseAgent):
                 schema=framework_schema,
                 temperature=params.get("temperature", self.config.get("temperature", 0.2)),
             )
+            framework_time = time.time() - framework_start
+            logger.info(f"    ⏱️  框架生成耗时: {framework_time:.1f}秒")
             
             # 验证响应格式
             if not isinstance(framework_response, dict):
@@ -324,8 +459,16 @@ class EngineerAgent(BaseAgent):
                 raise AgentExecutionError(f"模型返回了无效的响应格式（期望字典）")
             
             # 第二步：分块生成实现步骤
-            estimated_steps = framework_response.get("estimated_steps", 10)
+            # 优先使用步骤规划中的步骤数量
+            if step_plan and step_plan.get("steps"):
+                estimated_steps = len(step_plan.get("steps", []))
+                logger.info(f"  ✓ 使用步骤规划中的步骤数量: {estimated_steps}")
+            else:
+                estimated_steps = framework_response.get("estimated_steps", 10)
+            
             total_batches = (estimated_steps + max_steps_per_batch - 1) // max_steps_per_batch
+            if total_batches <= 0:
+                total_batches = 1
             
             # 保存框架到输出目录（在知道total_batches后）
             if self.output_dir:
@@ -343,6 +486,7 @@ class EngineerAgent(BaseAgent):
                 )
             
             logger.info(f"  Step 2: 分 {total_batches} 批生成实现步骤（预计 {estimated_steps} 个步骤）...")
+            steps_start_time = time.time()
             
             all_implementation_steps = []
             # 确保 current_package 是字典
@@ -356,321 +500,477 @@ class EngineerAgent(BaseAgent):
                 current_package["implementation_steps"] = []
             
             # 解析框架中的项目结构，提取允许的文件清单，用于后续步骤校验
+            # 优先使用步骤规划中的文件列表
             allowed_files = set()
-            try:
-                allowed_files = self._parse_structure_files(current_package.get("project_structure", ""))
-                if allowed_files:
-                    logger.info(f"  ✓ 允许引用的文件（来自项目结构）: {len(allowed_files)} 个")
-            except Exception as _:
-                logger.warning("无法解析项目结构中的文件清单，将仅依赖提示约束避免生成不存在的文件")
+            if planned_steps:
+                # 从步骤规划中提取所有文件路径
+                planned_files = [step.get("file_path", "") for step in planned_steps]
+                planned_files = [fp for fp in planned_files if fp and not self._is_non_tutorial_file(fp)]
+                allowed_files = set(planned_files)
+                logger.info(f"  ✓ 允许引用的文件（来自步骤规划）: {len(allowed_files)} 个")
+            
+            # 如果步骤规划中没有文件，则从项目结构中解析
+            if not allowed_files:
+                try:
+                    allowed_files = self._parse_structure_files(current_package.get("project_structure", ""))
+                    if allowed_files:
+                        logger.info(f"  ✓ 允许引用的文件（来自项目结构）: {len(allowed_files)} 个")
+                except Exception as _:
+                    logger.warning("无法解析项目结构中的文件清单，将仅依赖提示约束避免生成不存在的文件")
             # 用于快速按文件名匹配
             allowed_by_basename = {}
             for p in allowed_files:
                 allowed_by_basename.setdefault(p.split('/')[-1], []).append(p)
+            package_used_files = set()
+            global_used_files = used_files if isinstance(used_files, set) else set()
+            available_allowed_files = [
+                fp for fp in sorted(list(allowed_files))
+                if not global_used_files or fp not in global_used_files
+            ]
+            
+            # 记录step和file_path的唯一映射关系
+            step_file_mapping = {}  # {step_number: file_path} 用于确保唯一映射
+            file_to_step_mapping = {}  # {file_path: step_number} 用于反向查找
+            
+            # 使用步骤规划中的文件分配（如果存在）
+            step_file_plan = []
+            if planned_steps:
+                step_file_plan = [step.get("file_path", "") for step in planned_steps]
+                step_file_plan = [fp for fp in step_file_plan if fp]  # 过滤空值
+                logger.info(f"  ✓ 使用步骤规划中的文件分配: {len(step_file_plan)} 个文件")
+            else:
+                # 如果没有步骤规划，使用原来的规划方法
+                step_file_plan = self._plan_step_file_mapping(
+                    available_allowed_files=available_allowed_files,
+                    estimated_steps=estimated_steps,
+                    single_step_mode=single_step_mode,
+                    action_item=action_item
+                )
+                if step_file_plan:
+                    logger.info(f"  ✓ 已预先规划 {len(step_file_plan)} 个步骤的文件分配")
+                    for step_idx, file_path in enumerate(step_file_plan, 1):
+                        logger.info(f"    步骤 {step_idx}: {file_path}")
+            
+            # 确定总批次数
+            if single_step_mode:
+                if available_allowed_files:
+                    total_batches = len(available_allowed_files)
+                else:
+                    total_batches = max(1, total_batches)
+            elif planned_steps:
+                # 使用步骤规划的数量
+                total_batches = len(planned_steps)
+            elif step_file_plan:
+                # 如果有文件规划，使用规划的数量
+                total_batches = len(step_file_plan)
             
             for batch_num in range(1, total_batches + 1):
-                logger.info(f"    生成第 {batch_num}/{total_batches} 批实现步骤...")
+                logger.info(f"    生成第 {batch_num}/{total_batches} 批实现步骤{'（单步模式）' if single_step_mode else ''}...")
+                batch_start = time.time()
                 
-                steps_prompt = self._build_steps_batch_prompt(
-                    action_item=action_item,
-                    action_index=action_index,
-                    goal_description=shared_context["goal_description"],
-                    framework=current_package,
-                    batch_num=batch_num,
-                    total_batches=total_batches,
-                    max_steps=max_steps_per_batch,
-                    existing_steps=all_implementation_steps,
-                    params=params,
-                )
+                reuse_payload = reuse_steps_map.get(batch_num)
+                if reuse_payload:
+                    reuse_step = self._build_reuse_step_entry(
+                        reuse_payload["step_info"],
+                        reuse_payload["existing_info"],
+                        action_index
+                    )
+                    all_implementation_steps.append(reuse_step)
+                    file_path = reuse_step.get("file_path", "")
+                    step_number = (reuse_step.get("step_number") or "").strip()
+                    if file_path:
+                        package_used_files.add(file_path)
+                        if step_number:
+                            step_file_mapping[step_number] = file_path
+                        file_to_step_mapping[file_path] = step_number
+                        global_used_files.add(file_path)
+                    logger.info(
+                        f"    ↺ 第 {batch_num} 批复用文件 {file_path} "
+                        f"(来源 Package {reuse_payload['existing_info'].get('package_index', '?')})"
+                    )
+                    continue
                 
-                steps_schema = self._build_steps_batch_schema()
+                max_json_regen_attempts = params.get("json_regen_attempts") or self.config.get("json_regen_attempts", 2)
+                regen_attempt = 0
+                valid_steps = []
                 
-                steps_response = None
-                raw_response_text = None
-                
-                try:
-                    steps_response = await self._call_model(
-                    prompt=steps_prompt,
-                    system_prompt=self._build_tutorial_system_prompt(),
-                    schema=steps_schema,
-                    temperature=params.get("temperature", self.config.get("temperature", 0.2)),
-                )
-                except (ValueError, json.JSONDecodeError) as json_exc:
-                    # JSON 解析失败，尝试从异常信息中提取原始响应
-                    logger.warning(f"第 {batch_num} 批步骤 JSON 解析失败，尝试从异常中提取: {json_exc}")
+                while regen_attempt < max_json_regen_attempts:
+                    enforce_json = regen_attempt > 0
+                    pending_files = [
+                        fp for fp in available_allowed_files
+                        if fp not in package_used_files
+                    ]
                     
-                    # 尝试从异常信息中提取原始响应文本
-                    exc_str = str(json_exc)
-                    # 尝试多种可能的异常消息格式
-                    if "Model returned invalid JSON:" in exc_str:
-                        # 提取JSON文本
-                        try:
-                            parts = exc_str.split("Model returned invalid JSON:", 1)
-                            if len(parts) > 1:
-                                raw_response_text = parts[1].strip()
-                        except:
-                            pass
-                    elif "Model did not return valid JSON:" in exc_str:
-                        # 提取JSON文本（新格式）
-                        try:
-                            parts = exc_str.split("Model did not return valid JSON:", 1)
-                            if len(parts) > 1:
-                                raw_response_text = parts[1].strip()
-                        except:
-                            pass
-                    
-                    # 如果提取到了原始文本，尝试手动解析
-                    if raw_response_text:
-                        try:
-                            # 尝试修复JSON
-                            if repair_json:
-                                repaired = repair_json(raw_response_text)
-                                if repaired:
-                                    steps_response = json.loads(repaired)
-                                    logger.info(f"第 {batch_num} 批通过JSON修复成功提取响应")
-                        except Exception as repair_exc:
-                            logger.warning(f"第 {batch_num} 批JSON修复也失败: {repair_exc}")
-                    
-                    # 如果仍然失败，尝试直接解析（可能是列表格式）
-                    if steps_response is None and raw_response_text:
-                        try:
-                            # 尝试直接解析为JSON
-                            parsed = json.loads(raw_response_text)
-                            steps_response = parsed
-                            logger.info(f"第 {batch_num} 批直接解析JSON成功")
-                        except:
-                            # 尝试提取JSON块（可能包含在markdown代码块中）
-                            try:
-                                import re
-                                json_match = re.search(r'```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```', raw_response_text, re.DOTALL)
-                                if json_match:
-                                    json_str = json_match.group(1)
-                                    steps_response = json.loads(json_str)
-                                    logger.info(f"第 {batch_num} 批从代码块中提取JSON成功")
-                                else:
-                                    # 尝试查找第一个 { 或 [
-                                    start_idx = raw_response_text.find('{')
-                                    if start_idx == -1:
-                                        start_idx = raw_response_text.find('[')
-                                    if start_idx >= 0:
-                                        # 找到最后一个匹配的 }
-                                        brace_count = 0
-                                        bracket_count = 0
-                                        end_idx = start_idx
-                                        for i in range(start_idx, len(raw_response_text)):
-                                            if raw_response_text[i] == '{':
-                                                brace_count += 1
-                                            elif raw_response_text[i] == '}':
-                                                brace_count -= 1
-                                            elif raw_response_text[i] == '[':
-                                                bracket_count += 1
-                                            elif raw_response_text[i] == ']':
-                                                bracket_count -= 1
-                                            
-                                            if brace_count == 0 and bracket_count == 0:
-                                                end_idx = i + 1
-                                                break
-                                        
-                                        if end_idx > start_idx:
-                                            json_str = raw_response_text[start_idx:end_idx]
-                                            steps_response = json.loads(json_str)
-                                            logger.info(f"第 {batch_num} 批从文本中提取JSON成功")
-                            except Exception as extract_exc:
-                                logger.warning(f"第 {batch_num} 批从文本提取JSON失败: {extract_exc}")
-                    
-                    # 如果仍然没有提取到，记录警告但继续尝试处理
-                    if steps_response is None:
-                        logger.warning(f"第 {batch_num} 批无法从异常中提取有效响应，但将继续尝试处理")
-                        # 不直接continue，而是让后续代码尝试处理None值
-                        
-                except Exception as exc:
-                    logger.error(f"第 {batch_num} 批步骤生成失败: {exc}")
-                    # 尝试从异常中提取信息
-                    exc_str = str(exc)
-                    if "Model returned invalid JSON" in exc_str or "Model did not return valid JSON" in exc_str:
-                        # 尝试提取原始响应
-                        try:
-                            # 尝试两种格式
-                            if "Model returned invalid JSON:" in exc_str:
-                                parts = exc_str.split("Model returned invalid JSON:", 1)
-                            elif "Model did not return valid JSON:" in exc_str:
-                                parts = exc_str.split("Model did not return valid JSON:", 1)
+                    # 获取当前批次应该生成的文件（如果已规划）
+                    assigned_file = None
+                    assigned_step_info = None
+                    if planned_steps and batch_num <= len(planned_steps):
+                        assigned_step_info = planned_steps[batch_num - 1]
+                        assigned_file = assigned_step_info.get("file_path", "")
+                        # 检查规划的文件是否已被使用（当前包内）
+                        if assigned_file in package_used_files:
+                            logger.error(
+                                f"第 {batch_num} 批规划文件 '{assigned_file}' 已在当前包的步骤中使用，"
+                                f"这违反了规划的一对一映射原则。将跳过该批次并记录错误。"
+                            )
+                            assigned_file = None
+                            assigned_step_info = None
+                        else:
+                            logger.info(f"第 {batch_num} 批规划步骤: {assigned_step_info.get('step_name', '')} -> {assigned_file}")
+                    elif step_file_plan and batch_num <= len(step_file_plan):
+                        # 使用文件规划
+                        assigned_file = step_file_plan[batch_num - 1]
+                        # 检查该文件是否已被使用
+                        if assigned_file in package_used_files:
+                            # 如果已被使用，从pending_files中选择下一个
+                            remaining = [fp for fp in pending_files if fp not in [step_file_plan[i] for i in range(batch_num - 1)]]
+                            if remaining:
+                                assigned_file = remaining[0]
+                                logger.warning(f"第 {batch_num} 批原规划文件已被使用，改用: {assigned_file}")
                             else:
-                                parts = None
-                            
-                            if parts and len(parts) > 1:
-                                raw_response_text = parts[1].strip()
-                                if repair_json and raw_response_text:
+                                assigned_file = None
+                        else:
+                            logger.info(f"第 {batch_num} 批规划文件: {assigned_file}")
+                    
+                    steps_prompt = self._build_steps_batch_prompt(
+                        action_item=action_item,
+                        action_index=action_index,
+                        goal_description=shared_context["goal_description"],
+                        framework=current_package,
+                        batch_num=batch_num,
+                        total_batches=total_batches,
+                        max_steps=max_steps_per_batch,
+                        existing_steps=all_implementation_steps,
+                        task_difficulty=task_difficulty,
+                        params=params,
+                        enforce_strict_json=enforce_json,
+                        used_files=used_files,
+                        pending_files=pending_files,
+                        single_step_mode=single_step_mode,
+                        allowed_files=allowed_files,
+                        available_allowed_files=available_allowed_files,
+                        package_used_files=package_used_files,
+                        assigned_file=assigned_file,  # 传入预先分配的文件
+                        assigned_step_info=assigned_step_info,  # 传入步骤规划信息
+                    )
+                    
+                    steps_schema = self._build_steps_batch_schema()
+                    
+                    steps_response = None
+                    raw_response_text = None
+                    
+                    try:
+                        llm_call_start = time.time()
+                        steps_response = await self._call_model(
+                            prompt=steps_prompt,
+                            system_prompt=self._build_tutorial_system_prompt(),
+                            schema=steps_schema,
+                            temperature=params.get("temperature", self.config.get("temperature", 0.2)),
+                        )
+                        llm_call_time = time.time() - llm_call_start
+                        if regen_attempt == 0:  # 只在第一次成功时记录
+                            logger.debug(f"      LLM调用耗时: {llm_call_time:.1f}秒")
+                    except (ValueError, json.JSONDecodeError) as json_exc:
+                        logger.warning(f"第 {batch_num} 批步骤 JSON 解析失败，尝试从异常中提取: {json_exc}")
+                        exc_str = str(json_exc)
+                        if "Model returned invalid JSON:" in exc_str:
+                            try:
+                                parts = exc_str.split("Model returned invalid JSON:", 1)
+                                if len(parts) > 1:
+                                    raw_response_text = parts[1].strip()
+                            except:
+                                pass
+                        elif "Model did not return valid JSON:" in exc_str:
+                            try:
+                                parts = exc_str.split("Model did not return valid JSON:", 1)
+                                if len(parts) > 1:
+                                    raw_response_text = parts[1].strip()
+                            except:
+                                pass
+                        
+                        if raw_response_text:
+                            try:
+                                if repair_json:
                                     repaired = repair_json(raw_response_text)
                                     if repaired:
                                         steps_response = json.loads(repaired)
-                                        logger.info(f"第 {batch_num} 批从异常中修复JSON成功")
-                        except:
-                            pass
-                    
-                    if steps_response is None:
-                        logger.warning(f"第 {batch_num} 批步骤生成失败，跳过")
-                        continue
-                
-                # 验证并修复响应格式
-                batch_steps = []
-                
-                # 如果 steps_response 仍然是 None，说明完全无法提取，跳过
-                if steps_response is None:
-                    logger.warning(f"第 {batch_num} 批步骤响应为 None，跳过")
-                    continue
-                
-                if isinstance(steps_response, dict):
-                    # 标准格式：直接字典
-                  batch_steps = steps_response.get("implementation_steps", [])
-                elif isinstance(steps_response, list) and len(steps_response) > 0:
-                    # 列表格式：尝试提取第一个元素
-                    logger.warning(f"第 {batch_num} 批步骤响应是列表格式，尝试提取第一个元素")
-                    first_item = steps_response[0]
-                    if isinstance(first_item, dict):
-                        batch_steps = first_item.get("implementation_steps", [])
-                        # 如果第一个元素没有implementation_steps，尝试直接使用第一个元素
-                        if not batch_steps and "implementation_steps" in first_item:
-                            # 可能implementation_steps本身就是列表的列表
-                            potential_steps = first_item.get("implementation_steps")
-                            if isinstance(potential_steps, list):
-                                batch_steps = potential_steps
-                        # 如果还是没找到，检查整个列表是否都是步骤
-                        if not batch_steps:
-                            # 可能整个列表就是步骤列表
-                            if all(isinstance(item, dict) for item in steps_response):
-                                # 检查是否有step_number或component_name等字段
-                                if any("step_number" in item or "component_name" in item for item in steps_response):
-                                    batch_steps = steps_response
-                else:
-                    logger.error(f"第 {batch_num} 批步骤响应格式错误: 期望 dict 或 list，实际得到 {type(steps_response)}")
-                    logger.error(f"响应内容: {str(steps_response)[:500]}")
-                    # 尝试从字符串或原始响应中提取
-                    if isinstance(steps_response, str):
-                        try:
-                            parsed = json.loads(steps_response)
-                            if isinstance(parsed, dict):
-                                batch_steps = parsed.get("implementation_steps", [])
-                            elif isinstance(parsed, list) and len(parsed) > 0:
-                                if isinstance(parsed[0], dict):
-                                    batch_steps = parsed[0].get("implementation_steps", [])
-                        except:
-                            pass
-                
-                # 验证 batch_steps 格式
-                if not isinstance(batch_steps, list):
-                    logger.warning(f"第 {batch_num} 批 implementation_steps 格式错误: 期望 list，实际得到 {type(batch_steps)}")
-                    logger.warning(f"尝试转换为列表...")
-                    if batch_steps:
-                        # 尝试包装成列表
-                        if isinstance(batch_steps, dict):
-                            # 可能是单个步骤，包装成列表
-                            batch_steps = [batch_steps]
-                        else:
-                            batch_steps = []
-                    else:
-                        batch_steps = []
-                
-                if not batch_steps:
-                    logger.warning(f"第 {batch_num} 批未能提取到有效的步骤，跳过")
-                    continue
-                else:
-                    logger.info(f"第 {batch_num} 批成功提取到 {len(batch_steps)} 个步骤（即使格式不完全标准）")
-                
-                # 验证并修复每个步骤的格式
-                valid_steps = []
-                for idx, step in enumerate(batch_steps):
-                    if not isinstance(step, dict):
-                        logger.warning(f"第 {batch_num} 批步骤 {idx+1} 格式错误，跳过: {type(step)}")
-                        continue
-                    
-                    # 如果该字典不包含任何预期的步骤字段，可能是代码片段或孤立键值，尝试合并到上一个有效步骤的代码中
-                    expected_step_fields = {"step_number", "component_name", "file_path", "purpose", "explanation", "code", "language", "important_notes"}
-                    if not any(field in step for field in expected_step_fields):
-                        try:
-                            # 将该对象序列化为字符串并附加到上一条步骤的代码
-                            if valid_steps:
-                                fragment_text = json.dumps(step, ensure_ascii=False, indent=2)
-                                prev_code = valid_steps[-1].get("code") or ""
-                                if isinstance(prev_code, str):
-                                    valid_steps[-1]["code"] = (prev_code + "\n" + fragment_text).strip()
-                                else:
-                                    valid_steps[-1]["code"] = fragment_text
-                                logger.info(f"第 {batch_num} 批将非步骤字段片段合并到前一条步骤代码中")
-                                continue
-                        except Exception:
-                            # 无法合并则跳过
-                            logger.warning(f"第 {batch_num} 批遇到无法识别的片段，已跳过")
-                            continue
-                    
-                    # 确保必要字段存在并设置默认值
-                    required_fields = {
-                        "step_number": f"Step {idx+1}",
-                        "component_name": "Unknown Component",
-                        "file_path": "src/unknown.py",
-                        "purpose": "",
-                        "explanation": "",
-                        "code": "",
-                        "language": "python"
-                    }
-                    
-                    for field, default_value in required_fields.items():
-                        if field not in step:
-                            logger.warning(f"第 {batch_num} 批步骤 {idx+1} 缺少必要字段 '{field}'，使用默认值")
-                            step[field] = default_value
-                        elif step[field] is None:
-                            step[field] = default_value
-                    
-                    # 规范化并校验文件路径必须存在于项目结构中（禁止“无中生有”）
-                    raw_path = step.get("file_path") or ""
-                    normalized_path = str(raw_path).strip().strip('`').replace('\\', '/')
-                    if normalized_path.startswith('./'):
-                        normalized_path = normalized_path[2:]
-                    step["file_path"] = normalized_path or "src/unknown.py"
-                    
-                    if allowed_files:
-                        if step["file_path"] not in allowed_files:
-                            # 尝试用同名文件匹配
-                            base = step["file_path"].split('/')[-1]
-                            candidates = allowed_by_basename.get(base, [])
-                            if len(candidates) == 1:
-                                logger.info(f"第 {batch_num} 批步骤 {idx+1} 文件路径纠正: {step['file_path']} -> {candidates[0]}")
-                                step["file_path"] = candidates[0]
-                            else:
-                                logger.warning(f"第 {batch_num} 批步骤 {idx+1} 引用了项目结构中不存在的文件 '{step['file_path']}'，已跳过该步骤")
-                                # 跳过该步骤，避免产生不存在的文件
-                                continue
-                    
-                    # 修复代码字段
-                    if "code" in step:
-                        if not isinstance(step["code"], str):
-                            logger.warning(f"第 {batch_num} 批步骤 {idx+1} 代码字段类型错误，转换为字符串")
-                            step["code"] = str(step["code"]) if step["code"] else ""
-                        else:
-                            # 尝试修复代码中的特殊字符
+                                        logger.info(f"第 {batch_num} 批通过JSON修复成功提取响应")
+                            except Exception as repair_exc:
+                                logger.warning(f"第 {batch_num} 批JSON修复也失败: {repair_exc}")
+                        
+                        if steps_response is None and raw_response_text:
                             try:
-                                # 测试是否能正确序列化
-                                json.dumps({"test": step["code"]})
-                            except (TypeError, ValueError) as e:
-                                logger.warning(f"第 {batch_num} 批步骤 {idx+1} 代码字段有格式问题，尝试修复: {e}")
-                                step["code"] = self._fix_code_string(step["code"])
+                                parsed = json.loads(raw_response_text)
+                                steps_response = parsed
+                                logger.info(f"第 {batch_num} 批直接解析JSON成功")
+                            except:
+                                try:
+                                    import re
+                                    json_match = re.search(r'```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```', raw_response_text, re.DOTALL)
+                                    if json_match:
+                                        json_str = json_match.group(1)
+                                        steps_response = json.loads(json_str)
+                                        logger.info(f"第 {batch_num} 批从代码块中提取JSON成功")
+                                    else:
+                                        start_idx = raw_response_text.find('{')
+                                        if start_idx == -1:
+                                            start_idx = raw_response_text.find('[')
+                                        if start_idx >= 0:
+                                            brace_count = 0
+                                            bracket_count = 0
+                                            end_idx = start_idx
+                                            for i in range(start_idx, len(raw_response_text)):
+                                                if raw_response_text[i] == '{':
+                                                    brace_count += 1
+                                                elif raw_response_text[i] == '}':
+                                                    brace_count -= 1
+                                                elif raw_response_text[i] == '[':
+                                                    bracket_count += 1
+                                                elif raw_response_text[i] == ']':
+                                                    bracket_count -= 1
+                                                
+                                                if brace_count == 0 and bracket_count == 0:
+                                                    end_idx = i + 1
+                                                    break
+                                            
+                                            if end_idx > start_idx:
+                                                json_str = raw_response_text[start_idx:end_idx]
+                                                steps_response = json.loads(json_str)
+                                                logger.info(f"第 {batch_num} 批从文本中提取JSON成功")
+                                except Exception as extract_exc:
+                                    logger.warning(f"第 {batch_num} 批从文本提取JSON失败: {extract_exc}")
+                        
+                    except Exception as exc:
+                        logger.error(f"第 {batch_num} 批步骤生成失败: {exc}")
+                        exc_str = str(exc)
+                        if "Model returned invalid JSON" in exc_str or "Model did not return valid JSON" in exc_str:
+                            try:
+                                if "Model returned invalid JSON:" in exc_str:
+                                    parts = exc_str.split("Model returned invalid JSON:", 1)
+                                elif "Model did not return valid JSON:" in exc_str:
+                                    parts = exc_str.split("Model did not return valid JSON:", 1)
+                                else:
+                                    parts = None
+                                
+                                if parts and len(parts) > 1:
+                                    raw_response_text = parts[1].strip()
+                                    if repair_json and raw_response_text:
+                                        repaired = repair_json(raw_response_text)
+                                        if repaired:
+                                            steps_response = json.loads(repaired)
+                                            logger.info(f"第 {batch_num} 批从异常中修复JSON成功")
+                            except:
+                                pass
                     
-                    # 确保 important_notes 是列表
-                    if "important_notes" not in step:
-                        step["important_notes"] = []
-                    elif not isinstance(step["important_notes"], list):
-                        if step["important_notes"]:
-                            step["important_notes"] = [str(step["important_notes"])]
-                        else:
+                    batch_steps = []
+                    if steps_response is None:
+                        regen_attempt += 1
+                        logger.warning(f"第 {batch_num} 批步骤响应为 None（尝试 {regen_attempt}/{max_json_regen_attempts}），将重新生成")
+                        continue
+                    
+                    if isinstance(steps_response, dict):
+                        batch_steps = steps_response.get("implementation_steps", [])
+                    elif isinstance(steps_response, list) and len(steps_response) > 0:
+                        logger.warning(f"第 {batch_num} 批步骤响应是列表格式，尝试提取第一个元素")
+                        first_item = steps_response[0]
+                        if isinstance(first_item, dict):
+                            batch_steps = first_item.get("implementation_steps", [])
+                            if not batch_steps and "implementation_steps" in first_item:
+                                potential_steps = first_item.get("implementation_steps")
+                                if isinstance(potential_steps, list):
+                                    batch_steps = potential_steps
+                            if not batch_steps:
+                                if all(isinstance(item, dict) for item in steps_response):
+                                    if any("step_number" in item or "component_name" in item for item in steps_response):
+                                        batch_steps = steps_response
+                    else:
+                        logger.error(f"第 {batch_num} 批步骤响应格式错误: 期望 dict 或 list，实际得到 {type(steps_response)}")
+                        logger.error(f"响应内容: {str(steps_response)[:500]}")
+                        if isinstance(steps_response, str):
+                            try:
+                                parsed = json.loads(steps_response)
+                                if isinstance(parsed, dict):
+                                    batch_steps = parsed.get("implementation_steps", [])
+                                elif isinstance(parsed, list) and len(parsed) > 0:
+                                    if isinstance(parsed[0], dict):
+                                        batch_steps = parsed[0].get("implementation_steps", [])
+                            except:
+                                pass
+                    
+                    if not isinstance(batch_steps, list):
+                        logger.warning(f"第 {batch_num} 批 implementation_steps 格式错误: 期望 list，实际得到 {type(batch_steps)}")
+                        batch_steps = []
+                    
+                    if not batch_steps:
+                        regen_attempt += 1
+                        logger.warning(f"第 {batch_num} 批未能提取到有效的步骤，准备重新生成（尝试 {regen_attempt}/{max_json_regen_attempts}）")
+                        continue
+                    
+                    parsed_steps = []
+                    batch_file_paths = set()  # 用于检查同一批次内的重复
+                    for idx, step in enumerate(batch_steps):
+                        if not isinstance(step, dict):
+                            logger.warning(f"第 {batch_num} 批步骤 {idx+1} 格式错误，跳过: {type(step)}")
+                            continue
+                        
+                        expected_step_fields = {"step_number", "component_name", "file_path", "purpose", "explanation", "code", "language", "important_notes"}
+                        if not any(field in step for field in expected_step_fields):
+                            try:
+                                if parsed_steps:
+                                    fragment_text = json.dumps(step, ensure_ascii=False, indent=2)
+                                    prev_code = parsed_steps[-1].get("code") or ""
+                                    if isinstance(prev_code, str):
+                                        parsed_steps[-1]["code"] = (prev_code + "\n" + fragment_text).strip()
+                                    else:
+                                        parsed_steps[-1]["code"] = fragment_text
+                                    logger.info(f"第 {batch_num} 批将非步骤字段片段合并到前一条步骤代码中")
+                                    continue
+                            except Exception:
+                                logger.warning(f"第 {batch_num} 批遇到无法识别的片段，已跳过")
+                                continue
+                        
+                        required_fields = {
+                            "step_number": f"Step {idx+1}",
+                            "component_name": "Unknown Component",
+                            "file_path": "src/unknown.py",
+                            "purpose": "",
+                            "explanation": "",
+                            "code": "",
+                            "language": "python"
+                        }
+                        
+                        for field, default_value in required_fields.items():
+                            if field not in step or step[field] is None:
+                                step[field] = default_value
+                        
+                        raw_path = step.get("file_path") or ""
+                        normalized_path = str(raw_path).strip().strip('`').replace('\\', '/')
+                        if normalized_path.startswith('./'):
+                            normalized_path = normalized_path[2:]
+                        step["file_path"] = normalized_path or "src/unknown.py"
+                        
+                        step_number = step.get("step_number", "").strip()
+                        
+                        # 验证1: 检查文件路径是否在允许的文件列表中
+                        if allowed_files:
+                            if step["file_path"] not in allowed_files:
+                                base = step["file_path"].split('/')[-1]
+                                candidates = allowed_by_basename.get(base, [])
+                                if len(candidates) == 1:
+                                    logger.info(f"第 {batch_num} 批步骤 {idx+1} 文件路径纠正: {step['file_path']} -> {candidates[0]}")
+                                    step["file_path"] = candidates[0]
+                                else:
+                                    available_preview = list(available_allowed_files - package_used_files)[:5]
+                                    logger.warning(
+                                        f"第 {batch_num} 批步骤 {idx+1} (step_number: {step_number}) 引用了项目结构中不存在的文件 '{step['file_path']}'，"
+                                        f"可用文件示例: {available_preview}，将跳过并重新生成"
+                                    )
+                                    parsed_steps = []
+                                    break
+                        
+                        # 验证2: 检查同一批次内是否有重复的文件路径
+                        if step["file_path"] in batch_file_paths:
+                            logger.warning(
+                                f"第 {batch_num} 批步骤 {idx+1} (step_number: {step_number}) 与同批次其他步骤重复使用文件 '{step['file_path']}'，"
+                                "每个文件只能在一个步骤中出现，将重新生成该批次。"
+                            )
+                            parsed_steps = []
+                            break
+                        batch_file_paths.add(step["file_path"])
+                        
+                        # 验证3: 检查该文件是否已经在之前的步骤中使用过
+                        # 但如果这是预先分配的文件，允许使用（因为可能是规划好的）
+                        if step["file_path"] in file_to_step_mapping:
+                            # 检查是否是预先分配的文件
+                            is_assigned = (assigned_file and step["file_path"] == assigned_file)
+                            if not is_assigned:
+                                existing_step = file_to_step_mapping[step["file_path"]]
+                                logger.warning(
+                                    f"第 {batch_num} 批步骤 {idx+1} (step_number: {step_number}) 试图复用已实现文件 '{step['file_path']}'，"
+                                    f"该文件已在步骤 {existing_step} 中使用，教程要求每个文件只能对应一个步骤，将重新生成该批次。"
+                                )
+                                parsed_steps = []
+                                break
+                            else:
+                                # 如果是预先分配的文件，但已经被使用，说明规划有问题
+                                logger.warning(
+                                    f"第 {batch_num} 批步骤 {idx+1} 的预先分配文件 '{assigned_file}' 已被使用，将重新生成该批次。"
+                                )
+                                parsed_steps = []
+                                break
+                        
+                        # 验证4: 检查该step_number是否已经映射到其他文件
+                        if step_number in step_file_mapping:
+                            existing_file = step_file_mapping[step_number]
+                            logger.warning(
+                                f"第 {batch_num} 批步骤 {idx+1} (step_number: {step_number}) 已映射到文件 '{existing_file}'，"
+                                f"现在试图映射到 '{step['file_path']}'，每个步骤只能对应一个文件，将重新生成该批次。"
+                            )
+                            parsed_steps = []
+                            break
+                        
+                        if "code" in step:
+                            if not isinstance(step["code"], str):
+                                logger.warning(f"第 {batch_num} 批步骤 {idx+1} 代码字段类型错误，转换为字符串")
+                                step["code"] = str(step["code"]) if step["code"] else ""
+                            else:
+                                try:
+                                    json.dumps({"test": step["code"]})
+                                except (TypeError, ValueError) as e:
+                                    logger.warning(f"第 {batch_num} 批步骤 {idx+1} 代码字段有格式问题，尝试修复: {e}")
+                                    step["code"] = self._fix_code_string(step["code"])
+                        
+                        if "important_notes" not in step:
                             step["important_notes"] = []
+                        elif not isinstance(step["important_notes"], list):
+                            if step["important_notes"]:
+                                step["important_notes"] = [str(step["important_notes"])]
+                            else:
+                                step["important_notes"] = []
+                        
+                        # 记录step和file_path的唯一映射关系
+                        step_file_mapping[step_number] = step["file_path"]
+                        file_to_step_mapping[step["file_path"]] = step_number
+                        parsed_steps.append(step)
                     
-                    valid_steps.append(step)
+                    if not parsed_steps:
+                        regen_attempt += 1
+                        logger.warning(f"第 {batch_num} 批解析步骤为空，将重新生成（尝试 {regen_attempt}/{max_json_regen_attempts}）")
+                        continue
+                    
+                    if single_step_mode and len(parsed_steps) > 1:
+                        logger.warning(f"单步模式下第 {batch_num} 批返回 {len(parsed_steps)} 个步骤，自动截取第一个有效步骤")
+                        parsed_steps = parsed_steps[:1]
+                    
+                    valid_steps = parsed_steps
+                    batch_time = time.time() - batch_start
+                    logger.info(f"第 {batch_num} 批成功提取到 {len(valid_steps)} 个步骤（尝试 {regen_attempt+1}/{max_json_regen_attempts}，耗时 {batch_time:.1f}秒）")
+                    # 打印每个步骤对应的文件
+                    for step in valid_steps:
+                        step_num = step.get("step_number", "未知")
+                        file_path = step.get("file_path", "未知")
+                        component = step.get("component_name", "未知组件")
+                        logger.info(f"    ✓ 步骤 {step_num}: {component} -> 文件: {file_path}")
+                    break
                 
                 if not valid_steps:
-                    logger.warning(f"第 {batch_num} 批未生成任何有效步骤，跳过")
+                    logger.error(f"第 {batch_num} 批连续 {max_json_regen_attempts} 次生成均失败，跳过该批次")
                     continue
                 
                 all_implementation_steps.extend(valid_steps)
+                for step in valid_steps:
+                    fp_val = (step.get("file_path") or "").strip()
+                    step_num = (step.get("step_number") or "").strip()
+                    component = step.get("component_name", "未知组件")
+                    if fp_val:
+                        package_used_files.add(fp_val)
+                        # 确保映射关系已记录（双重检查）
+                        if step_num and step_num not in step_file_mapping:
+                            step_file_mapping[step_num] = fp_val
+                        if fp_val not in file_to_step_mapping:
+                            file_to_step_mapping[fp_val] = step_num
+                        # 记录步骤-文件映射关系
+                        logger.info(f"  📝 步骤 {step_num} ({component}) 已映射到文件: {fp_val}")
                 
                 # 验证 current_package 仍然是字典
                 if not isinstance(current_package, dict):
@@ -685,12 +985,12 @@ class EngineerAgent(BaseAgent):
                 if self.output_dir:
                     try:
                         self._save_package_intermediate(
-                        current_package,
-                        action_index,
-                        batch_num,
-                        total_batches,
-                        shared_context.get("references", [])
-                    )
+                            current_package,
+                            action_index,
+                            batch_num,
+                            total_batches,
+                            shared_context.get("references", [])
+                        )
                     except Exception as save_exc:
                         logger.error(f"保存中间结果失败: {save_exc}", exc_info=True)
                         # 继续处理，不中断流程
@@ -714,7 +1014,82 @@ class EngineerAgent(BaseAgent):
             elif not isinstance(final_package["implementation_steps"], list):
                 final_package["implementation_steps"] = all_implementation_steps.copy()
             
+            if used_files is not None:
+                filtered_steps = []
+                seen_local = set()
+                seen_step_numbers = set()
+                for step in final_package.get("implementation_steps", []):
+                    fp_val = (step.get("file_path") or "").strip()
+                    step_num = (step.get("step_number") or "").strip()
+                    
+                    # 检查文件路径重复
+                    if fp_val and fp_val in seen_local:
+                        logger.warning(
+                            f"教程去重: Package {action_index} 中重复文件 '{fp_val}' (step_number: {step_num}) 的后续步骤已被移除，避免重复讲解"
+                        )
+                        continue
+                    
+                    # 检查step_number重复
+                    if step_num and step_num in seen_step_numbers:
+                        logger.warning(
+                            f"教程去重: Package {action_index} 中重复step_number '{step_num}' (file_path: {fp_val}) 的后续步骤已被移除"
+                        )
+                        continue
+                    
+                    if fp_val:
+                        seen_local.add(fp_val)
+                    if step_num:
+                        seen_step_numbers.add(step_num)
+                    filtered_steps.append(step)
+                
+                final_package["implementation_steps"] = filtered_steps
+                used_files.update(seen_local)
+                
+                # 记录最终的映射关系到package中，便于调试和验证
+                final_package["step_file_mapping"] = {
+                    step.get("step_number", ""): step.get("file_path", "")
+                    for step in filtered_steps
+                    if step.get("step_number") and step.get("file_path")
+                }
+                logger.info(f"Package {action_index} 最终映射关系: {len(final_package.get('step_file_mapping', {}))} 个步骤-文件对")
+            else:
+                final_package["implementation_steps"] = all_implementation_steps.copy()
+            
+            coverage_report = self._audit_step_file_coverage(allowed_files, final_package["implementation_steps"])
+            if coverage_report:
+                final_package["file_coverage"] = coverage_report
+                missing = coverage_report.get("missing_files") or []
+                redundant = coverage_report.get("redundant_files") or []
+                if missing:
+                    logger.warning(f"Package {action_index} 教程未覆盖 {len(missing)} 个结构文件: {missing[:5]}" + (f" 等" if len(missing) > 5 else ""))
+                if redundant:
+                    logger.warning(f"Package {action_index} 教程包含未在结构中声明的文件: {redundant[:5]}" + (f" 等" if len(redundant) > 5 else ""))
+            
+            steps_total_time = time.time() - steps_start_time
+            pkg_total_time = time.time() - pkg_start_time
             logger.info(f"步骤 {action_index} 处理成功（共 {len(all_implementation_steps)} 个子步骤）")
+            logger.info(f"  ⏱️  Package {action_index} 时间分解: 框架 {framework_time:.1f}秒, 步骤生成 {steps_total_time:.1f}秒 ({steps_total_time/60:.1f}分钟), 总计 {pkg_total_time:.1f}秒")
+            
+            # 打印最终的步骤-文件映射关系
+            if step_file_mapping:
+                logger.info(f"  📋 Package {action_index} 最终步骤-文件映射关系:")
+                # 按步骤编号排序
+                def get_step_number(step_item):
+                    """提取步骤编号用于排序"""
+                    import re as re_module
+                    step_key = str(step_item[0])
+                    match = re_module.search(r'\d+', step_key)
+                    return int(match.group()) if match else 999
+                sorted_steps = sorted(step_file_mapping.items(), key=get_step_number)
+                for step_num, file_path in sorted_steps:
+                    # 查找对应的组件名
+                    component_name = "未知组件"
+                    for step in all_implementation_steps:
+                        if (step.get("step_number") or "").strip() == step_num:
+                            component_name = step.get("component_name", "未知组件")
+                            break
+                    logger.info(f"    步骤 {step_num}: {component_name} -> {file_path}")
+            
             return final_package
             
         except Exception as exc:
@@ -832,6 +1207,70 @@ class EngineerAgent(BaseAgent):
         
         return references
 
+    def _sort_references_by_difficulty(self, references: List[Dict[str, Any]], task_difficulty: int) -> List[Dict[str, Any]]:
+        """
+        根据任务难度对参考文献进行排序和筛选
+        
+        Args:
+            references: 参考文献列表
+            task_difficulty: 任务难度 (1-5)
+            
+        Returns:
+            排序后的参考文献列表
+        """
+        if not references:
+            return []
+        
+        def parse_year(ref: Dict[str, Any]) -> int:
+            """解析年份，返回整数，无法解析时返回0"""
+            year = ref.get("year", "")
+            if isinstance(year, int):
+                return year
+            if isinstance(year, str):
+                try:
+                    # 尝试提取4位数字年份
+                    match = re.search(r'\b(20\d{2}|19\d{2})\b', year)
+                    if match:
+                        return int(match.group(1))
+                except:
+                    pass
+            return 0
+        
+        # 根据任务难度排序
+        if task_difficulty <= 2:
+            # 简单任务：优先较早的文献（2015-2020）
+            def sort_key(ref):
+                year = parse_year(ref)
+                if 2015 <= year <= 2020:
+                    return (0, -year)  # 最优先，按年份降序（较新的在前）
+                elif year < 2015:
+                    return (1, -year)  # 2015之前的放在后面
+                else:
+                    return (2, -year)  # 2021+放在最后
+            sorted_refs = sorted(references, key=sort_key)
+            
+        elif task_difficulty == 3:
+            # 中等任务：保持原顺序或按年份混合排序
+            sorted_refs = sorted(references, key=lambda ref: -parse_year(ref))  # 按年份降序
+            
+        else:  # 4-5
+            # 复杂任务：强烈优先2024-2025年的文献（最新技术）
+            def sort_key(ref):
+                year = parse_year(ref)
+                if 2024 <= year <= 2025:
+                    return (0, -year)  # 最高优先级，按年份降序（2025 > 2024）
+                elif year == 2023:
+                    return (1, -year)  # 第二优先级
+                elif year == 2022:
+                    return (2, -year)  # 第三优先级
+                elif year >= 2020:
+                    return (3, -year)  # 第四优先级
+                else:
+                    return (4, -year)  # 2020之前的放在最后
+            sorted_refs = sorted(references, key=sort_key)
+        
+        return sorted_refs
+
     def _build_framework_prompt(
         self,
         action_item: str,
@@ -841,7 +1280,9 @@ class EngineerAgent(BaseAgent):
         references: List[Dict[str, Any]],
         seen_concepts: set = None,
         seen_theory_topics: List[Dict[str, Any]] = None,
+        task_difficulty: int = 3,
         params: Dict[str, Any] = None,
+        step_plan: Optional[Dict[str, Any]] = None,
     ) -> str:
         """构建生成框架的prompt（不包含详细实现步骤）"""
         section_lines: List[str] = []
@@ -855,13 +1296,17 @@ class EngineerAgent(BaseAgent):
         for key in key_sections:
             value = sections.get(key)
             if value:
-                section_lines.append(f"### {key.replace('_', ' ').title()}\n{value[:500]}")
-
-        # 处理参考文献
+                # 精简文献综述：只保留关键信息（前200字符），减少prompt长度
+                section_lines.append(f"### {key.replace('_', ' ').title()}\n{value[:200]}")
+        
+        # 处理参考文献 - 根据任务难度排序和筛选
         if references:
+            # 根据任务难度对参考文献进行排序（复杂任务优先最近年份）
+            sorted_refs = self._sort_references_by_difficulty(references, task_difficulty)
+            
             ref_lines = []
             # 显示更多参考文献（最多15篇）以便在生成内容时引用
-            for idx, ref in enumerate(references[:15], 1):
+            for idx, ref in enumerate(sorted_refs[:15], 1):
                 title = ref.get("title", "Untitled")
                 authors = ref.get("authors", "Unknown authors")
                 year = ref.get("year", "n.d.")
@@ -890,9 +1335,66 @@ class EngineerAgent(BaseAgent):
 
         sections_text = "\n\n".join(section_lines) if section_lines else "No additional context provided."
         preferred_language = params.get("default_language", self.default_language) if params else self.default_language
+        
+        # 如果有步骤规划，添加到prompt中
+        step_plan_text = ""
+        if step_plan and step_plan.get("steps"):
+            steps = step_plan.get("steps", [])
+            step_plan_text = "\n\n# Pre-planned Implementation Steps (预先规划的拆解步骤)\n"
+            step_plan_text += "The following steps have been pre-planned. You MUST generate a project structure that includes ALL these files:\n\n"
+            for step in steps:
+                step_num = step.get("step_number", "")
+                step_name = step.get("step_name", "")
+                component = step.get("component_name", "")
+                file_path = step.get("file_path", "")
+                purpose = step.get("purpose", "")
+                step_plan_text += f"- **步骤 {step_num}**: {step_name} ({component})\n"
+                step_plan_text += f"  - 文件: `{file_path}`\n"
+                step_plan_text += f"  - 目的: {purpose}\n\n"
+            step_plan_text += "**CRITICAL**: Your project_structure MUST include all the files listed above. Do NOT add extra files that are not in this plan.\n"
+
+        # 根据任务难度生成调整指导
+        difficulty_guidance = ""
+        if task_difficulty <= 2:
+            difficulty_guidance = (
+                "\n\n**TASK DIFFICULTY: SIMPLE (1-2/5)**\n"
+                "This is a simple task suitable for beginners:\n"
+                "- Use **foundational, well-established technologies** (2015-2020 era, stable and mature)\n"
+                "- Prioritize **classic references** from earlier years (2020-2022) over very recent ones\n"
+                "- Explain concepts from **absolute basics** - assume zero prior knowledge\n"
+                "- Use **simple, clear language** - avoid advanced terminology unless absolutely necessary\n"
+                "- Provide **extra detailed explanations** - every concept should be explained thoroughly\n"
+                "- Focus on **educational value** and **clarity** over cutting-edge techniques\n"
+                "- Emphasize **understanding fundamental concepts** rather than using the latest methods\n"
+            )
+        elif task_difficulty == 3:
+            difficulty_guidance = (
+                "\n\n**TASK DIFFICULTY: MODERATE (3/5)**\n"
+                "This is a moderate task:\n"
+                "- Use **balanced, modern technologies** (2020-2025 era, well-established)\n"
+                "- Reference **both classic and recent papers** (2020-2025) as appropriate\n"
+                "- Explain concepts clearly but can assume some basic knowledge\n"
+                "- Use **standard terminology** with brief explanations when needed\n"
+                "- Provide **comprehensive explanations** suitable for intermediate learners\n"
+            )
+        else:  # 4-5
+            difficulty_guidance = (
+                "\n\n**TASK DIFFICULTY: COMPLEX (4-5/5)**\n"
+                "This is a complex, cutting-edge task:\n"
+                "- Use **state-of-the-art, recent technologies** (2020-2025 era, latest methods)\n"
+                "- **STRONGLY PRIORITIZE 2024-2025 references** - these represent the most cutting-edge techniques and latest innovations\n"
+                "- **Prioritize recent references** from 2022-2025 over older ones - focus on cutting-edge techniques\n"
+                "- **Encourage citing 2024-2025 papers** - even if they have lower citations, they represent the latest research trends\n"
+                "- Can assume **intermediate to advanced** knowledge - readers should have some background\n"
+                "- Can use **advanced terminology** with brief explanations - readers are expected to be familiar with basics\n"
+                "- Focus on **latest methodologies** and **current best practices** from 2024-2025\n"
+                "- Emphasize **state-of-the-art approaches** and **recent innovations** in the field (especially 2024-2025)\n"
+                "- Can reference **foundational papers briefly** but focus on recent developments, particularly 2024-2025\n"
+            )
 
         prompt = f"""You are Dr. Chen, a **renowned technical educator and senior software engineer** with over 15 years of experience. 
-You are now preparing a comprehensive tutorial package for your students who are all AI beginners. Your teaching style is patient, thorough, and focused on helping learners truly understand concepts, not just memorize them.
+You are now preparing a comprehensive tutorial package for your students. Your teaching style is patient, thorough, and focused on helping learners truly understand concepts, not just memorize them.
+{difficulty_guidance}
 
 **Your Teaching Approach:**
 - You believe in building knowledge step by step, ensuring each concept is fully understood before moving to the next
@@ -911,6 +1413,7 @@ You are now preparing a comprehensive tutorial package for your students who are
 {sections_text}
 {seen_concepts_text}
 {seen_theory_text}
+{step_plan_text}
 
 # Your Task - Generate Framework Only
 
@@ -923,21 +1426,35 @@ Think of this as preparing the outline and foundation for your lesson. Make sure
 - **MUST be written in Chinese (中文)**
 
 ## 2. Project Structure
-Complete directory structure with ALL needed files:
+**CRITICAL**: Design a project structure that is SPECIFIC and APPROPRIATE for implementing "{action_item}". 
+
+Think carefully about what files are actually needed based on the step decomposition and the specific requirements of "{action_item}":
+- Analyze the step decomposition: what modules/components are needed? What files will contain them?
+- If this step requires a main entry point, include `main.py` or equivalent
+- If this step requires data files, include appropriate data files
+- If this step requires configuration, include config files
+- **Design flexibly based on actual needs**, not based on generic templates or blindly copying from examples
+
+Complete directory structure with ALL needed files for implementing "{action_item}":
 ```
 package-{action_index:02d}-[name]/
 ├── README.md
 ├── requirements.txt
 ├── src/
-│   ├── main.{preferred_language}
-│   └── [other modules]
+│   ├── [module files needed for {action_item}]
+│   └── [other modules as needed]
 ├── configs/
-│   └── config.yaml
-├── data/
-│   └── [data files]
-└── docs/
-    └── usage.md
+│   └── config.yaml (if needed)
+└── data/
+    └── [data files if needed]
 ```
+
+**IMPORTANT Requirements:**
+- **Design based on the actual requirements** of "{action_item}" - analyze what files are truly needed for this specific step
+- **DO NOT blindly copy example structures** from previous packages or generic templates - each step should have its own appropriate structure
+- **Include files that serve a clear purpose** for implementing "{action_item}" - if a file is needed, include it; if not, don't include it
+- **Be flexible and practical** - the structure should match what will actually be implemented in the tutorial steps
+- **Think about the step decomposition** - what modules/components are needed? What files will contain them?
 
 ## 3. Theoretical Foundation
 As Dr. Chen, provide a **COMPREHENSIVE and DETAILED** explanation of the technical and scientific basis that is **SPECIFIC TO THIS STEP**, why this approach was chosen, trade-offs and design decisions.
@@ -951,8 +1468,9 @@ As Dr. Chen, provide a **COMPREHENSIVE and DETAILED** explanation of the technic
 
 **CRITICAL REQUIREMENTS:**
 - **MUST be written in Chinese (中文)**
-- **Length**: Write **8-15 paragraphs** (NOT just 2-3 sentences!) - This is a CRITICAL requirement
-- **MUST cite relevant references** from the Key References section above using the format [作者, 年份]（只允许作者-年份格式，禁止使用数字序号） - **Cite at least 3-5 references** throughout the explanation
+- **Length**: Write **6-9 paragraphs** (NOT just 2-3 sentences!) - This is a CRITICAL requirement
+- **MUST cite relevant references** from the Key References section above using the format [作者, 年份]（只允许作者-年份格式，禁止使用数字序号） - **Cite 2-4 references** throughout the explanation
+- **Focus on core theoretical foundations** - Stay focused on what's needed for implementing "{action_item}"
 - **MUST include mathematical formulas and equations** when explaining theoretical foundations - Use LaTeX format for formulas:
   * **Inline formulas** (within text): Use single dollar signs, e.g., `$f(x) = \\sum_{{i=1}}^{{n}} w_i x_i + b$`
   * **Display formulas** (centered on separate line): Use double dollar signs, e.g., `$$\\mathcal{{L}} = \\frac{{1}}{{N}}\\sum_{{i=1}}^{{N}} L(y_i, \\hat{{y}}_i)$$`
@@ -977,7 +1495,7 @@ As Dr. Chen, provide a **COMPREHENSIVE and DETAILED** explanation of the technic
 - **IMPORTANT**: Do NOT repeat theoretical content already covered in previous packages. Focus on what is unique and specific to THIS step. Do NOT write just a brief summary. This section should be comprehensive enough for readers to understand the full theoretical context relevant to THIS specific step.
 
 ## 4. Concept Explanations
-As Dr. Chen, provide **EXTREMELY DETAILED** explanations of key concepts that learners need to understand before implementing this package.
+As Dr. Chen, provide **clear and focused** explanations of key concepts that are **essential prerequisites** for implementing this package.
 
 **Your teaching approach for each concept:**
 - Imagine a student sitting in front of you, asking "Can you explain this concept to me from scratch?"
@@ -985,6 +1503,7 @@ As Dr. Chen, provide **EXTREMELY DETAILED** explanations of key concepts that le
 - Use multiple analogies - if one doesn't click, another might
 - Show enthusiasm for the concept - your passion for teaching should shine through
 - Anticipate questions like "Why is this important?" and "How does this relate to what we learned before?"
+- **Stay focused on what's needed for the core implementation** - connect concepts to how they're used in "{action_item}"
 
 **CRITICAL**: These explanations must be so detailed and clear that a complete beginner can understand them without prior knowledge.
 
@@ -994,7 +1513,7 @@ As Dr. Chen, provide **EXTREMELY DETAILED** explanations of key concepts that le
 - For each concept, provide:
   - **Concept Name**: Clear name of the concept
   
-  - **Explanation**: **EXTREMELY DETAILED** explanation in Chinese (中文) - **6-12 paragraphs minimum** that:
+  - **Explanation**: **Clear and focused** explanation in Chinese (中文) - **3-6 paragraphs minimum** that:
     * Start from the very basics (assume zero prior knowledge) - Don't assume any prior understanding
     * Explain what the concept is in simple terms first - Use everyday language before introducing technical terms
     * Then explain how it works step-by-step - Break down every step, don't skip intermediate reasoning
@@ -1004,12 +1523,12 @@ As Dr. Chen, provide **EXTREMELY DETAILED** explanations of key concepts that le
       - **CRITICAL**: Every formula MUST start and end with dollar signs (`$` or `$$`). Never forget the closing dollar signs.
       - Explain clearly what each symbol means and how the formula is used
     * Explain why it matters and where it's used - Give context and real-world relevance
-    * Use analogies and real-world examples to make it concrete - At least 2-3 different analogies/examples per concept
+    * Use analogies and real-world examples to make it concrete - At least 1-2 different analogies/examples per concept
     * Break down complex ideas into smaller, digestible parts - Each paragraph should build on the previous one
     * Avoid jargon or explain every technical term used - If you use a term, immediately explain what it means
     * Make sure a complete beginner can follow the entire explanation - Test your explanation mentally: would a beginner understand?
     * **Cite relevant references** from the Key References section using format [作者, 年份]（仅作者-年份格式，禁止数字序号） when explaining theoretical foundations or related work - **Cite at least 1-2 references per concept**
-    * **Be comprehensive** - It's better to be too detailed than too brief. Leave no gaps in understanding
+    * **Be thorough but focused** - Explain what's needed clearly, stay focused on core concepts needed for "{action_item}"
   
   - **Why Important**: Detailed explanation of why this concept is crucial for understanding this package - explain the connection clearly
   
@@ -1019,7 +1538,7 @@ As Dr. Chen, provide **EXTREMELY DETAILED** explanations of key concepts that le
   
 - **MUST be written in Chinese (中文)**
 - **Focus on making concepts accessible to beginners** - write as if explaining to someone with no background knowledge
-- **Be thorough and comprehensive** - it's better to be too detailed than too brief
+- **Be thorough but focused** - explain what's essential for the implementation, stay focused on core concepts needed for "{action_item}"
 - Focus on concepts that are essential prerequisites for understanding the implementation
 
 ## 5. Estimated Implementation Steps
@@ -1028,16 +1547,15 @@ Provide an estimate of how many implementation steps will be needed (typically 5
 ## 6. Dependencies and Installation (preliminary)
 List expected dependencies with purpose.
 
-## 7. Usage Tutorial (COMPLETE examples with code)
-Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST include:
-- **title**: Clear example title (in Chinese)
-- **scenario**: Detailed scenario description (in Chinese)
-- **code**: Complete, runnable Python code demonstrating the usage (NO placeholders, NO "...")
-- **expected_output**: Detailed description of what the output should look like (in Chinese)
-
 # Critical Requirements
 - Use {preferred_language} as primary language for code
 - **MANDATORY: All text content (overview, theoretical_foundation, concept_explanations) MUST be written in Chinese (中文)**
+- **CRITICAL - Project Structure Requirements:**
+  - **Design flexibly based on the step decomposition and actual needs** - analyze what files are truly required for implementing "{action_item}"
+  - **DO NOT blindly copy example structures or generic templates** - each step should have its own appropriate structure based on its specific requirements
+  - **Include files that serve a clear purpose** - if a file is needed for the implementation (e.g., main entry point, data files, specific modules), include it; if not needed, don't include it
+  - **Think about the step decomposition** - what modules/components are needed? What files will contain them?
+  - **Be practical and flexible** - the structure should match what will actually be implemented, not follow a rigid template
 - Be comprehensive but concise
 - Do NOT include detailed code or implementation steps yet
 - Focus on structure and planning
@@ -1059,7 +1577,7 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
                 },
                 "project_structure": {
                     "type": "string",
-                    "description": "Complete directory tree structure as formatted text with all files"
+                    "description": "Complete directory tree structure as formatted text with all files. Design flexibly based on the step decomposition and actual requirements of the action_item. Include files that serve a clear purpose for implementing the action_item. DO NOT blindly copy example structures or generic templates - each step should have its own appropriate structure based on its specific needs."
                 },
                 "theoretical_foundation": {
                     "type": "string",
@@ -1156,10 +1674,20 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
         total_batches: int,
         max_steps: int,
         existing_steps: List[Dict[str, Any]],
-        params: Dict[str, Any],
+        task_difficulty: int = 3,
+        params: Dict[str, Any] = None,
+        enforce_strict_json: bool = False,
+        used_files: Optional[set] = None,
+        pending_files: Optional[List[str]] = None,
+        single_step_mode: bool = False,
+        allowed_files: Optional[set] = None,
+        available_allowed_files: Optional[List[str]] = None,
+        package_used_files: Optional[set] = None,
+        assigned_file: Optional[str] = None,  # 预先分配的文件
+        assigned_step_info: Optional[Dict[str, Any]] = None,  # 步骤规划信息
     ) -> str:
         """构建生成步骤批次的prompt"""
-        preferred_language = params.get("default_language", self.default_language)
+        preferred_language = params.get("default_language", self.default_language) if params else self.default_language
         
         existing_steps_summary = ""
         if existing_steps:
@@ -1167,11 +1695,120 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
             for step in existing_steps[-3:]:  # 只显示最后3个步骤作为上下文
                 existing_steps_summary += f"- {step.get('step_number', '')}: {step.get('component_name', '')}\n"
         
+        duplication_warning = ""
+        if used_files:
+            filtered_files = [
+                fp for fp in sorted(list(used_files))
+                if not self._is_non_tutorial_file(fp)
+            ]
+            if filtered_files:
+                preview_lines = [f"- {fp}" for fp in filtered_files[:12]]
+                extra_line = ""
+                if len(filtered_files) > 12:
+                    extra_line = f"\n- ...（另有 {len(filtered_files) - 12} 个文件已完成）"
+                duplication_warning = (
+                    "\n\n**Avoid Duplicate Work:**\n"
+                    "以下文件/组件已在之前的步骤中完成，实现当前步骤时如非必要请不要重复实现；"
+                    "若确需扩展，请明确说明与之前实现的区别，并只描述新增/修改的部分。\n"
+                    + "\n".join(preview_lines)
+                    + extra_line
+                    + "\n"
+                )
+        
         start_step = len(existing_steps) + 1
         end_step = start_step + max_steps - 1
+        if single_step_mode:
+            end_step = start_step
+        
+        # 根据任务难度生成调整指导
+        difficulty_guidance = ""
+        if task_difficulty <= 2:
+            difficulty_guidance = (
+                "\n\n**TASK DIFFICULTY: SIMPLE (1-2/5)**\n"
+                "This is a simple task for beginners:\n"
+                "- Use **foundational technologies** and **classic approaches** (2015-2020 era)\n"
+                "- Prioritize **classic references** (2020-2022) over very recent ones\n"
+                "- Explain **every single concept** from absolute basics - assume zero prior knowledge\n"
+                "- Use **simple, clear language** - avoid advanced terminology\n"
+                "- Provide **extra detailed step-by-step explanations** - no step should be skipped\n"
+                "- Focus on **educational clarity** over cutting-edge methods\n"
+            )
+        elif task_difficulty == 3:
+            difficulty_guidance = (
+                "\n\n**TASK DIFFICULTY: MODERATE (3/5)**\n"
+                "This is a moderate task:\n"
+                "- Use **balanced, modern technologies** (2020-2022 era)\n"
+                "- Reference **both classic and recent papers** (2020-2024) as appropriate\n"
+                "- Explain concepts clearly but can assume some basic knowledge\n"
+                "- Use **standard terminology** with brief explanations when needed\n"
+            )
+        else:  # 4-5
+            difficulty_guidance = (
+                "\n\n**TASK DIFFICULTY: COMPLEX (4-5/5)**\n"
+                "This is a complex, cutting-edge task:\n"
+                "- Use **state-of-the-art, recent technologies** (2022-2025 era, especially 2024-2025)\n"
+                "- **STRONGLY PRIORITIZE 2024-2025 references** - these represent the most cutting-edge techniques\n"
+                "- **Prioritize recent references** (2022-2025) - focus on cutting-edge techniques, especially 2024-2025\n"
+                "- **Encourage citing 2024-2025 papers** - even if they have lower citations, they represent the latest research\n"
+                "- Can assume **intermediate to advanced** knowledge - readers have background\n"
+                "- Can use **advanced terminology** with brief explanations\n"
+                "- Focus on **latest methodologies** and **current best practices** from 2024-2025\n"
+                "- Emphasize recent developments, particularly 2024-2025, over older references\n"
+            )
+        
+        # 如果有预先分配的文件和步骤信息，优先使用
+        assigned_file_hint = ""
+        if assigned_step_info:
+            step_name = assigned_step_info.get("step_name", "")
+            component_name = assigned_step_info.get("component_name", "")
+            purpose = assigned_step_info.get("purpose", "")
+            description = assigned_step_info.get("description", "")
+            assigned_file_hint = (
+                f"\n\n**⚠️ CRITICAL - Pre-planned Step (预先规划的步骤):**\n"
+                f"**步骤 {batch_num} 的规划信息:**\n"
+                f"- **步骤名称**: {step_name}\n"
+                f"- **组件名称**: {component_name}\n"
+                f"- **文件路径**: `{assigned_file}`\n"
+                f"- **目的**: {purpose}\n"
+                f"- **描述**: {description}\n"
+                f"\n**你必须严格按照以上规划生成步骤，文件路径必须是 `{assigned_file}`，组件名称应该是 `{component_name}`。**\n"
+            )
+        elif assigned_file:
+            assigned_file_hint = (
+                f"\n\n**⚠️ CRITICAL - Assigned File for This Step (此步骤必须生成的文件):**\n"
+                f"**你必须为步骤 {batch_num} 生成文件: `{assigned_file}`**\n"
+                f"这是预先规划好的文件分配，请严格按照此文件路径生成步骤。\n"
+            )
+        
+        pending_files_hint = ""
+        if pending_files:
+            preview = "\n".join(f"- {fp}" for fp in pending_files[:15])
+            extra = ""
+            if len(pending_files) > 15:
+                extra = f"\n- ...（另有 {len(pending_files) - 15} 个文件待覆盖）"
+            pending_files_hint = (
+                "\n\n**⚠️ CRITICAL - Remaining Files Requiring Implementation (必须从以下文件中选择):**\n"
+                "以下文件尚未在教程中讲解，**你必须从这些文件中选择一个**进行实现，确保每个文件只讲解一次：\n"
+                f"{preview}{extra}\n"
+                "**重要约束**: \n"
+                "1. 每个步骤的`file_path`必须从上述列表中选择，不能创造新文件\n"
+                "2. 每个步骤只能对应一个唯一的文件，不能重复\n"
+                "3. 如果生成的步骤中的`file_path`不在上述列表中，或者与已有步骤重复，整个批次将被拒绝并重新生成\n"
+            )
+        elif allowed_files and package_used_files and available_allowed_files:
+            # 如果没有pending_files但还有可用文件，说明可能已经全部覆盖
+            remaining = set(available_allowed_files) - package_used_files
+            if remaining:
+                preview = "\n".join(f"- {fp}" for fp in list(remaining)[:15])
+                pending_files_hint = (
+                    "\n\n**⚠️ CRITICAL - Available Files (必须从以下文件中选择):**\n"
+                    f"{preview}\n"
+                    "**重要约束**: 你必须从上述文件中选择，不能创造新文件。每个步骤只能对应一个唯一的文件。\n"
+                )
         
         prompt = f"""You are Dr. Chen, a **renowned technical educator and senior software engineer** with over 15 years of experience.
 You are now writing the detailed implementation tutorial for your students. Your teaching style is patient, thorough, and focused on helping learners truly understand every line of code.
+{difficulty_guidance}
 
 **Your Teaching Philosophy:**
 - You believe that great tutorials don't just show code—they explain the reasoning behind every decision
@@ -1179,12 +1816,17 @@ You are now writing the detailed implementation tutorial for your students. Your
 - You use encouraging language: "Let's build this together...", "You'll notice that...", "This is important because..."
 - You anticipate confusion points and address them before learners get stuck
 - You connect each step to the bigger picture, helping learners see how everything fits together
+- Keep explanations concise: 聚焦关键信息，避免冗长重复的叙述
+- 如果某个文件/类在前序步骤已实现，本步骤仅描述新增逻辑或差异，引用旧实现时可摘要但不要整份重复
 
 # Research Goal
 {goal_description}
 
 # 步骤 {action_index}
 {action_item}
+
+{duplication_warning}{existing_steps_summary}
+{assigned_file_hint}{pending_files_hint}
 
 # Package Framework
 **Title**: {framework.get('package_title', '')}
@@ -1195,21 +1837,41 @@ You are now writing the detailed implementation tutorial for your students. Your
 ```
 **Theoretical Foundation**: {framework.get('theoretical_foundation', '')[:500]}...
 
-{existing_steps_summary}
-
-# Your Task - Generate Steps {start_step} to {end_step} (Batch {batch_num}/{total_batches})
+# Your Task - Generate Step{'s' if not single_step_mode or max_steps > 1 else ''} {start_step if start_step == end_step else f"{start_step} to {end_step}"} (Batch {batch_num}/{total_batches})
 
 As Dr. Chen, generate the next batch of implementation steps. Write each step as if you're teaching a live coding session, 
 explaining not just what to write, but why you're writing it this way. Each step should include:
 
-⚠️ File constraints (MANDATORY): 你必须只使用上方“Project Structure”中列出的文件路径，不得创造或引用未列出的新文件路径；若多个步骤修改同一文件是允许的，但禁止新增文件名。
+⚠️ **CRITICAL - File Path Constraints (MANDATORY - 严格约束)**:
+1. **你只能使用上方"Project Structure"中列出的文件路径，绝对禁止创造新文件路径**
+2. **每个步骤必须对应一个唯一的文件，同一个文件不能出现在多个步骤中（一对一映射关系）**
+3. **如果某个文件已经在之前的步骤中讲解过，绝对不能再次生成该文件的教程**
+4. **禁止新增任何文件名，只能从Project Structure中选择**
+5. **如果Project Structure中没有列出某个文件，即使你认为需要它，也不能生成该文件的教程**
+6. **每个步骤的`file_path`字段必须唯一，不能与任何已有步骤的`file_path`重复**
+
+⚠️ **Excluded Files (禁止讲解)**: 以下类型的文件**绝对不得**生成教程步骤：
+- `__init__.py` 文件（初始化文件）
+- `config*.py`、`settings*.py` 等配置文件
+- `requirements.txt`、`requirement.txt` 等依赖文件
+- `README*.md` 等文档文件（除非是guide类文档）
+- `test*.py`、`*_test.py` 等测试文件
+- 任何位于 `config/` 或 `tests/` 目录下的文件
+
+这些文件不需要在教程中单独讲解，请跳过它们，只生成核心实现代码文件的教程步骤。
+
+⚠️ **CRITICAL - One-to-One Mapping Rule (一对一映射规则)**:
+- **每个步骤的`file_path`必须是唯一的，不能与之前任何步骤的`file_path`重复**
+- **每个文件只能对应一个步骤，每个步骤只能对应一个文件（严格的一对一映射关系）**
+- **如果生成的步骤中`file_path`与已有步骤重复，或者不在Project Structure中，整个批次将被拒绝并重新生成**
+- **严格按照Project Structure中的文件顺序或逻辑顺序生成，确保每个文件只被讲解一次**
 
 ### Step X.Y: [Component Name]
 **File:** `path/to/file.{preferred_language}`
 **Purpose:** What this component does (MUST be in Chinese/中文)
 
 **Detailed Explanation:**
-[**6-10 paragraphs minimum** - MUST be in Chinese/中文] that:
+[**6-10 paragraphs minimum** - MUST be in Chinese/中文, focused on CORE implementation] that:
 - **Transition (衔接)**: 开头先用1-2段话回顾上一步（若存在）的产出与当前步骤的关系，明确本步骤如何在此基础上推进；指出依赖与承接的数据/中间结果
 - **Start with the purpose** - What problem does this component solve? Why is it needed? What role does it play in the overall system?
 - **Explain the approach in detail** - What method or algorithm does it use? How does it work step-by-step? Break down every major step
@@ -1220,7 +1882,8 @@ explaining not just what to write, but why you're writing it this way. Each step
 - **Use clear, beginner-friendly language** - Break down complex logic into understandable parts, avoid jargon or explain every technical term
 - **Include concrete examples** - Show how the component handles specific cases, provide before/after examples if applicable
 - **Explain edge cases** - What happens in unusual situations? How are errors handled?
-- **Be extremely thorough** - A complete beginner should be able to understand the entire explanation without prior knowledge
+- **Be thorough but focused** - A complete beginner should be able to understand the entire explanation without prior knowledge, stay focused on core implementation for "{action_item}"
+- **Avoid duplication** - 如果某文件/模块已在前序步骤完成，仅在需要扩展时说明差异；引用旧实现时只总结关键点，重点描述新增/修改内容
 
 **Dependencies & Hand-offs (依赖与交接):**
 - 依赖（来自前序步骤的输入/中间结果）：[列出并说明如何使用]
@@ -1254,7 +1917,7 @@ explaining not just what to write, but why you're writing it this way. Each step
 # Critical Requirements
 
 **CRITICAL - Code Quality and Detail:**
-- Generate exactly {max_steps} steps (or fewer if this is the last batch)
+- Generate exactly {1 if single_step_mode or max_steps == 1 else max_steps} step{'s' if (single_step_mode or max_steps == 1) is False and max_steps > 1 else ''} (or fewer if this is the last batch)
 - Steps should build logically on previous steps
 - **ALL code must be COMPLETE and RUNNABLE** (no "...", "TODO", placeholders, or incomplete implementations)
 - **Code must be PRODUCTION-READY** - well-structured, maintainable, with proper error handling
@@ -1267,18 +1930,20 @@ explaining not just what to write, but why you're writing it this way. Each step
 - **Add input validation** where appropriate
 
 **CRITICAL - Explanation Detail:**
-- **Explanation must be 6-10 paragraphs minimum** - be extremely thorough
+- **Explanation must be 6-10 paragraphs minimum** - be thorough but focused on core implementation
 - **Explain every aspect** - purpose, approach, logic, data flow, design choices, context, examples, edge cases
 - **Write for beginners** - assume zero prior knowledge, explain every technical term
 - **Use clear, simple language** - break down complex concepts into understandable parts
 - **Provide concrete examples** - show how the code works with real examples
 - **Explain connections** - how this step relates to previous steps and the overall system
-- **Add explicit transitions** - 在每个步骤开头加入“Transition (衔接)”段，回顾上一步与本步骤的关系；在结尾点明“Forward Link (前瞻)”本步骤的产出将如何被下一步使用
+- **Add explicit transitions** - 在每个步骤开头加入"Transition (衔接)"段，回顾上一步与本步骤的关系；在结尾点明"Forward Link (前瞻)"本步骤的产出将如何被下一步使用
+- **Stay focused on "{action_item}"** - stay focused on core implementation, avoid unnecessary extensions
 
 **CRITICAL - Important Notes:**
-- **Must include 3-5 detailed notes minimum**
+- **Must include 2-4 detailed notes minimum**
 - **Each note should be comprehensive** - not just a bullet point, but a detailed explanation
 - **Explain WHY, not just WHAT** - explain the reasoning and implications
+- **Stay focused on core implementation** - focus on what's needed for "{action_item}"
 
 **Language Requirements:**
 - Use {preferred_language} as primary language for code
@@ -1289,6 +1954,22 @@ explaining not just what to write, but why you're writing it this way. Each step
 **Numbering:**
 - Number steps starting from {start_step}
 """
+        json_requirements = (
+            "\n\n# JSON 输出要求\n"
+            "- 你必须返回一个严格符合给定 JSON Schema 的 JSON 对象，且 **不得** 包含任何额外文本或注释。\n"
+            "- 根节点必须是 {\"implementation_steps\": [...] }，数组中的每个元素都必须包含 schema 要求的字段。\n"
+            "- 不要在 JSON 前后添加说明性文字、Markdown、代码块或多余的逗号/注释。\n"
+            "- 若需要换行，请在字符串内部使用 `\\n`，不要破坏 JSON 结构。\n"
+            "- 请在输出前自行校验 JSON 是否可以被标准解析器解析。\n"
+        )
+        if enforce_strict_json:
+            json_requirements += (
+                "\n⚠️ 上一次尝试因为 JSON 不合法而被拒绝，请务必返回严格符合 schema 的 JSON。"
+                " 如果无法生成完整内容，也必须输出符合 schema 的结构（字段留空字符串），"
+                " 绝不能输出额外文本。"
+            )
+        
+        prompt += json_requirements
         return prompt
 
     def _build_steps_batch_schema(self) -> Dict[str, Any]:
@@ -1691,6 +2372,145 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
             
         except Exception as exc:
             logger.warning(f"保存 Package {action_index} 中间结果失败: {exc}")
+
+    def _generate_and_save_outputs_incremental(
+        self,
+        goal_description: str,
+        project_packages: List[Dict[str, Any]],
+        modified_package_indices: set,
+        references: List[Dict[str, Any]],
+        task_decomposition: Dict[str, Any],
+        params: Dict[str, Any],
+        existing_output_structure: Dict[str, str]
+    ) -> Dict[str, str]:
+        """
+        增量更新输出文件：只替换修改过的package，其他保持不变
+        
+        策略：
+        1. 只重新生成被修改的package的独立文件（README、Notebook）
+        2. 在full tutorial中定位并替换被修改的package部分
+        3. 重新计算引用编号（因为可能有新增引用）
+        4. 更新主README中的package概述（如果修改了）
+        """
+        output_dir = Path(self.output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        output_files = existing_output_structure.copy() if existing_output_structure else {}
+        
+        # 1. 只重新生成被修改的package的独立文件
+        packages_dir = output_dir / "packages"
+        packages_dir.mkdir(exist_ok=True)
+        
+        for pkg_idx in modified_package_indices:
+            if pkg_idx < 1 or pkg_idx > len(project_packages):
+                continue
+            package = project_packages[pkg_idx - 1]
+            if package.get("status") != "success":
+                continue
+            
+            logger.info(f"重新生成 Package {pkg_idx} 的独立文件...")
+            package_name = self._sanitize_filename(package.get("package_title", f"package-{pkg_idx}"))
+            package_dir = packages_dir / f"{pkg_idx:02d}-{package_name}"
+            package_dir.mkdir(exist_ok=True)
+            
+            # 生成 README
+            package_readme = self._create_package_readme(package, references)
+            package_readme_path = package_dir / "README.md"
+            package_readme_path.write_text(package_readme, encoding='utf-8')
+            output_files[f'package_{pkg_idx}_readme'] = str(package_readme_path)
+            logger.info(f"已更新包 {pkg_idx} 的 README: {package_readme_path}")
+            
+            # 生成 Notebook
+            package_notebook = self._create_package_notebook(package, references)
+            package_notebook_path = package_dir / f"{package_name}.ipynb"
+            with open(package_notebook_path, 'w', encoding='utf-8') as f:
+                json.dump(package_notebook, f, ensure_ascii=False, indent=2)
+            output_files[f'package_{pkg_idx}_notebook'] = str(package_notebook_path)
+            logger.info(f"已更新包 {pkg_idx} 的 Notebook: {package_notebook_path}")
+        
+        # 2. 增量更新 FULL_TUTORIAL.md：只替换被修改的package部分
+        full_tutorial_path = output_dir / "FULL_TUTORIAL.md"
+        if full_tutorial_path.exists() and modified_package_indices:
+            logger.info(f"增量更新 FULL_TUTORIAL.md（替换 {len(modified_package_indices)} 个package）...")
+            try:
+                existing_tutorial = full_tutorial_path.read_text(encoding='utf-8')
+                updated_tutorial = self._replace_packages_in_tutorial(
+                    existing_tutorial,
+                    project_packages,
+                    modified_package_indices,
+                    references,
+                    task_decomposition
+                )
+                full_tutorial_path.write_text(updated_tutorial, encoding='utf-8')
+                output_files['full_tutorial'] = str(full_tutorial_path)
+                logger.info(f"已增量更新完整教程 (Markdown): {full_tutorial_path}")
+            except Exception as exc:
+                logger.warning(f"增量更新 FULL_TUTORIAL.md 失败，回退到全量重新生成: {exc}")
+                # 回退到全量重新生成
+                full_tutorial = self._create_full_tutorial(goal_description, project_packages, references, task_decomposition)
+                full_tutorial_path.write_text(full_tutorial, encoding='utf-8')
+                output_files['full_tutorial'] = str(full_tutorial_path)
+        else:
+            # 如果文件不存在或没有修改，全量生成
+            logger.info("全量生成 FULL_TUTORIAL.md...")
+            full_tutorial = self._create_full_tutorial(goal_description, project_packages, references, task_decomposition)
+            full_tutorial_path.write_text(full_tutorial, encoding='utf-8')
+            output_files['full_tutorial'] = str(full_tutorial_path)
+        
+        # 3. 增量更新 FULL_TUTORIAL.ipynb（类似逻辑）
+        full_tutorial_notebook_path = output_dir / "FULL_TUTORIAL.ipynb"
+        if full_tutorial_notebook_path.exists() and modified_package_indices:
+            logger.info(f"增量更新 FULL_TUTORIAL.ipynb（替换 {len(modified_package_indices)} 个package）...")
+            try:
+                with open(full_tutorial_notebook_path, 'r', encoding='utf-8') as f:
+                    existing_notebook = json.load(f)
+                updated_notebook = self._replace_packages_in_notebook(
+                    existing_notebook,
+                    project_packages,
+                    modified_package_indices,
+                    references,
+                    task_decomposition
+                )
+                with open(full_tutorial_notebook_path, 'w', encoding='utf-8') as f:
+                    json.dump(updated_notebook, f, ensure_ascii=False, indent=2)
+                output_files['full_tutorial_notebook'] = str(full_tutorial_notebook_path)
+                logger.info(f"已增量更新完整教程 (Notebook): {full_tutorial_notebook_path}")
+            except Exception as exc:
+                logger.warning(f"增量更新 FULL_TUTORIAL.ipynb 失败，回退到全量重新生成: {exc}")
+                full_tutorial_notebook = self._create_full_tutorial_notebook(goal_description, project_packages, references, task_decomposition)
+                with open(full_tutorial_notebook_path, 'w', encoding='utf-8') as f:
+                    json.dump(full_tutorial_notebook, f, ensure_ascii=False, indent=2)
+                output_files['full_tutorial_notebook'] = str(full_tutorial_notebook_path)
+        else:
+            # 如果文件不存在或没有修改，全量生成
+            logger.info("全量生成 FULL_TUTORIAL.ipynb...")
+            full_tutorial_notebook = self._create_full_tutorial_notebook(goal_description, project_packages, references, task_decomposition)
+            with open(full_tutorial_notebook_path, 'w', encoding='utf-8') as f:
+                json.dump(full_tutorial_notebook, f, ensure_ascii=False, indent=2)
+            output_files['full_tutorial_notebook'] = str(full_tutorial_notebook_path)
+        
+        # 4. 更新主 README（如果package概述改变了）
+        if modified_package_indices:
+            logger.info("更新主 README...")
+            main_readme = self._create_main_readme(goal_description, project_packages, references)
+            main_readme_path = output_dir / "README.md"
+            main_readme_path.write_text(main_readme, encoding='utf-8')
+            output_files['main_readme'] = str(main_readme_path)
+        
+        # 5. 更新项目结构和快速开始（如果package数量或结构改变了）
+        if modified_package_indices:
+            logger.info("更新项目结构和快速开始...")
+            structure_overview = self._create_structure_overview(goal_description, project_packages)
+            structure_path = output_dir / "PROJECT_STRUCTURE.md"
+            structure_path.write_text(structure_overview, encoding='utf-8')
+            output_files['project_structure'] = str(structure_path)
+            
+            quickstart = self._create_quickstart_guide(project_packages)
+            quickstart_path = output_dir / "QUICKSTART.md"
+            quickstart_path.write_text(quickstart, encoding='utf-8')
+            output_files['quickstart'] = str(quickstart_path)
+        
+        return output_files
 
     def _generate_and_save_outputs(
         self,
@@ -2194,6 +3014,329 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
         
         return notebook
     
+    def _is_non_tutorial_file(self, file_path: str) -> bool:
+        """
+        判断某个文件是否属于无需在教程中单独讲解的类型（config、__init__、README、测试文件、requirements.txt等）
+        """
+        if not file_path:
+            return True
+        path = file_path.lower()
+        filename = path.split("/")[-1]
+        
+        if filename.startswith("__init__"):
+            return True
+        if "readme" in filename:
+            return True
+        if "config" in filename or "settings" in filename:
+            return True
+        if filename == "requirements.txt" or filename == "requirement.txt":
+            return True
+        if filename.startswith("test") or filename.endswith("_test.py") or filename.endswith("_tests.py"):
+            return True
+        if "/tests/" in path or path.startswith("tests/"):
+            return True
+        if "/config/" in path or path.startswith("config/"):
+            return True
+        if filename.endswith(".md") and "guide" not in filename:
+            return True
+        return False
+    
+    async def _plan_implementation_steps(
+        self,
+        action_item: str,
+        action_index: int,
+        goal_description: str,
+        sections: Dict[str, Any],
+        references: List[Dict[str, Any]],
+        task_difficulty: int,
+        params: Dict[str, Any],
+        used_files: Optional[set] = None,
+        used_files_hint: str = "",
+    ) -> Dict[str, Any]:
+        """
+        预先规划所有拆解步骤及其对应的文件
+        
+        Returns:
+            包含steps列表的字典，每个step包含：
+            - step_number: 步骤编号
+            - step_name: 步骤名称
+            - component_name: 组件名称
+            - file_path: 对应的文件路径
+            - purpose: 步骤目的
+            - description: 步骤描述
+        """
+        preferred_language = params.get("default_language", self.default_language) if params else self.default_language
+        
+        # 构建规划prompt
+        planning_prompt = f"""You are Dr. Chen, a technical educator planning a tutorial implementation.
+
+# Overall Research Goal
+{goal_description}
+
+# 步骤 {action_index}
+{action_item}
+
+# Your Task
+Plan ALL implementation steps needed to implement "{action_item}". For each step, you must:
+1. Assign a unique step number (1, 2, 3, ...)
+2. Provide a clear step name (what component/module will be implemented)
+3. Assign a specific file path where this step's code will be written
+4. Ensure each file is used by exactly ONE step (one-to-one mapping)
+5. Ensure all steps together can fully implement "{action_item}"
+
+**CRITICAL Requirements:**
+- Each step must correspond to exactly ONE code file
+- Each code file can only be used by ONE step
+- Steps must be logically ordered (foundational before advanced)
+- All steps together must fully implement "{action_item}"
+- File paths should follow standard Python project structure (e.g., src/module.py)
+- Do NOT include config files, __init__.py, README, test files, or requirements.txt
+{used_files_hint}
+
+Return a JSON object with:
+{{
+  "steps": [
+    {{
+      "step_number": "1",
+      "step_name": "Component Name",
+      "component_name": "ComponentName",
+      "file_path": "src/component.py",
+      "purpose": "What this step accomplishes",
+      "description": "Detailed description of what will be implemented"
+    }},
+    ...
+  ]
+}}
+"""
+        
+        planning_schema = {
+            "type": "object",
+            "properties": {
+                "steps": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "step_number": {"type": "string"},
+                            "step_name": {"type": "string"},
+                            "component_name": {"type": "string"},
+                            "file_path": {"type": "string"},
+                            "purpose": {"type": "string"},
+                            "description": {"type": "string"}
+                        },
+                        "required": ["step_number", "step_name", "component_name", "file_path", "purpose", "description"]
+                    }
+                }
+            },
+            "required": ["steps"]
+        }
+        
+        try:
+            response = await self._call_model(
+                prompt=planning_prompt,
+                system_prompt=self._build_tutorial_system_prompt(),
+                schema=planning_schema,
+                temperature=params.get("temperature", self.config.get("temperature", 0.2)),
+            )
+            return response if isinstance(response, dict) else {"steps": []}
+        except Exception as e:
+            logger.error(f"步骤规划失败: {e}")
+            return {"steps": []}
+    
+    def _validate_step_plan(self, step_plan: Dict[str, Any], action_item: str) -> Dict[str, Any]:
+        """
+        验证步骤规划
+        
+        Returns:
+            {
+                "valid": bool,
+                "issues": List[str],
+                "warnings": List[str]
+            }
+        """
+        issues = []
+        warnings = []
+        
+        if not step_plan or not step_plan.get("steps"):
+            issues.append("步骤规划为空")
+            return {"valid": False, "issues": issues, "warnings": warnings}
+        
+        steps = step_plan.get("steps", [])
+        
+        # 检查1: 每个步骤是否有唯一的step_number
+        step_numbers = [s.get("step_number", "") for s in steps]
+        if len(step_numbers) != len(set(step_numbers)):
+            issues.append("存在重复的step_number")
+        
+        # 检查2: 每个步骤是否有唯一的file_path（一对一映射）
+        file_paths = [s.get("file_path", "") for s in steps]
+        file_paths = [fp for fp in file_paths if fp]  # 过滤空值
+        if len(file_paths) != len(set(file_paths)):
+            duplicates = [fp for fp in file_paths if file_paths.count(fp) > 1]
+            issues.append(f"存在重复的file_path: {set(duplicates)}")
+        
+        # 检查3: 文件路径是否有效（不是非教程文件）
+        for step in steps:
+            file_path = step.get("file_path", "")
+            if file_path and self._is_non_tutorial_file(file_path):
+                issues.append(f"步骤 {step.get('step_number')} 的文件路径 '{file_path}' 是非教程文件类型")
+        
+        # 检查4: 步骤是否能够实现action_item
+        step_names = [s.get("step_name", "") for s in steps]
+        step_descriptions = [s.get("description", "") for s in steps]
+        # 简单检查：步骤名称和描述是否与action_item相关
+        action_keywords = set(action_item.lower().split())
+        all_step_text = " ".join(step_names + step_descriptions).lower()
+        # 这里可以添加更复杂的检查逻辑
+        
+        # 检查5: 步骤顺序是否合理（step_number是否连续）
+        try:
+            import re as re_module
+            step_nums = []
+            for s in steps:
+                step_num_str = str(s.get("step_number", ""))
+                match = re_module.search(r'\d+', step_num_str)
+                if match:
+                    step_nums.append(int(match.group()))
+            step_nums.sort()
+            expected = list(range(1, len(step_nums) + 1))
+            if step_nums != expected:
+                warnings.append(f"步骤编号不连续: {step_nums} vs {expected}")
+        except:
+            warnings.append("无法解析步骤编号")
+        
+        valid = len(issues) == 0
+        return {
+            "valid": valid,
+            "issues": issues,
+            "warnings": warnings
+        }
+    
+    def _plan_step_file_mapping(
+        self,
+        available_allowed_files: List[str],
+        estimated_steps: int,
+        single_step_mode: bool,
+        action_item: str
+    ) -> List[str]:
+        """
+        预先规划每个步骤应该生成哪个文件
+        
+        Args:
+            available_allowed_files: 可用的文件列表
+            estimated_steps: 预计的步骤数量
+            single_step_mode: 是否为单步模式
+            action_item: 当前步骤的任务描述
+            
+        Returns:
+            文件路径列表，索引对应步骤编号（从1开始，所以索引0对应步骤1）
+        """
+        if not available_allowed_files:
+            return []
+        
+        # 如果单步模式，直接按顺序分配
+        if single_step_mode:
+            return list(available_allowed_files)
+        
+        # 多步模式：根据estimated_steps和文件数量来规划
+        file_count = len(available_allowed_files)
+        
+        # 如果文件数量少于或等于estimated_steps，每个文件一个步骤
+        if file_count <= estimated_steps:
+            return list(available_allowed_files)
+        
+        # 如果文件数量多于estimated_steps，需要合理分配
+        # 策略：优先分配核心文件，尽量让每个步骤都有文件
+        # 可以按文件路径排序，或者按重要性排序
+        sorted_files = sorted(available_allowed_files)
+        
+        # 简单策略：均匀分配，每个步骤分配一个文件
+        # 如果文件太多，可以后续步骤合并多个文件
+        step_file_plan = []
+        files_per_step = max(1, file_count // estimated_steps)
+        
+        for i in range(estimated_steps):
+            start_idx = i * files_per_step
+            end_idx = min((i + 1) * files_per_step, file_count)
+            if start_idx < file_count:
+                # 每个步骤分配一个文件（优先策略）
+                step_file_plan.append(sorted_files[start_idx])
+        
+        # 如果还有剩余文件，分配到最后一个步骤
+        if len(step_file_plan) < file_count:
+            remaining = sorted_files[len(step_file_plan):]
+            # 将剩余文件也分配（可以合并到最后一个步骤，或者创建新步骤）
+            for file_path in remaining:
+                if len(step_file_plan) < estimated_steps:
+                    step_file_plan.append(file_path)
+                else:
+                    # 如果步骤数已满，将剩余文件合并到最后一个步骤
+                    # 这里我们选择创建新步骤（如果允许）
+                    step_file_plan.append(file_path)
+        
+        return step_file_plan
+    
+    def _sort_planned_steps(self, steps: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        if not steps:
+            return []
+        def extract(step: Dict[str, Any]) -> int:
+            import re as re_module
+            step_num_str = str(step.get("step_number", "0"))
+            match = re_module.search(r'\d+', step_num_str)
+            return int(match.group()) if match else 999
+        try:
+            return sorted(steps, key=extract)
+        except Exception:
+            return steps
+    
+    def _build_reuse_step_entry(
+        self,
+        planned_step: Dict[str, Any],
+        existing_info: Dict[str, Any],
+        package_index: int,
+    ) -> Dict[str, Any]:
+        file_path = planned_step.get("file_path", "")
+        step_number = planned_step.get("step_number", "")
+        component_name = planned_step.get("component_name", existing_info.get("component_name", ""))
+        purpose = planned_step.get("purpose", existing_info.get("purpose", ""))
+        description = planned_step.get("description", "")
+        source_pkg = existing_info.get("package_index", "?")
+        explanation_parts = []
+        if description:
+            explanation_parts.append(description)
+        explanation_parts.append(
+            f"该文件 `{file_path}` 已在 Package {source_pkg} 中完成实现（组件：{existing_info.get('component_name', '未知组件')}）。"
+            "本步骤直接复用此前实现的核心代码，并说明如何在当前场景中使用和集成。"
+        )
+        code = existing_info.get("code")
+        if not code:
+            code = (
+                f"# 复用自 Package {source_pkg} 的 `{file_path}`，此处直接引用已有实现，"
+                "可在对应包的实现中查看完整代码。\n"
+            )
+        language = existing_info.get("language") or self.default_language
+        important_notes = planned_step.get("important_notes") or []
+        important_notes = [
+            f"复用说明：该文件在 Package {source_pkg} 中已实现，此处直接引用，无需重复实现。"
+        ] + important_notes
+        return {
+            "status": "reused",
+            "step_number": step_number,
+            "component_name": component_name,
+            "file_path": file_path,
+            "purpose": purpose,
+            "description": description or f"复用 Package {source_pkg} 的实现。",
+            "explanation": "\n\n".join(explanation_parts),
+            "code": code,
+            "language": language,
+            "important_notes": important_notes,
+            "reuse_from": {
+                "package_index": source_pkg,
+                "file_path": file_path,
+                "component_name": existing_info.get("component_name"),
+            }
+        }
+    
     def _parse_structure_files(self, structure_text: str) -> set:
         """
         从项目结构文本中解析出所有文件相对路径集合。
@@ -2219,8 +3362,47 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
                     continue
                 # 规范化
                 path_candidate = path_candidate.replace("\\", "/").lstrip("./")
+                if self._is_non_tutorial_file(path_candidate):
+                    continue
                 files.add(path_candidate)
         return files
+    
+    def _audit_step_file_coverage(self, allowed_files: set, steps: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """
+        检查实现步骤与项目结构的对应关系，确保没有遗漏或冗余文件。
+        """
+        if not allowed_files:
+            return {}
+        
+        allowed_sorted = sorted(list(allowed_files))
+        step_files: List[str] = []
+        for step in steps or []:
+            fp = (step.get("file_path") or "").strip()
+            if fp:
+                step_files.append(fp)
+        
+        missing_files = [fp for fp in allowed_sorted if fp not in step_files]
+        redundant_files = [fp for fp in step_files if fp not in allowed_files]
+        duplicates = []
+        seen = set()
+        for fp in step_files:
+            if fp in seen:
+                duplicates.append(fp)
+            else:
+                seen.add(fp)
+        
+        coverage_ratio = 0.0
+        if allowed_sorted:
+            coverage_ratio = round((len(allowed_sorted) - len(missing_files)) / len(allowed_sorted), 3)
+        
+        return {
+            "total_structure_files": len(allowed_sorted),
+            "documented_files": len(set(step_files)),
+            "coverage_ratio": coverage_ratio,
+            "missing_files": missing_files,
+            "redundant_files": redundant_files,
+            "duplicate_entries": duplicates,
+        }
 
     def _create_full_tutorial(
         self,
@@ -2272,10 +3454,6 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
                 content.append("\n")
             
             content.append("---\n\n")
-        
-        content.append("## 研究目标\n\n")
-        content.append(f"{goal_description}\n\n")
-        content.append("---\n\n")
         
         for idx, package in enumerate(packages, 1):
             if package.get("status") != "success":
@@ -2890,6 +4068,231 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
             n = author_year_to_num.get(key)
             return f"[{n}]" if n is not None else m.group(0)
         return pattern.sub(repl, text)
+    
+    def _extract_package_section_from_tutorial(self, tutorial_text: str, package_index: int) -> Tuple[int, int]:
+        """
+        从tutorial文本中定位某个package的起始和结束位置
+        
+        Returns:
+            (start_pos, end_pos) - package内容的起始和结束字符位置，如果找不到返回(-1, -1)
+        """
+        import re
+        # 匹配package标题：`# Package {idx}: {title}` 或 `## Package {idx}: {title}`
+        # 前面可能有分隔线 `=` * 100
+        pattern_start = re.compile(
+            rf"(?:=+\s*\n\s*)?#+\s*Package\s+{package_index}\s*:\s*[^\n]+\n",
+            re.IGNORECASE
+        )
+        
+        # 查找package开始位置
+        match_start = pattern_start.search(tutorial_text)
+        if not match_start:
+            return (-1, -1)
+        
+        start_pos = match_start.start()
+        
+        # 查找package结束位置：下一个package的开始，或者参考文献部分
+        # 下一个package的模式
+        pattern_next_package = re.compile(
+            rf"(?:=+\s*\n\s*)?#+\s*Package\s+{package_index + 1}\s*:\s*[^\n]+\n",
+            re.IGNORECASE
+        )
+        
+        # 参考文献部分
+        pattern_refs = re.compile(r"\n---\s*\n\s*#+\s*📚\s*参考文献\s*\n", re.IGNORECASE)
+        
+        # 查找下一个package或参考文献的位置
+        next_package_match = pattern_next_package.search(tutorial_text, start_pos + 1)
+        refs_match = pattern_refs.search(tutorial_text, start_pos + 1)
+        
+        # 取最近的一个作为结束位置
+        end_pos = len(tutorial_text)
+        if next_package_match:
+            end_pos = min(end_pos, next_package_match.start())
+        if refs_match:
+            end_pos = min(end_pos, refs_match.start())
+        
+        return (start_pos, end_pos)
+    
+    def _generate_package_section_for_tutorial(
+        self,
+        package: Dict[str, Any],
+        package_index: int
+    ) -> str:
+        """生成单个package在full tutorial中的内容（不包含引用编号处理）"""
+        content = []
+        
+        content.append("=" * 100 + "\n\n")
+        content.append(f"# Package {package_index}: {package.get('package_title', '')}\n\n")
+        content.append("=" * 100 + "\n\n")
+        content.append("## 📋 概述\n\n")
+        content.append(f"{package.get('overview', '')}\n\n")
+        content.append("## 📂 项目结构\n\n```\n")
+        content.append(f"{package.get('project_structure', '')}\n")
+        content.append("```\n\n")
+        content.append("## 💡 理论基础\n\n")
+        content.append(f"{package.get('theoretical_foundation', '')}\n\n")
+        
+        # 添加概念解释部分
+        concepts = package.get('concept_explanations', [])
+        if concepts:
+            content.append("---\n\n## 📖 核心概念详解\n\n")
+            content.append("在开始实现之前，请先理解以下核心概念。这些概念是理解本包实现的关键前提。\n\n")
+            
+            for concept in concepts:
+                if isinstance(concept, dict):
+                    concept_name = concept.get('concept_name', 'Unknown')
+                    explanation = concept.get('explanation', '')
+                    why_important = concept.get('why_important', '')
+                    related_concepts = concept.get('related_concepts', [])
+                    examples = concept.get('examples', [])
+                    
+                    content.append(f"### {concept_name}\n\n")
+                    content.append(f"{explanation}\n\n")
+                    
+                    if why_important:
+                        content.append(f"**为什么重要**: {why_important}\n\n")
+                    
+                    if related_concepts:
+                        content.append("**相关概念**: ")
+                        content.append(", ".join(related_concepts))
+                        content.append("\n\n")
+                    
+                    if examples:
+                        content.append("**示例与类比**:\n\n")
+                        for example in examples:
+                            content.append(f"- {example}\n")
+                        content.append("\n")
+                    
+                    content.append("---\n\n")
+        
+        content.append("## 🔧 分步实现\n\n")
+        
+        for step in package.get('implementation_steps', []):
+            content.append(f"### Step {step.get('step_number', '')}: {step.get('component_name', '')}\n\n")
+            content.append(f"**文件**: `{step.get('file_path', '')}`\n\n")
+            content.append(f"**目的**: {step.get('purpose', '')}\n\n")
+            content.append("**详细说明**:\n\n")
+            content.append(f"{step.get('explanation', '')}\n\n")
+            content.append("**完整代码**:\n\n")
+            content.append(f"```{step.get('language', 'python')}\n")
+            content.append(f"{step.get('code', '')}\n")
+            content.append("```\n\n")
+            content.append("**重要提示**:\n\n")
+            for note in step.get('important_notes', []):
+                content.append(f"- {note}\n")
+            content.append("\n")
+        
+        content.append("## 📦 依赖与安装\n\n### 所需依赖\n\n")
+        for dep in package.get('dependencies', []):
+            version_str = f" ({dep.get('version', '')})" if dep.get('version') else ""
+            content.append(f"- **{dep.get('name', '')}{version_str}**: {dep.get('purpose', '')}\n")
+        
+        content.append("\n### 安装步骤\n\n```bash\n")
+        for instruction in package.get('setup_instructions', []):
+            content.append(f"{instruction}\n")
+        content.append("```\n\n")
+        content.append("## 🎮 使用教程\n\n")
+        
+        for example in package.get('usage_examples', []):
+            content.append(f"### {example.get('title', '')}\n\n")
+            content.append(f"**场景**: {example.get('scenario', '')}\n\n")
+            content.append("```python\n")
+            content.append(f"{example.get('code', '')}\n")
+            content.append("```\n\n")
+            content.append(f"**预期输出**: {example.get('expected_output', '')}\n\n")
+        
+        content.append("\n---\n\n")
+        
+        return "".join(content)
+    
+    def _replace_packages_in_tutorial(
+        self,
+        existing_tutorial: str,
+        project_packages: List[Dict[str, Any]],
+        modified_package_indices: set,
+        references: List[Dict[str, Any]],
+        task_decomposition: Dict[str, Any]
+    ) -> str:
+        """
+        在existing_tutorial中替换被修改的package部分
+        
+        策略：
+        1. 定位每个被修改的package在tutorial中的位置
+        2. 生成新的package内容
+        3. 替换旧内容
+        4. 重新计算并更新引用编号（因为可能有新增引用）
+        """
+        updated_tutorial = existing_tutorial
+        
+        # 按索引从大到小替换，避免位置偏移问题
+        for pkg_idx in sorted(modified_package_indices, reverse=True):
+            if pkg_idx < 1 or pkg_idx > len(project_packages):
+                continue
+            package = project_packages[pkg_idx - 1]
+            if package.get("status") != "success":
+                continue
+            
+            # 定位package位置
+            start_pos, end_pos = self._extract_package_section_from_tutorial(updated_tutorial, pkg_idx)
+            if start_pos == -1:
+                logger.warning(f"无法在tutorial中定位 Package {pkg_idx}，跳过替换")
+                continue
+            
+            # 生成新的package内容
+            new_package_content = self._generate_package_section_for_tutorial(package, pkg_idx)
+            
+            # 替换
+            updated_tutorial = updated_tutorial[:start_pos] + new_package_content + updated_tutorial[end_pos:]
+            logger.info(f"已替换 Package {pkg_idx} 在tutorial中的内容")
+        
+        # 重新计算引用编号（因为可能有新增引用）
+        if references:
+            unique_references = self._deduplicate_references(references)
+            ordered_refs, author_year_to_num = self._build_global_citation_order_from_text(
+                updated_tutorial, unique_references
+            )
+            # 将作者-年份引用替换为数字引用
+            updated_tutorial = self._replace_author_year_with_numeric(updated_tutorial, author_year_to_num)
+            
+            # 更新参考文献部分
+            import re
+            refs_pattern = re.compile(r"\n---\s*\n\s*#+\s*📚\s*参考文献\s*\n.*", re.DOTALL)
+            new_refs_section = "\n---\n\n# 📚 参考文献\n\n"
+            for ref in ordered_refs[:200]:
+                title = ref.get("title", "Untitled")
+                authors = ref.get("authors", "Unknown")
+                year = ref.get("year", "n.d.")
+                venue = ref.get("journal") or ref.get("venue") or ""
+                idx_num = author_year_to_num.get(self._make_author_year_key(ref), None)
+                prefix = f"[{idx_num}] " if idx_num is not None else ""
+                new_refs_section += f"- {prefix}{authors} ({year}). *{title}*. {venue}\n"
+            
+            if refs_pattern.search(updated_tutorial):
+                updated_tutorial = refs_pattern.sub(new_refs_section, updated_tutorial)
+            else:
+                updated_tutorial += new_refs_section
+        
+        return updated_tutorial
+    
+    def _replace_packages_in_notebook(
+        self,
+        existing_notebook: Dict[str, Any],
+        project_packages: List[Dict[str, Any]],
+        modified_package_indices: set,
+        references: List[Dict[str, Any]],
+        task_decomposition: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """
+        在existing_notebook中替换被修改的package部分
+        
+        策略类似Markdown版本，但需要处理Notebook的cell结构
+        """
+        # TODO: 实现Notebook版本的增量替换
+        # 由于Notebook结构更复杂，暂时回退到全量重新生成
+        # 可以后续优化：定位到对应的cells，替换内容
+        logger.warning("Notebook增量替换尚未实现，使用全量重新生成")
+        raise NotImplementedError("Notebook增量替换功能待实现")
 
     def _create_structure_overview(self, goal_description: str, packages: List[Dict[str, Any]]) -> str:
         """生成项目结构概览"""
@@ -3060,20 +4463,33 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
         revised_plan = original_plan.copy()
         revised_plan["project_packages"] = revised_packages
         
-        # 重新生成输出文件
-        logger.info("重新生成输出文件...")
+        # 增量更新输出文件（只替换修改过的package）
+        logger.info("增量更新输出文件...")
         # 获取 task_decomposition 信息（如果原始plan中有）
         task_decomposition = (
             context.get("task_decomposition")
             or original_plan.get("task_decomposition")
             or {}
         )
-        output_structure = self._generate_and_save_outputs(
+        
+        # 识别哪些package被修改了
+        modified_package_indices = set()
+        for pkg_idx, (original_pkg, revised_pkg) in enumerate(
+            zip(original_plan.get("project_packages", []), revised_packages), 1
+        ):
+            if original_pkg.get("status") == "success" and revised_pkg.get("status") == "success":
+                # 检查是否真的被修改了（通过revised_by_dual_reviewers标记）
+                if revised_pkg.get("revised_by_dual_reviewers"):
+                    modified_package_indices.add(pkg_idx)
+        
+        output_structure = self._generate_and_save_outputs_incremental(
             goal_description,
             revised_packages,
+            modified_package_indices,
             original_plan.get("references") or context.get("references") or [],
             task_decomposition,
-            params
+            params,
+            original_plan.get("output_structure", {})  # 传入现有的输出结构
         )
         revised_plan["output_structure"] = output_structure
         
@@ -3107,6 +4523,12 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
             logger.info(f"Package {package_index} 没有需要修改的问题")
             return current_package
         
+        # 检查是否有critical或major问题，决定修改策略
+        has_critical = any(issue.get('severity', '').lower() == 'critical' for issue in all_issues)
+        has_major = any(issue.get('severity', '').lower() == 'major' for issue in all_issues)
+        revision_aggressiveness = "aggressive" if (has_critical or has_major) else "moderate"
+        logger.info(f"Package {package_index} 修改策略: {revision_aggressiveness} (critical: {has_critical}, major: {has_major})")
+        
         # 解析location，识别需要修改的step和字段
         step_modifications = self._parse_issues_to_step_modifications(all_issues, implementation_steps)
         
@@ -3138,7 +4560,8 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
                 modifications,
                 current_package,
                 goal_description,
-                params
+                params,
+                revision_aggressiveness=revision_aggressiveness
             )
             
             # 合并修改后的step回原package
@@ -3220,14 +4643,15 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
         modifications: List[Dict[str, Any]],
         package_context: Dict[str, Any],
         goal_description: str,
-        params: Dict[str, Any]
+        params: Dict[str, Any],
+        revision_aggressiveness: str = "moderate"
     ) -> Dict[str, Any]:
         """
         细粒度修改单个step的指定字段
         
         策略：
         1. 识别需要修改的字段（explanation, code, purpose等）
-        2. 只修改这些字段，保持其他字段不变
+        2. 根据严重程度决定修改幅度（aggressive vs moderate）
         3. 使用merge策略合并
         """
         # 识别需要修改的字段
@@ -3252,18 +4676,22 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
             modifications,
             fields_to_revise,
             package_context,
-            goal_description
+            goal_description,
+            revision_aggressiveness=revision_aggressiveness
         )
         
         # 构建schema（只包含需要修改的字段）
         schema = self._build_step_revision_schema(fields_to_revise)
         
+        # 根据修改策略调整temperature：aggressive时使用更高temperature以允许更大改动
+        temperature = 0.4 if revision_aggressiveness == "aggressive" else 0.3
+        
         try:
             response = await self._call_model(
                 prompt=prompt,
-                system_prompt=self._build_step_revision_system_prompt(fields_to_revise),
+                system_prompt=self._build_step_revision_system_prompt(fields_to_revise, revision_aggressiveness),
                 schema=schema,
-                temperature=0.2
+                temperature=temperature
             )
             
             # 合并修改：只更新指定的字段，保持其他字段不变
@@ -3438,16 +4866,24 @@ Provide 2-3 COMPLETE usage examples from basic to advanced. Each example MUST in
         modifications: List[Dict[str, Any]],
         fields_to_revise: set,
         package_context: Dict[str, Any],
-        goal_description: str
+        goal_description: str,
+        revision_aggressiveness: str = "moderate"
     ) -> str:
         """构建单个step修改的prompt"""
         # 列出需要修改的问题
         issues_text = []
+        critical_count = 0
+        major_count = 0
         for idx, mod in enumerate(modifications, 1):
             severity = mod.get('severity', 'minor').upper()
             category = mod.get('category', 'unknown')
             problem = mod.get('problem', '')
             suggestion = mod.get('suggestion', '暂无建议')
+            
+            if severity == 'CRITICAL':
+                critical_count += 1
+            elif severity == 'MAJOR':
+                major_count += 1
             
             issues_text.append(f"\n### 修改意见 {idx}:")
             issues_text.append(f"**严重程度**: {severity}")
@@ -3500,19 +4936,26 @@ You need to revise ONLY the following field(s): {', '.join(fields_to_revise)}
 
 # Your Revision Task
 
-**CRITICAL**: You are making a SURGICAL revision. Only modify the specified field(s) listed above.
+{f"**⚠️ AGGRESSIVE REVISION MODE**: This step has {critical_count} CRITICAL and {major_count} MAJOR issues. You MUST make SUBSTANTIAL changes to fully address these problems. Do not be conservative - rewrite the content if necessary to completely solve the issues." if revision_aggressiveness == "aggressive" else "**CRITICAL**: You are making a revision to address the issues above."}
+
+## Revision Strategy:
+{f"- **For CRITICAL/MAJOR issues**: Make SUBSTANTIAL changes. Rewrite entire sections if needed. Do not just make minor tweaks." if revision_aggressiveness == "aggressive" else "- **For all issues**: Make sufficient changes to fully address each problem."}
+- **Modify the field(s)**: {', '.join(fields_to_revise)}
+- **Keep other fields unchanged**: step_number, component_name, file_path, etc.
 
 ## What to Do:
-1. **Keep all other fields unchanged** (step_number, component_name, file_path, etc.)
-2. **Only revise** the field(s): {', '.join(fields_to_revise)}
-3. **Apply the suggested fixes** for each issue
-4. **Maintain consistency** with the rest of the step
+1. **Read each issue carefully** - understand what is wrong and why
+2. **Apply the suggested fixes COMPLETELY** - do not partially address issues
+3. **Make changes that FULLY resolve the problems** - if the current content is fundamentally flawed, rewrite it
+4. **Ensure the revised content is correct, clear, and complete**
+{f"5. **For CRITICAL issues**: You may need to significantly restructure or rewrite the content. This is acceptable and expected." if revision_aggressiveness == "aggressive" else "5. **Maintain consistency** with the rest of the step where possible"}
 
 ## For Each Field to Revise:
 - Read the current content carefully
-- Apply the suggested improvements
-- Ensure the revised content addresses all the issues
-- Keep the same style and tone
+- Identify what is wrong based on the issues
+- **Make sufficient changes to fully address ALL issues** - do not leave problems partially fixed
+- If the current approach is wrong, change it completely
+- Ensure the revised content is correct and complete
 
 ---
 
@@ -3550,18 +4993,30 @@ All code must remain COMPLETE and RUNNABLE (no placeholders).
             "required": list(fields_to_revise)
         }
     
-    def _build_step_revision_system_prompt(self, fields_to_revise: set) -> str:
+    def _build_step_revision_system_prompt(self, fields_to_revise: set, revision_aggressiveness: str = "moderate") -> str:
         """构建step修改的系统prompt"""
         fields_str = ', '.join(fields_to_revise)
         chinese_note = ""
         if "explanation" in fields_to_revise or "purpose" in fields_to_revise:
             chinese_note = " **MANDATORY: If revising 'explanation' or 'purpose' fields, they MUST be written in Chinese (中文).**"
-        return (
-            f"You are an expert technical educator making a SURGICAL revision. "
-            f"You are revising ONLY the following field(s): {fields_str}. "
-            f"Keep all other fields exactly as they are. "
-            f"Be precise and focused. Apply the suggested fixes while maintaining consistency.{chinese_note}"
-        )
+        
+        base_prompt = f"You are an expert technical educator making revisions to address specific feedback. "
+        base_prompt += f"You are revising the following field(s): {fields_str}. "
+        
+        if revision_aggressiveness == "aggressive":
+            base_prompt += (
+                f"**IMPORTANT**: The issues are CRITICAL or MAJOR. You MUST make SUBSTANTIAL changes to fully resolve them. "
+                f"Do not be conservative - if the current content is wrong or insufficient, rewrite it completely. "
+                f"Partial fixes are not acceptable for critical issues. "
+            )
+        else:
+            base_prompt += (
+                f"Make sufficient changes to fully address all feedback. "
+                f"Keep other fields unchanged. "
+            )
+        
+        base_prompt += f"Apply the suggested fixes completely.{chinese_note}"
+        return base_prompt
     
     def _build_non_step_revision_prompt(
         self,

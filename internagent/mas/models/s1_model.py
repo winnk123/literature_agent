@@ -270,6 +270,14 @@ class S1Model(BaseModel):
             else:
                 result_text = response_text
             
+            # 尝试从markdown代码块中提取JSON（支持多行）
+            import re
+            # 匹配 ```json ... ``` 或 ``` ... ``` 中的JSON
+            json_match = re.search(r'```(?:json)?\s*(\{[\s\S]*?\}|\[[\s\S]*?\])\s*```', result_text, re.MULTILINE)
+            if json_match:
+                result_text = json_match.group(1).strip()
+                logger.debug("从markdown代码块中提取JSON成功")
+            
             output_data = {
                 "system_prompt": enhanced_system_prompt,
                 "prompt": prompt,
@@ -280,13 +288,15 @@ class S1Model(BaseModel):
                 result_dict = json.loads(result_text)
             except Exception as e:
                 print(e)
-                logger.error(f"Model returned invalid JSON: {result_text}")
+                logger.error(f"Model returned invalid JSON: {result_text[:500]}")
+                # 尝试使用json_repair修复
                 result_text_repair = repair_json(result_text)
                 if result_text_repair:
                     try:
                         result_dict = json.loads(result_text_repair)
+                        logger.info("通过json_repair成功修复JSON")
                     except:
-                        logger.error(f"Repaired JSON still invalid: {result_text_repair}")
+                        logger.error(f"Repaired JSON still invalid: {result_text_repair[:500]}")
                         raise ValueError("Model did not return valid JSON after repair")
                 else:
                     logger.error("Failed to repair JSON response")

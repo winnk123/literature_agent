@@ -90,16 +90,16 @@ class TaskDecompositionAgent(BaseAgent):
                         },
                         "required": ["step_id", "step_name", "description"]
                     },
-                    "description": "4-5 executable research steps",
-                    "minItems": 4,
+                    "description": "3-5 executable research steps",
+                    "minItems": 3,
                     "maxItems": 5
                 },
                 "scientific_keywords": {
                     "type": "array",
                     "items": {"type": "string"},
-                    "description": "3-6 generalized keywords (2-4 words each, e.g., 'video analysis')",
+                    "description": "3-5 generalized keywords (2-4 words each, e.g., 'video analysis')",
                     "minItems": 3,
-                    "maxItems": 6
+                    "maxItems": 5
                 }
             },
             "required": ["problem_overview", "main_objectives", "key_steps", "scientific_keywords"]
@@ -113,19 +113,128 @@ class TaskDecompositionAgent(BaseAgent):
                 "to create structured research plans with clear objectives, steps, and keywords."
             )
             
+            # Check if task_difficulty is manually specified in context
+            manual_difficulty = context.get("task_difficulty")
+            if manual_difficulty is not None:
+                try:
+                    task_difficulty = int(manual_difficulty)
+                    task_difficulty = max(1, min(5, task_difficulty))
+                    difficulty_reasoning = f"Manually specified difficulty: {task_difficulty}/5"
+                    logger.info(f"Using manually specified task difficulty: {task_difficulty}/5")
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid manual difficulty '{manual_difficulty}', will auto-assess")
+                    manual_difficulty = None
+            
+            # Auto-assess task difficulty if not manually specified
+            if manual_difficulty is None:
+                difficulty_assessment_prompt = (
+                    f"Analyze the following research problem description and assess its difficulty:\n\n{text_input}\n\n"
+                    "Rate the task difficulty on a scale of 1-5:\n"
+                    "1-2: Simple tasks (e.g., basic image classification like MNIST/digit recognition, simple regression, basic NLP tasks)\n"
+                    "3: Moderate tasks (e.g., object detection, sentiment analysis, standard deep learning applications)\n"
+                    "4-5: Complex tasks (e.g., multimodal learning, advanced generation tasks, complex reasoning, cutting-edge research)\n\n"
+                    "**IMPORTANT**: Some tasks (e.g., video retrieval, image search, text classification) can be implemented at multiple difficulty levels:\n"
+                    "- Simple version: Use basic methods (e.g., simple feature extraction + similarity search)\n"
+                    "- Complex version: Use state-of-the-art methods (e.g., advanced deep learning, transformer models)\n"
+                    "If the task can be implemented at multiple levels, assess based on the **typical implementation** or **user expectations** for this task.\n\n"
+                    "Return ONLY a JSON object with:\n"
+                    '{"difficulty": <1-5>, "reasoning": "<brief explanation, including whether multiple difficulty levels are possible>"}'
+                )
+                
+                try:
+                    difficulty_schema = {
+                        "type": "object",
+                        "properties": {
+                            "difficulty": {"type": "integer", "minimum": 1, "maximum": 5},
+                            "reasoning": {"type": "string"}
+                        },
+                        "required": ["difficulty", "reasoning"]
+                    }
+                    difficulty_response = await self._call_model(
+                        prompt=difficulty_assessment_prompt,
+                        schema=difficulty_schema,
+                        temperature=0.3
+                    )
+                    task_difficulty = difficulty_response.get("difficulty", 3)
+                    difficulty_reasoning = difficulty_response.get("reasoning", "")
+                    logger.info(f"Task difficulty assessed: {task_difficulty}/5 - {difficulty_reasoning}")
+                except Exception as e:
+                    logger.warning(f"Difficulty assessment failed, defaulting to moderate (3): {e}")
+                    task_difficulty = 3
+                    difficulty_reasoning = ""
+            
+            # Generate technology stack recommendations based on difficulty
+            tech_stack_guidance = ""
+            if task_difficulty <= 2:
+                tech_stack_guidance = (
+                    "\n\n**TECHNOLOGY STACK GUIDANCE FOR SIMPLE TASKS:**\n"
+                    "Use established, well-understood deep learning technologies:\n"
+                    "- Basic CNNs (LeNet, AlexNet, ResNet-18/34) for image tasks\n"
+                    "- Simple RNNs/LSTMs or basic Transformers for text tasks\n"
+                    "- Standard architectures from 2012-2020 (well-documented, stable)\n"
+                    "- DO NOT use cutting-edge LLMs or complex multimodal models unless absolutely necessary\n"
+                    "- Focus on simplicity, clarity, and educational value\n"
+                    "Examples: CNN for digit recognition, simple LSTM for text classification, basic GAN for simple generation"
+                )
+            elif task_difficulty == 3:
+                tech_stack_guidance = (
+                    "\n\n**TECHNOLOGY STACK GUIDANCE FOR MODERATE TASKS:**\n"
+                    "Use balanced deep learning technologies:\n"
+                    "- Modern architectures (ResNet-50/101, EfficientNet, BERT-base, GPT-2)\n"
+                    "- Well-established frameworks from 2020-2022\n"
+                    "- Standard Transformer-based models for NLP/vision\n"
+                    "- Can use some advanced techniques but keep them accessible\n"
+                    "Examples: ResNet for object detection, BERT for NLP, standard vision transformers"
+                )
+            else:  # 4-5
+                tech_stack_guidance = (
+                    "\n\n**TECHNOLOGY STACK GUIDANCE FOR COMPLEX TASKS:**\n"
+                    "Use advanced deep learning technologies:\n"
+                    "- State-of-the-art models (GPT-4, CLIP, Diffusion Models, Multimodal LLMs)\n"
+                    "- Recent architectures from 2022-2025\n"
+                    "- Advanced Transformer variants (Vision-Language Models, Diffusion Transformers)\n"
+                    "- Cutting-edge but not bleeding-edge (stable enough for tutorials)\n"
+                    "Examples: Diffusion models for generation, CLIP for multimodal tasks, advanced LLMs for complex reasoning"
+                )
+            
             generation_prompt = (
                 f"Analyze the following research problem description:\n\n{text_input}\n\n"
+                f"Task Difficulty Assessment: {task_difficulty}/5 - {difficulty_reasoning}\n"
                 "Provide a structured plan in JSON format with:\n\n"
                 "1. problem_overview: Summarize the core problem in 2-3 sentences\n"
                 "2. main_objectives: List 3-5 specific, measurable objectives\n"
-                "3. key_steps: Break down into 4-6 executable steps, each with:\n"
+                "3. key_steps: Break down into exactly 3-5 executable steps total, each with (Step count outside 3-5 is invalid):\n"
                 "   - step_id (e.g., 'step_1')\n"
                 "   - step_name (concise title)\n"
                 "   - description (what to do and expected outcome)\n"
+                "   - Step identifiers must follow the format 'step_1', 'step_2', ... in sequential order with no gaps\n"
+                "   - Step names should start with an action verb (e.g., \"实现...\", \"构建...\") and remain under 20 Chinese characters\n"
+                "   **CRITICAL - Step Ordering Requirements:**\n"
+                "   - Steps MUST follow a logical progression from foundational concepts to advanced implementations\n"
+                "   - Basic/fundamental concepts MUST come BEFORE advanced concepts that build upon them\n"
+                "   - Each step should build upon previous steps - later steps should use concepts introduced in earlier steps\n"
+                "   - As a tutorial, you need to break down key steps from simple to complex, from shallow to deep\n"
+                "   - You CANNOT introduce advanced concepts before their foundational prerequisites\n"
+                "   - Example WRONG order: (1) Learn multimodal large language models → (2) Learn basic large language models\n"
+                "   - Example WRONG order: (1) Learn vision transformer → (2) Learn Multi-head attention\n"
+                "     This is wrong because you cannot explain multimodal LLMs (advanced) before explaining basic LLMs (foundational)\n"
+                "   - Example correct order: (1) Understand basic LLMs → (2) Understand vision encoders → (3) Learn multimodal fusion → (4) Build multimodal LLM\n"
+                "   - Always ensure foundational concepts are introduced before advanced concepts that depend on them\n"
+                "   **CRITICAL - Step Uniqueness Requirements:**\n"
+                "   - Each key_step must focus on a distinct module or milestone (avoid overlapping or restating the same component)\n"
+                "   - Do NOT create multiple steps that target the exact same file/architecture unless they handle clearly different sub-problems\n"
+                "   - Clearly define the scope of each step so that, when combined, they cover the full solution without redundancy\n"
                 "4. scientific_keywords: Extract 3-6 generalized technical terms "
                 "(e.g., 'multimodal learning', 'video analysis')\n\n"
-                "You MUST frame all steps and solutions using LLM/AI technologies (e.g., GPT, BERT, Vision-Language Models, Diffusion Models, Multimodal LLMs). "
-                "Ensure all fields are filled with meaningful content. "
+                "**CRITICAL TECHNOLOGY SELECTION REQUIREMENTS:**\n"
+                "- Select deep learning technologies from the 2015-2025 timeframe (can extend to earlier years if needed for foundational concepts)\n"
+                "- Technologies should be mature enough to have good documentation and tutorials (not too new)\n"
+                "- Technologies should be modern enough to reflect current best practices (not too old)\n"
+                "- Match technology complexity to task difficulty:\n"
+                f"{tech_stack_guidance}\n"
+                "- For simple tasks (difficulty 1-2): Prefer simpler, well-established models\n"
+                "- For complex tasks (difficulty 4-5): Use advanced, state-of-the-art models\n"
+                "- Ensure all fields are filled with meaningful content. "
                 "IMPORTANT: You MUST output all text fields in Chinese (简体中文) EXCEPT scientific_keywords. "
                 "scientific_keywords must be in English because they will be used for literature search (e.g., 'multimodal learning', 'video analysis', 'deep learning'). "
                 "All other fields (problem_overview, main_objectives, step_name, description) must be in Chinese."
@@ -147,6 +256,10 @@ class TaskDecompositionAgent(BaseAgent):
                 if not response.get("problem_overview") or not response.get("key_steps"):
                     logger.warning("Received incomplete response, retrying with relaxed constraints")
                     # 可以在这里添加重试逻辑
+                
+                # Add difficulty assessment to response
+                response["task_difficulty"] = task_difficulty
+                response["difficulty_reasoning"] = difficulty_reasoning
                     
                 return response
                 
@@ -160,19 +273,122 @@ class TaskDecompositionAgent(BaseAgent):
                 "to create structured research plans with clear objectives, steps, and keywords."
             )
             
+            # Check if task_difficulty is manually specified in context
+            manual_difficulty = context.get("task_difficulty")
+            if manual_difficulty is not None:
+                try:
+                    task_difficulty = int(manual_difficulty)
+                    task_difficulty = max(1, min(5, task_difficulty))
+                    difficulty_reasoning = f"Manually specified difficulty: {task_difficulty}/5"
+                    logger.info(f"Using manually specified task difficulty: {task_difficulty}/5")
+                except (ValueError, TypeError):
+                    logger.warning(f"Invalid manual difficulty '{manual_difficulty}', will auto-assess")
+                    manual_difficulty = None
+            
+            # Auto-assess task difficulty if not manually specified
+            if manual_difficulty is None:
+                difficulty_assessment_prompt = (
+                    "Analyze the attached image(s) describing a research project and assess its difficulty.\n"
+                    "Rate the task difficulty on a scale of 1-5:\n"
+                    "1-2: Simple tasks (e.g., basic image classification like MNIST/digit recognition, simple regression, basic NLP tasks)\n"
+                    "3: Moderate tasks (e.g., object detection, sentiment analysis, standard deep learning applications)\n"
+                    "4-5: Complex tasks (e.g., multimodal learning, advanced generation tasks, complex reasoning, cutting-edge research)\n\n"
+                    "**IMPORTANT**: Some tasks (e.g., video retrieval, image search, text classification) can be implemented at multiple difficulty levels:\n"
+                    "- Simple version: Use basic methods (e.g., simple feature extraction + similarity search)\n"
+                    "- Complex version: Use state-of-the-art methods (e.g., advanced deep learning, transformer models)\n"
+                    "If the task can be implemented at multiple levels, assess based on the **typical implementation** or **user expectations** for this task.\n\n"
+                    "Return ONLY a JSON object with:\n"
+                    '{"difficulty": <1-5>, "reasoning": "<brief explanation, including whether multiple difficulty levels are possible>"}'
+                )
+                
+                try:
+                    difficulty_schema = {
+                        "type": "object",
+                        "properties": {
+                            "difficulty": {"type": "integer", "minimum": 1, "maximum": 5},
+                            "reasoning": {"type": "string"}
+                        },
+                        "required": ["difficulty", "reasoning"]
+                    }
+                    difficulty_response = await self._call_model_multimodal(
+                        prompt=difficulty_assessment_prompt,
+                        images=images,
+                        schema=difficulty_schema,
+                        temperature=0.3
+                    )
+                    task_difficulty = difficulty_response.get("difficulty", 3)
+                    difficulty_reasoning = difficulty_response.get("reasoning", "")
+                    logger.info(f"Task difficulty assessed: {task_difficulty}/5 - {difficulty_reasoning}")
+                except Exception as e:
+                    logger.warning(f"Difficulty assessment failed, defaulting to moderate (3): {e}")
+                    task_difficulty = 3
+                    difficulty_reasoning = ""
+            
+            # Generate technology stack recommendations based on difficulty
+            tech_stack_guidance = ""
+            if task_difficulty <= 2:
+                tech_stack_guidance = (
+                    "\n\n**TECHNOLOGY STACK GUIDANCE FOR SIMPLE TASKS:**\n"
+                    "Use established, well-understood deep learning technologies:\n"
+                    "- Basic CNNs (LeNet, AlexNet, ResNet-18/34) for image tasks\n"
+                    "- Simple RNNs/LSTMs or basic Transformers for text tasks\n"
+                    "- Standard architectures from 2012-2020 (well-documented, stable)\n"
+                    "- DO NOT use cutting-edge LLMs or complex multimodal models unless absolutely necessary\n"
+                    "- Focus on simplicity, clarity, and educational value\n"
+                    "Examples: CNN for digit recognition, simple LSTM for text classification, basic GAN for simple generation"
+                )
+            elif task_difficulty == 3:
+                tech_stack_guidance = (
+                    "\n\n**TECHNOLOGY STACK GUIDANCE FOR MODERATE TASKS:**\n"
+                    "Use balanced deep learning technologies:\n"
+                    "- Modern architectures (ResNet-50/101, EfficientNet, BERT-base, GPT-2)\n"
+                    "- Well-established frameworks from 2020-2025\n"
+                    "- Standard Transformer-based models for NLP/vision\n"
+                    "- Can use some advanced techniques but keep them accessible\n"
+                    "Examples: ResNet for object detection, BERT for NLP, standard vision transformers"
+                )
+            else:  # 4-5
+                tech_stack_guidance = (
+                    "\n\n**TECHNOLOGY STACK GUIDANCE FOR COMPLEX TASKS:**\n"
+                    "Use advanced deep learning technologies:\n"
+                    "- State-of-the-art models (GPT-4, CLIP, Diffusion Models, Multimodal LLMs)\n"
+                    "- Recent architectures from 2020-2025\n"
+                    "- Advanced Transformer variants (Vision-Language Models, Diffusion Transformers)\n"
+                    "- Cutting-edge but not bleeding-edge (stable enough for tutorials)\n"
+                    "Examples: Diffusion models for generation, CLIP for multimodal tasks, advanced LLMs for complex reasoning"
+                )
+            
             generation_prompt = (
                 "Analyze the attached image(s) describing a research project. "
+                f"Task Difficulty Assessment: {task_difficulty}/5 - {difficulty_reasoning}\n"
                 "Provide a structured plan in JSON format with:\n\n"
                 "1. problem_overview: Summarize the core problem in 2-3 sentences\n"
                 "2. main_objectives: List 3-5 specific, measurable objectives\n"
-                "3. key_steps: Break down into 4-6 executable steps, each with:\n"
+                "3. key_steps: Break down into 4-5 executable steps, each with:\n"
                 "   - step_id (e.g., 'step_1')\n"
                 "   - step_name (concise title)\n"
                 "   - description (what to do and expected outcome)\n"
+                "   **CRITICAL - Step Ordering Requirements:**\n"
+                "   - Steps MUST follow a logical progression from foundational concepts to advanced implementations\n"
+                "   - Basic/fundamental concepts MUST come BEFORE advanced concepts that build upon them\n"
+                "   - Each step should build upon previous steps - later steps should use concepts introduced in earlier steps\n"
+                "   - As a tutorial, you need to break down key steps from simple to complex, from shallow to deep\n"
+                "   - You CANNOT introduce advanced concepts before their foundational prerequisites\n"
+                "   - Example WRONG order: (1) Learn multimodal large language models → (2) Learn basic large language models\n"
+                "     This is wrong because you cannot explain multimodal LLMs (advanced) before explaining basic LLMs (foundational)\n"
+                "   - Example correct order: (1) Understand basic LLMs → (2) Understand vision encoders → (3) Learn multimodal fusion → (4) Build multimodal LLM\n"
+                "   - Always ensure foundational concepts are introduced before advanced concepts that depend on them\n"
                 "4. scientific_keywords: Extract 3-6 generalized technical terms "
                 "(e.g., 'multimodal learning', 'video analysis')\n\n"
-                "You MUST frame all steps and solutions using LLM/AI technologies (e.g., GPT, BERT, Vision-Language Models, Diffusion Models, Multimodal LLMs). "
-                "Ensure all fields are filled with meaningful content. "
+                "**CRITICAL TECHNOLOGY SELECTION REQUIREMENTS:**\n"
+                "- Select deep learning technologies from the 2015-2025 timeframe (can extend to earlier years if needed for foundational concepts)\n"
+                "- Technologies should be mature enough to have good documentation and tutorials (not too new)\n"
+                "- Technologies should be modern enough to reflect current best practices (not too old)\n"
+                "- Match technology complexity to task difficulty:\n"
+                f"{tech_stack_guidance}\n"
+                "- For simple tasks (difficulty 1-2): Prefer simpler, well-established models\n"
+                "- For complex tasks (difficulty 4-5): Use advanced, state-of-the-art models\n"
+                "- Ensure all fields are filled with meaningful content. "
                 "IMPORTANT: You MUST output all text fields in Chinese (简体中文) EXCEPT scientific_keywords. "
                 "scientific_keywords must be in English because they will be used for literature search (e.g., 'multimodal learning', 'video analysis', 'deep learning'). "
                 "All other fields (problem_overview, main_objectives, step_name, description) must be in Chinese."
@@ -195,6 +411,10 @@ class TaskDecompositionAgent(BaseAgent):
                 if not response.get("problem_overview") or not response.get("key_steps"):
                     logger.warning("Received incomplete response, retrying with relaxed constraints")
                     # 可以在这里添加重试逻辑
+                
+                # Add difficulty assessment to response
+                response["task_difficulty"] = task_difficulty
+                response["difficulty_reasoning"] = difficulty_reasoning
                     
                 return response
                 

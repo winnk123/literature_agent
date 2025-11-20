@@ -6,8 +6,7 @@
 python launch_planning.py \
   --image Image/5c5061e3ef9efd41df20f3549563eed0.png \
   --max_rounds 2 \
-  --max_papers 30 \
-  --auto_survey \
+  --max_papers 80 \
   --non_interactive \
   --verbose \
   --enable_judger \
@@ -16,5 +15,5 @@ python launch_planning.py \
   --max_revision_rounds 5 \
   --min_clarity_score 7.5 \
   --min_coherence_score 7.5 \
-  --target_audience "intermediate developers"
+  --target_audience "beginners"
 

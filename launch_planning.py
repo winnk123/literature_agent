@@ -11,6 +11,7 @@ import os.path as osp
 from pyexpat import model
 import sys
 import textwrap
+import time
 from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -298,12 +299,22 @@ def parse_arguments() -> argparse.Namespace:
     parser.add_argument("--min_acceptable_score", type=float, default=8.0, help="Minimum acceptable score (0-10) for plan approval (default: 8.0)")
     parser.add_argument("--enable_review", action="store_true", help="Enable dual-reviewer (pedagogical + logical coherence) review process")
     parser.add_argument( "--max_revision_rounds",type=int,default=2,help="最大评审-修改轮次（默认2）")
-    parser.add_argument("--target_audience", type=str,default="intermediate developers",help="目标受众，用于教学性评审（默认: intermediate developers）")
+    parser.add_argument("--target_audience", type=str,default="beginners",help="目标受众，用于教学性评审（默认: intermediate developers）")
     parser.add_argument( "--min_clarity_score", type=float,default=7.0,help="教学质量最低分要求（1-10，默认7.0）" )
     parser.add_argument( "--min_coherence_score",type=float,default=7.0,help="逻辑连贯性最低分要求（1-10，默认7.0）" )
+    parser.add_argument("--task-difficulty", type=int, choices=[1, 2, 3, 4, 5], default=None,
+                        help="Manually specify task difficulty (1-5). If not specified, difficulty will be auto-assessed. "
+                             "Some tasks (e.g., video retrieval) can be implemented at multiple difficulty levels.")
+    parser.add_argument("--enable_literature_summary", action="store_true", default=True,
+                        help="Enable literature summary report generation (default: True)")
+    parser.add_argument("--skip_literature_summary", action="store_true",
+                        help="Skip literature summary report generation (overrides --enable_literature_summary)")
     return parser.parse_args()
 
 async def run_planning(args: argparse.Namespace, logger: logging.Logger) -> None:
+    pipeline_start_time = time.time()
+    stage_timings = {}
+    
     prompt_data, task_dir, task_name = load_task_definition(args.task)
 
     # 支持图像或文本输入
@@ -392,8 +403,15 @@ async def run_planning(args: argparse.Namespace, logger: logging.Logger) -> None
     survey_iterations: List[Dict[str, Any]] = []
     evaluation_history: List[Dict[str, Any]] = [] ## 评估记录
     interactive = not args.non_interactive
+    
+    # 跟踪分数最高的分解方案（无论是否超过接受分数）
+    best_plan: Optional[Dict[str, Any]] = None
+    best_score: float = -1.0
+    best_evaluation: Optional[Dict[str, Any]] = None
+    best_iteration: int = 0
 
     for iteration in range(1, args.max_rounds + 1):
+        iter_start_time = time.time()
         context = {
             "images": args.images if args.images else [],  # 图像输入（可选）
             "text_input": args.text_input,  # 文本输入（可选）
@@ -404,10 +422,15 @@ async def run_planning(args: argparse.Namespace, logger: logging.Logger) -> None
             "previous_plan": previous_plan_text,
             "background": background,
             "constraints": constraints,
+            "task_difficulty": args.task_difficulty,  # 手动指定任务难度（可选）
         }
 
         logger.info("Running task decomposition iteration %d", iteration)
+        task_decomp_start = time.time()
         plan = await task_agent.execute(context, {})
+        task_decomp_time = time.time() - task_decomp_start
+        logger.info(f"  ⏱️  Task decomposition 耗时: {task_decomp_time:.1f}秒")
+        stage_timings["task_decomposition"] = stage_timings.get("task_decomposition", 0.0) + task_decomp_time
         
         planning_iterations.append(plan)
         previous_plan_text = json.dumps(plan, ensure_ascii=False, indent=2)
@@ -420,7 +443,11 @@ async def run_planning(args: argparse.Namespace, logger: logging.Logger) -> None
         
         # 评估当前计划
         if args.enable_judger:
+            judger_start = time.time()
             evaluation = await judger_agent.execute({"plan": plan, "domain": domain}, {})
+            judger_time = time.time() - judger_start
+            logger.info(f"  ⏱️  Judger评估 耗时: {judger_time:.1f}秒")
+            stage_timings["plan_evaluation"] = stage_timings.get("plan_evaluation", 0.0) + judger_time
             eval_path = osp.join(output_dir, "iterations", f"iteration_{iteration:02d}_evaluation.json")
             
             # 确保目录存在
@@ -431,53 +458,109 @@ async def run_planning(args: argparse.Namespace, logger: logging.Logger) -> None
             score = evaluation.get("overall_score", 0)
             logger.info(f"Score: {score:.1f}/10 - {evaluation.get('recommendation')}")
             
+            # 无论分数如何，都保存分数最高的分解方案
+            if score > best_score:
+                best_score = score
+                best_plan = plan.copy()  # 深拷贝当前plan
+                best_evaluation = evaluation.copy()  # 深拷贝当前evaluation
+                best_iteration = iteration
+                logger.info(f"✓ 更新最佳分解方案：迭代 {iteration}，分数 {score:.1f}/10")
+            
+            # 保存返修意见到feedback_history（无论分数是否超过阈值）
+            if evaluation.get("suggestions"):
+                logger.info("Judger 提供返修意见：")
+                for sugg in evaluation.get("suggestions", []):
+                    logger.info(f"  - {sugg}")
+            
             if score < args.min_acceptable_score and iteration < args.max_rounds:
                 logger.info("Adding feedback for next iteration...")
                 for sugg in evaluation.get("suggestions", [])[:3]:  
                     feedback_history.append(f"[Judger] {sugg}")
                 continue
             logger.info("Score acceptable or max rounds reached")
-        should_run_survey = args.auto_survey or (not args.non_interactive)
         
-        if should_run_survey:
-            # Build guidance from task decomposition
-            guidance = []
-            if plan.get("main_objectives"):
-                objectives_text = "\n".join(f"- {obj}" for obj in plan["main_objectives"])
-                guidance.append(f"Main Objectives:\n{objectives_text}")
-            if plan.get("key_steps"):
-                steps_text = "\n".join(
-                    f"- {step.get('step_name', '')}: {step.get('description', '')}"
-                    for step in plan["key_steps"][:5]
-                )
-                guidance.append(f"Key Research Steps:\n{steps_text}")
-            
-            # Build survey context with task decomposition information
-            survey_context = {
-                "description": plan.get("problem_overview") or goal_description,
+        # 注意：在迭代循环中不执行survey和engineering，只生成和评估plan
+        # 等循环结束后，基于最佳plan执行一次survey和engineering
+        if iteration == args.max_rounds:
+            break
+    
+    # 确定最终使用的plan：如果启用了judger且找到了最佳plan，使用最佳plan；否则使用最后一次迭代的plan
+    if args.enable_judger and best_plan is not None and best_score >= 0:
+        logger.info("=" * 80)
+        logger.info(f"使用分数最高的分解方案（迭代 {best_iteration}，分数 {best_score:.1f}/10）")
+        logger.info("=" * 80)
+        final_plan = best_plan
+        
+        # 保存最佳分解方案到单独文件
+        best_plan_path = osp.join(output_dir, "best_plan.json")
+        with open(best_plan_path, "w", encoding="utf-8") as f:
+            json.dump({
+                "plan": best_plan,
+                "evaluation": best_evaluation,
+                "iteration": best_iteration,
+                "score": best_score
+            }, f, ensure_ascii=False, indent=2)
+        logger.info(f"最佳分解方案已保存到: {best_plan_path}")
+    else:
+        # 没有启用judger或没有找到最佳plan，使用最后一次迭代的plan
+        final_plan = planning_iterations[-1] if planning_iterations else plan
+        logger.info("使用最后一次迭代的分解方案")
+    
+    papers: List[Dict[str, Any]] = []
+    queries: List[str] = []
+    summary_report: Optional[Dict[str, Any]] = None
+    survey_result: Optional[Dict[str, Any]] = None
+    engineering_plan: Optional[Dict[str, Any]] = None
+    review_result: Optional[Dict[str, Any]] = None
+    survey_iterations = []
+    should_generate_summary = args.enable_literature_summary and not args.skip_literature_summary
+    should_run_survey = args.auto_survey or (not args.non_interactive)
+    survey_ran = False
+
+    if should_run_survey and final_plan:
+        survey_ran = True
+        logger.info("基于最终确定的分解方案执行文献调研和后续流程...")
+        guidance = []
+        if final_plan.get("main_objectives"):
+            objectives_text = "\n".join(f"- {obj}" for obj in final_plan["main_objectives"])
+            guidance.append(f"Main Objectives:\n{objectives_text}")
+        if final_plan.get("key_steps"):
+            steps_text = "\n".join(
+                f"- {step.get('step_name', '')}: {step.get('description', '')}"
+                for step in final_plan["key_steps"][:5]
+            )
+            guidance.append(f"Key Research Steps:\n{steps_text}")
+        
+        survey_context = {
+            "description": final_plan.get("problem_overview") or goal_description,
+            "domain": domain,
+            "task_decomposition": {
+                "problem_overview": final_plan.get("problem_overview", ""),
                 "domain": domain,
-                "task_decomposition": {
-                    "problem_overview": plan.get("problem_overview", ""),
-                    "domain": domain,
-                    "scientific_keywords": plan.get("scientific_keywords", []),
-                    "main_objectives": plan.get("main_objectives", []),
-                    "key_steps": plan.get("key_steps", [])
-                },
-                "manual_guidance": guidance_history + guidance,
-                "max_papers": args.max_papers,
-                "force_iteration": bool(guidance_history or guidance),
-            }
-            
-            logger.info("启动文献调研：基于任务分解结果")
-            survey_result = await survey_agent.execute(survey_context, {})
-            papers = survey_result.get("papers", [])
-            queries = survey_result.get("search_queries", [])
-            
-            logger.info("收集到 %d 篇论文，执行了 %d 个查询", len(papers), len(queries))
-            
-            # Generate literature summary report
+                "scientific_keywords": final_plan.get("scientific_keywords", []),
+                "main_objectives": final_plan.get("main_objectives", []),
+                "key_steps": final_plan.get("key_steps", [])
+            },
+            "manual_guidance": guidance_history + guidance,
+            "max_papers": args.max_papers,
+            "force_iteration": bool(guidance_history or guidance),
+        }
+        
+        logger.info("启动文献调研：基于最终确定的分解方案")
+        survey_start = time.time()
+        survey_result = await survey_agent.execute(survey_context, {})
+        survey_time = time.time() - survey_start
+        logger.info(f"  ⏱️  文献调研 耗时: {survey_time:.1f}秒 ({survey_time/60:.1f}分钟)")
+        stage_timings["literature_survey"] = stage_timings.get("literature_survey", 0.0) + survey_time
+        papers = survey_result.get("papers", [])
+        queries = survey_result.get("search_queries", [])
+        
+        logger.info("收集到 %d 篇论文，执行了 %d 个查询", len(papers), len(queries))
+        
+        if should_generate_summary:
+            summary_start = time.time()
             summary_context = {
-                "description": plan.get("problem_overview") or goal_description,
+                "description": final_plan.get("problem_overview") or goal_description,
                 "domain": domain,
                 "papers": papers,
                 "search_queries": queries,
@@ -492,38 +575,69 @@ async def run_planning(args: argparse.Namespace, logger: logging.Logger) -> None
                     "top_per_round": survey_result.get("top_per_round"),
                     "total_rounds": survey_result.get("total_rounds"),
                 },
-                "task_decomposition": plan,
+                "task_decomposition": final_plan,
             }
             summary_report = await summary_agent.execute(summary_context, {})
-            # 调整为使用 task_decomposition.key_steps 作为 EngineerAgent 的输入来源
-            if plan.get("key_steps"):
-                engineer_context = {
-                    "goal_description": summary_report.get("problem_formulation") or plan.get("problem_overview") or goal_description,
-                    "literature_summary": summary_report,  # 传递完整的summary_report
-                    "papers": papers,  # 传递papers列表以便提取references
-                    "references": summary_report.get("references") if summary_report else None,  # 直接传递references
-                    "task_decomposition": plan,  # 传递task decomposition结果，包含问题描述、主要目标、关键步骤、科学关键词等
-                }
-                logger.info("Step 1: Engineer Agent 生成初始实现方案（基于 key_steps）...")
-                engineering_plan = await engineer_agent.execute(engineer_context, {})
-            else:
-                logger.warning("Skipping EngineerAgent: task_decomposition 未提供 key_steps。")
-                engineering_plan = None
-            
-            # 执行双审稿人评审流程（如果启用且engineering_plan存在）
-            review_result = None
-            if args.enable_review and engineering_plan and review_coordinator:
+            summary_time = time.time() - summary_start
+            logger.info(f"  ⏱️  文献总结 耗时: {summary_time:.1f}秒 ({summary_time/60:.1f}分钟)")
+            stage_timings["literature_summary"] = stage_timings.get("literature_summary", 0.0) + summary_time
+        else:
+            logger.info("跳过文献总结报告生成（已禁用）")
+
+        final_iteration_num = best_iteration if (args.enable_judger and best_plan is not None) else len(planning_iterations)
+        survey_payload = {
+            "iteration": final_iteration_num,
+            "plan": {
+                "problem_overview": final_plan.get("problem_overview"),
+                "main_objectives": final_plan.get("main_objectives"),
+                "scientific_keywords": final_plan.get("scientific_keywords"),
+            },
+            "papers": papers,
+            "search_queries": queries,
+            "report": summary_report if should_generate_summary else None,
+            "literature_summary_enabled": should_generate_summary,
+            "note": f"Based on {'best plan' if (args.enable_judger and best_plan is not None) else 'final iteration plan'} (score: {best_score:.1f}/10 from iteration {final_iteration_num})" if args.enable_judger else "Based on final iteration plan"
+        }
+        survey_iterations.append(survey_payload)
+        
+        survey_path = osp.join(output_dir, "iterations", f"final_survey.json")
+        os.makedirs(osp.dirname(survey_path), exist_ok=True)
+        with open(survey_path, "w", encoding="utf-8") as f:
+            json.dump(survey_payload, f, ensure_ascii=False, indent=2)
+        logger.info("最终文献调研结果已保存到 %s", survey_path)
+    else:
+        logger.info("跳过文献调研阶段，直接进入工程实现流程。")
+
+    # 工程方案生成
+    if final_plan and final_plan.get("key_steps"):
+        engineer_context = {
+            "goal_description": (summary_report.get("problem_formulation") if summary_report else None) or final_plan.get("problem_overview") or goal_description,
+            "papers": papers,
+            "references": summary_report.get("references") if summary_report else None,
+            "task_decomposition": final_plan,
+        }
+        plan_source = f"最佳分解方案（迭代 {best_iteration}，分数 {best_score:.1f}/10）" if (args.enable_judger and best_plan is not None) else "最后一次迭代的分解方案"
+        logger.info(f"Step 1: Engineer Agent 生成初始实现方案（基于 {plan_source} 的 key_steps）...")
+        engineer_start = time.time()
+        engineering_plan = await engineer_agent.execute(engineer_context, {})
+        engineer_time = time.time() - engineer_start
+        logger.info(f"  ⏱️  Engineer Agent 耗时: {engineer_time:.1f}秒 ({engineer_time/60:.1f}分钟)")
+        stage_timings["engineering_plan"] = stage_timings.get("engineering_plan", 0.0) + engineer_time
+        
+        review_result = None
+        if args.enable_review and engineering_plan and review_coordinator:
                 logger.info("=" * 80)
                 logger.info("启动双审稿人评审流程")
                 logger.info("=" * 80)
-                
+                review_start = time.time()
                 try:
                     review_result = await review_coordinator.conduct_review_and_revision(
                         engineering_plan=engineering_plan,
                         engineer_agent=engineer_agent
                     )
-                    
-                    # 更新engineering_plan为评审后的版本
+                    review_time = time.time() - review_start
+                    logger.info(f"  ⏱️  评审流程 耗时: {review_time:.1f}秒 ({review_time/60:.1f}分钟)")
+                    stage_timings["dual_review"] = stage_timings.get("dual_review", 0.0) + review_time
                     if review_result.get("status") == "approved":
                         engineering_plan = review_result.get("final_plan", engineering_plan)
                         logger.info("✅ 工程计划已通过双审稿人评审")
@@ -541,9 +655,8 @@ async def run_planning(args: argparse.Namespace, logger: logging.Logger) -> None
                         review_report_path = osp.join(
                             output_dir,
                             "iterations",
-                            f"iteration_{iteration:02d}_review_report.md"
+                            f"final_review_report.md"
                         )
-                        # 确保目录存在
                         os.makedirs(osp.dirname(review_report_path), exist_ok=True)
                         with open(review_report_path, "w", encoding="utf-8") as f:
                             f.write(review_report)
@@ -554,9 +667,8 @@ async def run_planning(args: argparse.Namespace, logger: logging.Logger) -> None
                         suggestions_path = osp.join(
                             output_dir,
                             "iterations",
-                            f"iteration_{iteration:02d}_revision_suggestions.md"
+                            f"final_revision_suggestions.md"
                         )
-                        # 确保目录存在
                         os.makedirs(osp.dirname(suggestions_path), exist_ok=True)
                         with open(suggestions_path, "w", encoding="utf-8") as f:
                             f.write(revision_suggestions)
@@ -566,9 +678,8 @@ async def run_planning(args: argparse.Namespace, logger: logging.Logger) -> None
                     review_result_path = osp.join(
                         output_dir,
                         "iterations",
-                        f"iteration_{iteration:02d}_review_result.json"
+                        f"final_review_result.json"
                     )
-                    # 确保目录存在
                     os.makedirs(osp.dirname(review_result_path), exist_ok=True)
                     with open(review_result_path, "w", encoding="utf-8") as f:
                         json.dump(review_result, f, ensure_ascii=False, indent=2)
@@ -577,36 +688,36 @@ async def run_planning(args: argparse.Namespace, logger: logging.Logger) -> None
                 except Exception as exc:
                     logger.error(f"评审流程执行失败: {exc}", exc_info=True)
                     logger.warning("继续使用原始工程计划")
+                    review_result = None
+        else:
+            logger.warning("Skipping EngineerAgent: task_decomposition 未提供 key_steps。")
+            engineering_plan = None
+            review_result = None
         
-            survey_payload = {
-                "iteration": iteration,
-                "plan": {
-                    "problem_overview": plan.get("problem_overview"),
-                    "main_objectives": plan.get("main_objectives"),
-                    "scientific_keywords": plan.get("scientific_keywords"),
-                },
-                "papers": papers,
-                "search_queries": queries,
-                "report": summary_report,
-                "engineering_plan": engineering_plan,
-                "review_result": review_result if args.enable_review else None,
-            }
-            survey_iterations.append(survey_payload)
-            
-            survey_path = osp.join(
-                output_dir,
-                "iterations",
-                f"iteration_{iteration:02d}_survey.json"
-            )
-            # 确保目录存在
-            os.makedirs(osp.dirname(survey_path), exist_ok=True)
-            with open(survey_path, "w", encoding="utf-8") as f:
-                json.dump(survey_payload, f, ensure_ascii=False, indent=2)
-            
-            logger.info("文献调研结果已保存到 %s", survey_path)
-
-        if iteration == args.max_rounds:
-            break
+        # 保存survey结果
+        final_iteration_num = best_iteration if (args.enable_judger and best_plan is not None) else len(planning_iterations)
+        survey_payload = {
+            "iteration": final_iteration_num,
+            "plan": {
+                "problem_overview": final_plan.get("problem_overview"),
+                "main_objectives": final_plan.get("main_objectives"),
+                "scientific_keywords": final_plan.get("scientific_keywords"),
+            },
+            "papers": papers,
+            "search_queries": queries,
+            "report": summary_report if should_generate_summary else None,
+            "literature_summary_enabled": should_generate_summary,
+            "engineering_plan": engineering_plan,
+            "review_result": review_result if args.enable_review else None,
+            "note": f"Based on {'best plan' if (args.enable_judger and best_plan is not None) else 'final iteration plan'} (score: {best_score:.1f}/10 from iteration {final_iteration_num})" if args.enable_judger else "Based on final iteration plan"
+        }
+        survey_iterations.append(survey_payload)
+        
+        survey_path = osp.join(output_dir, "iterations", f"final_survey.json")
+        os.makedirs(osp.dirname(survey_path), exist_ok=True)
+        with open(survey_path, "w", encoding="utf-8") as f:
+            json.dump(survey_payload, f, ensure_ascii=False, indent=2)
+        logger.info("最终文献调研结果已保存到 %s", survey_path)
 
     summary_payload = {
         "task": {
@@ -628,12 +739,50 @@ async def run_planning(args: argparse.Namespace, logger: logging.Logger) -> None
         "survey_iterations": survey_iterations,
         "generated_at": datetime.now().isoformat(),
     }
+    
+    # 如果启用了judger，添加最佳plan信息到summary
+    if args.enable_judger and best_plan is not None and best_score >= 0:
+        summary_payload["best_plan"] = {
+            "iteration": best_iteration,
+            "score": best_score,
+            "recommendation": best_evaluation.get("recommendation") if best_evaluation else None,
+            "plan_path": "best_plan.json"
+        }
 
     summary_path = osp.join(output_dir, "planning_summary.json")
     with open(summary_path, "w", encoding="utf-8") as f:
         json.dump(summary_payload, f, ensure_ascii=False, indent=2)
 
+    total_time = time.time() - pipeline_start_time
+    timing_entries = []
+    for stage, duration in stage_timings.items():
+        percentage = (duration / total_time) * 100 if total_time > 0 else 0
+        timing_entries.append({
+            "stage": stage,
+            "duration_seconds": duration,
+            "duration_minutes": duration / 60 if duration else 0,
+            "percentage": percentage
+        })
+    timing_report = {
+        "generated_at": datetime.now().isoformat(),
+        "total_time_seconds": total_time,
+        "total_time_minutes": total_time / 60 if total_time else 0,
+        "stages": sorted(timing_entries, key=lambda x: x["duration_seconds"], reverse=True)
+    }
+    timing_path = osp.join(output_dir, "timing_report.json")
+    with open(timing_path, "w", encoding="utf-8") as f:
+        json.dump(timing_report, f, ensure_ascii=False, indent=2)
+    logger.info("=" * 80)
+    logger.info("⏱️  总耗时统计")
+    logger.info("=" * 80)
+    logger.info(f"总耗时: {total_time:.1f}秒 ({total_time/60:.1f}分钟)")
+    if stage_timings:
+        logger.info("各阶段耗时:")
+        for stage, duration in stage_timings.items():
+            percentage = (duration / total_time) * 100 if total_time > 0 else 0
+            logger.info(f"  - {stage}: {duration:.1f}秒 ({duration/60:.1f}分钟, {percentage:.1f}%)")
     logger.info("Planning pipeline completed. Summary saved to %s", summary_path)
+    logger.info("Timing report saved to %s", timing_path)
 
 
 def main() -> None:

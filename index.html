@@ -1,0 +1,1310 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI 科创平台</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+  <!-- 项目结构配置系统 -->
+  <script src="project-structure-config.js"></script>
+</head>
+<body class="theme-light">
+  <div id="app">
+    <!-- 首页：1 : 8 布局 -->
+    <section id="home-view" class="view active">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo ai-logo">AI</div>
+          <div class="brand__name">AI科创平台</div>
+          <div class="brand__actions">
+            <button id="themeToggle" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          </div>
+        </div>
+
+        <nav class="sidebar__nav">
+          <div class="nav__group">
+            <div class="nav__title">Main Menu</div>
+            <ul class="nav__list">
+              <li>
+                <button class="nav__item is-active" data-menu="home" id="homeNavBtn">
+                  <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2 4L8 1L14 4V13C14 13.5304 13.7893 14.0391 13.4142 14.4142C13.0391 14.7893 12.5304 15 12 15H4C3.46957 15 2.96086 14.7893 2.58579 14.4142C2.21071 14.0391 2 13.5304 2 13V4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M6 15V8H10V15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>首页</span>
+                </button>
+              </li>
+              <li>
+                <button class="nav__item" data-menu="projects" id="projectsNavBtn">
+                  <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M3 12L6 9L9 12L13 8" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M11 8H13V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>项目</span>
+                </button>
+                <ul class="nav__sublist" id="categoryList" style="display: none;"></ul>
+              </li>
+              <li>
+                <button class="nav__item" data-menu="knowledge-tree" id="knowledgeTreeNavBtn">
+                  <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 2L2 6V14L8 10L14 14V6L8 2Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M8 2V10" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>知识树</span>
+                </button>
+              </li>
+              <li>
+                <button class="nav__item" data-menu="create" id="createNavBtn" style="display: none;">
+                  <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M8 11V1M8 1L4 5M8 1L12 5M2 11H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>我要出题</span>
+                </button>
+                <button class="nav__item" data-menu="my-projects" id="myProjectsNavBtn" style="display: none;">
+                  <svg class="nav__icon" width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2 4L8 1L14 4V13C14 13.5304 13.7893 14.0391 13.4142 14.4142C13.0391 14.7893 12.5304 15 12 15H4C3.46957 15 2.96086 14.7893 2.58579 14.4142C2.21071 14.0391 2 13.5304 2 13V4Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M6 15V8H10V15" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span>个人项目</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </nav>
+      </aside>
+
+      <main class="content">
+        <div class="blue-ribbon-bg"></div>
+        <div class="container">
+          <section class="hero is-active" id="homeHero">
+            <div class="hero__inner">
+            <h1 class="hero__title">
+                <span class="hero__title-prefix">AI科创平台：</span>
+                <span class="hero__title-fan" id="learnEveryHere">Learn Everything Here</span>
+            </h1>
+              <div class="hero__actions">
+                <button class="btn btn--primary btn--large" id="loginBtn">登录</button>
+                <button class="btn btn--secondary btn--large btn--outline" id="registerBtn">
+                  <span>注册</span>
+                </button>
+              </div>
+            </div>
+          </section>
+
+          <section class="projects-view" id="projectsView">
+            <div class="projects-heading">精选项目</div>
+            <div class="projects-grid" id="projectsGrid"></div>
+          </section>
+        </div>
+      </main>
+    </section>
+
+    <!-- 详情页：1 : 4 : 4 布局 -->
+    <section id="detail-view" class="view">
+      <button class="sidebar-toggle" id="sidebarToggle" aria-label="切换侧边栏">
+        <span id="toggleIcon">«</span>
+      </button>
+      <button class="agent-toggle" id="agentToggle" aria-label="切换Agent面板">
+        <span id="agentToggleIcon">»</span>
+      </button>
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo ai-logo">AI</div>
+          <div class="brand__name">AI科创平台</div>
+          <div class="brand__actions">
+            <button id="themeToggle2" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          </div>
+        </div>
+
+        <div class="detail__sidectrl">
+          <button id="backBtnSide" class="btn btn--ghost">← 上一页</button>
+        </div>
+
+        <nav class="sidebar__nav" id="detailMenu"></nav>
+
+        <div class="language-selector">
+          <div class="language-selector__title">代码语言</div>
+          <div class="language-options">
+            <label class="language-option">
+              <input type="checkbox" id="lang-python" name="language" value="python" checked />
+              <span>Python</span>
+            </label>
+            <label class="language-option">
+              <input type="checkbox" id="lang-javascript" name="language" value="javascript" />
+              <span>JavaScript</span>
+            </label>
+            <label class="language-option">
+              <input type="checkbox" id="lang-java" name="language" value="java" />
+              <span>Java</span>
+            </label>
+            <label class="language-option">
+              <input type="checkbox" id="lang-c" name="language" value="c" />
+              <span>C</span>
+            </label>
+          </div>
+        </div>
+
+        <div class="sidebar__profile profile-clickable" id="sidebarProfileBtn" role="button" tabindex="0">
+          <div class="profile__avatar">你</div>
+          <div class="profile__meta">
+            <div class="profile__name">个人中心</div>
+            <div class="profile__sub">已登录 · 研究者</div>
+          </div>
+        </div>
+      </aside>
+
+      <section class="detail__middle">
+        <div class="detail__topbar">
+          <div class="detail__breadcrumbs">图像 · 去噪 · 背景</div>
+        </div>
+
+        <div class="detail__menu"></div>
+
+        <!-- 内容区标签页 -->
+        <div class="content-tabs">
+          <button class="content-tab is-active" data-tab="edit">
+            <span class="content-tab-icon">📝</span>
+            <span>编辑视图</span>
+          </button>
+          <button class="content-tab" data-tab="run">
+            <span class="content-tab-icon">▶️</span>
+            <span>代码运行</span>
+          </button>
+        </div>
+
+        <!-- 编辑视图标签页内容 -->
+        <div class="tab-content-area is-active" id="editTab">
+        <div class="detail__video" aria-label="视频演示区">
+            <button class="video-toggle" id="videoToggle" aria-label="收缩视频区域" title="收缩/展开视频">
+              <span id="videoToggleIcon">▲</span>
+            </button>
+          <div class="video__placeholder">视频区域（演示/讲解）</div>
+        </div>
+
+        <article class="detail__content">
+          <header class="article__head">
+            <h2 id="projectTitle" class="article__title">—</h2>
+            <div class="article__meta">—</div>
+          </header>
+          <div id="detailContent" class="article__section"></div>
+        </article>
+        </div>
+
+        <!-- 代码运行标签页内容 -->
+        <div class="tab-content-area" id="runTab">
+          <div class="code-runner">
+            <div class="code-runner__header">
+              <h3 class="code-runner__title">代码运行环境</h3>
+              <div class="code-runner__actions">
+                <button class="btn btn--ghost btn--small" id="clearOutput">清空输出</button>
+                <button class="btn btn--primary btn--small" id="runAllCode">运行所有</button>
+              </div>
+            </div>
+            <div class="code-runner__content" id="codeRunnerContent">
+              <div class="runner-placeholder">
+                <p>✨ 在这里可以运行您在编辑视图中编写的所有代码</p>
+                <p>点击"运行所有"按钮开始执行</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <aside class="detail__qa" id="agentPanel">
+        <!-- 初始欢迎页面 -->
+        <div class="qa__welcome" id="qaWelcome">
+          <div class="welcome__content">
+            <h1 class="welcome__title">早上好，研究者</h1>
+            <p class="welcome__subtitle">有什么我能帮您的吗？</p>
+            
+            <!-- Agent 类型选择 -->
+            <div class="welcome__agent-selector">
+              <label for="agentTypeSelect" class="agent-selector__label">选择 AI 助手类型：</label>
+              <select id="agentTypeSelect" name="agentType" class="agent-selector__select">
+                <option value="paper">📄 文献助手 - 检索和推荐学术文献</option>
+                <option value="research">🔬 科研助手 - 提供研究建议和方法</option>
+                <option value="code">💻 代码助手 - 生成、编辑和解释代码</option>
+              </select>
+            </div>
+          </div>
+          <div class="welcome__input">
+            <label for="qaWelcomeInput" class="sr-only">向 AI 提问</label>
+            <input type="text" id="qaWelcomeInput" name="qaWelcomeQuery" class="input input--welcome" placeholder="向 AI 提问..." autocomplete="off" />
+            <button id="qaWelcomeSendBtn" class="btn btn--primary btn--welcome" aria-label="发送">
+              <svg width="20" height="20" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 12L12 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M6 4H12V10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- 对话界面（初始隐藏） -->
+        <div class="qa__chat" id="qaChat" style="display: none;">
+          <div class="qa__header">
+            <div class="qa__tabs">
+              <button class="qa__tab is-active" data-tab="paper">文献</button>
+              <div class="qa__split"></div>
+              <button class="qa__tab" data-tab="research">科研</button>
+              <div class="qa__split"></div>
+              <button class="qa__tab" data-tab="code">代码</button>
+            </div>
+            <button class="qa__files-btn" id="qaFilesBtn" title="查看文件" disabled>
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M8.5 2L14 7.5V13C14 13.2652 13.8946 13.5196 13.7071 13.7071C13.5196 13.8946 13.2652 14 13 14H3C2.73478 14 2.48043 13.8946 2.29289 13.7071C2.10536 13.5196 2 13.2652 2 13V3C2 2.73478 2.10536 2.48043 2.29289 2.29289C2.48043 2.10536 2.73478 2 3 2H8.5Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M8.5 2V7.5H14" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              文件
+            </button>
+          </div>
+          <div class="qa__messages" id="qaMessages">
+            <div class="msg msg--ai">
+              <div class="msg__avatar">AI</div>
+              <div class="msg__bubble">
+                <div class="msg__content">你好，我是 AI Agent，可为你检索相关文献与研究建议。</div>
+              </div>
+            </div>
+          </div>
+          <div class="qa__input">
+            <label for="qaInput" class="sr-only">向 AI 提问</label>
+            <input type="text" id="qaInput" name="qaQuery" class="input" placeholder="向 AI 提问…" autocomplete="off" />
+            <button id="qaSendBtn" class="btn btn--primary btn--icon" aria-label="发送">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M4 12L12 4" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                <path d="M6 4H12V10" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </aside>
+    </section>
+
+    <!-- 出题页面视图 -->
+    <section id="create-view" class="view">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo ai-logo">AI</div>
+          <div class="brand__name">AI科创平台</div>
+          <div class="brand__actions">
+            <button id="themeToggle3" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+            <!-- ⚠️ 开发模式：UI风格切换器（正式上线前请删除） -->
+            <button id="uiStyleToggle3" class="btn btn--ghost ui-style-toggle" aria-label="切换UI风格" title="UI风格切换（开发模式）">🎨</button>
+          </div>
+        </div>
+
+        <div class="detail__sidectrl">
+          <button id="backFromCreateBtn" class="btn btn--ghost">← 返回主页</button>
+        </div>
+
+        <div class="sidebar__profile profile-clickable" id="sidebarProfileBtn" role="button" tabindex="0">
+          <div class="profile__avatar">你</div>
+          <div class="profile__meta">
+            <div class="profile__name">个人中心</div>
+            <div class="profile__sub">已登录 · 研究者</div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="content problem-creation-content">
+        <div class="problem-creation-container">
+          <header class="problem-creation-header">
+            <h1 class="problem-creation-title">我要出题</h1>
+            <button id="closeCreateViewBtn" class="btn btn--ghost">× 关闭</button>
+          </header>
+          
+          <form id="createProblemForm" class="problem-creation-form">
+            <!-- 题目名称 -->
+            <div class="form-group">
+              <label for="problemTitle" class="form-label">
+                题目名称 <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="problemTitle" 
+                name="problemTitle"
+                class="input input--full" 
+                placeholder="例如：相机的图像去噪 · 实验版" 
+                autocomplete="off"
+                required 
+              />
+            </div>
+
+            <!-- 分类 -->
+            <div class="form-group">
+              <label for="problemCategory" class="form-label">
+                分类 <span class="required">*</span>
+              </label>
+              <select id="problemCategory" name="problemCategory" class="input input--full" autocomplete="off" required>
+                <option value="">请选择分类</option>
+                <option value="image">图像</option>
+                <option value="audio">语音</option>
+                <option value="llm">LLM</option>
+                <option value="mllm">MLLM</option>
+                <option value="agent">Agent</option>
+              </select>
+            </div>
+
+            <!-- 子分类 -->
+            <div class="form-group">
+              <label for="problemSubKey" class="form-label">
+                子分类 <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="problemSubKey" 
+                name="problemSubKey"
+                class="input input--full" 
+                placeholder="例如：cam-denoise（英文小写，使用连字符）" 
+                autocomplete="off"
+                required 
+                pattern="[a-z0-9-]+"
+              />
+              <small class="form-hint">子分类键用于URL和内部标识，请使用英文小写字母、数字和连字符</small>
+            </div>
+
+            <!-- 项目描述 -->
+            <div class="form-group">
+              <label for="problemDesc" class="form-label">
+                项目描述 <span class="required">*</span>
+              </label>
+              <textarea 
+                id="problemDesc" 
+                name="problemDesc"
+                class="input input--full" 
+                rows="4" 
+                placeholder="简要描述项目的内容和目标..." 
+                autocomplete="off"
+                required
+              ></textarea>
+            </div>
+
+            <!-- 详情内容表单（动态生成） -->
+            <div class="form-section" id="detailContentFormSection" style="display: none;">
+              <h2 class="form-section-title">详情内容</h2>
+              <p class="form-section-desc">填写项目的详细内容，未填写的部分将使用默认内容</p>
+              
+              <!-- 动态生成的章节编辑器将插入这里 -->
+              <div id="dynamicSectionsContainer"></div>
+            </div>
+
+            <!-- 表单操作按钮 -->
+            <div class="form-actions">
+              <button type="button" class="btn btn--ghost" id="cancelCreateBtn">取消</button>
+              <button type="submit" class="btn btn--primary">提交审核</button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </section>
+
+    <!-- 个人项目页面视图 -->
+    <section id="my-projects-view" class="view">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo ai-logo">AI</div>
+          <div class="brand__name">AI科创平台</div>
+          <div class="brand__actions">
+            <button id="themeToggle4" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          </div>
+        </div>
+
+        <div class="detail__sidectrl">
+          <button id="backFromMyProjectsBtn" class="btn btn--ghost">← 返回主页</button>
+        </div>
+
+        <div class="sidebar__profile profile-clickable" id="sidebarProfileBtnMyProjects" role="button" tabindex="0">
+          <div class="profile__avatar">你</div>
+          <div class="profile__meta">
+            <div class="profile__name">个人中心</div>
+            <div class="profile__sub">已登录 · 研究者</div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="content">
+        <div class="blue-ribbon-bg"></div>
+        <div class="container">
+          <section class="projects-view is-active" id="myProjectsView">
+            <div class="projects-heading">
+              <span>我的项目</span>
+              <button id="createMyProjectBtn" class="btn btn--primary" style="margin-left: auto; display: inline-flex; align-items: center; gap: 8px;">
+                <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M8 3V13M3 8H13" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+                </svg>
+                创建新项目
+              </button>
+            </div>
+            <div class="projects-grid" id="myProjectsGrid"></div>
+          </section>
+        </div>
+      </main>
+    </section>
+
+    <!-- 创建个人项目页面视图 -->
+    <section id="create-my-project-view" class="view">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo ai-logo">AI</div>
+          <div class="brand__name">AI科创平台</div>
+          <div class="brand__actions">
+            <button id="themeToggle5" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          </div>
+        </div>
+
+        <div class="detail__sidectrl">
+          <button id="backFromCreateMyProjectBtn" class="btn btn--ghost">← 返回我的项目</button>
+        </div>
+
+        <div class="sidebar__profile profile-clickable" id="sidebarProfileBtnCreateMyProject" role="button" tabindex="0">
+          <div class="profile__avatar">你</div>
+          <div class="profile__meta">
+            <div class="profile__name">个人中心</div>
+            <div class="profile__sub">已登录 · 研究者</div>
+          </div>
+        </div>
+      </aside>
+
+      <main class="content problem-creation-content">
+        <div class="problem-creation-container">
+          <header class="problem-creation-header">
+            <h1 class="problem-creation-title">创建个人项目</h1>
+            <button id="closeCreateMyProjectViewBtn" class="btn btn--ghost">× 关闭</button>
+          </header>
+          
+          <form id="createMyProjectForm" class="problem-creation-form">
+            <!-- 题目名称 -->
+            <div class="form-group">
+              <label for="myProjectTitle" class="form-label">
+                项目名称 <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="myProjectTitle" 
+                name="myProjectTitle"
+                class="input input--full" 
+                placeholder="例如：我的图像去噪项目" 
+                autocomplete="off"
+                required 
+              />
+            </div>
+
+            <!-- 分类 -->
+            <div class="form-group">
+              <label for="myProjectCategory" class="form-label">
+                分类 <span class="required">*</span>
+              </label>
+              <select id="myProjectCategory" name="myProjectCategory" class="input input--full" autocomplete="off" required>
+                <option value="">请选择分类</option>
+                <option value="image">图像</option>
+                <option value="audio">语音</option>
+                <option value="llm">LLM</option>
+                <option value="mllm">MLLM</option>
+                <option value="agent">Agent</option>
+              </select>
+            </div>
+
+            <!-- 子分类 -->
+            <div class="form-group">
+              <label for="myProjectSubKey" class="form-label">
+                子分类 <span class="required">*</span>
+              </label>
+              <input 
+                type="text" 
+                id="myProjectSubKey" 
+                name="myProjectSubKey"
+                class="input input--full" 
+                placeholder="例如：my-denoise（英文小写，使用连字符）" 
+                autocomplete="off"
+                required 
+                pattern="[a-z0-9-]+"
+              />
+              <small class="form-hint">子分类键用于URL和内部标识，请使用英文小写字母、数字和连字符</small>
+            </div>
+
+            <!-- 项目描述 -->
+            <div class="form-group">
+              <label for="myProjectDesc" class="form-label">
+                项目描述 <span class="required">*</span>
+              </label>
+              <textarea 
+                id="myProjectDesc" 
+                name="myProjectDesc"
+                class="input input--full" 
+                rows="4" 
+                placeholder="简要描述项目的内容和目标..." 
+                autocomplete="off"
+                required
+              ></textarea>
+            </div>
+
+            <!-- 详情内容表单（动态生成） -->
+            <div class="form-section" id="myProjectDetailContentFormSection" style="display: none;">
+              <h2 class="form-section-title">详情内容</h2>
+              <p class="form-section-desc">填写项目的详细内容，未填写的部分将使用默认内容</p>
+              
+              <!-- 动态生成的章节编辑器将插入这里 -->
+              <div id="myProjectDynamicSectionsContainer"></div>
+            </div>
+
+            <!-- 表单操作按钮 -->
+            <div class="form-actions">
+              <button type="button" class="btn btn--ghost" id="cancelCreateMyProjectBtn">取消</button>
+              <button type="submit" class="btn btn--primary">创建项目</button>
+            </div>
+          </form>
+        </div>
+      </main>
+    </section>
+
+    <!-- 知识树页面视图 -->
+    <section id="knowledge-tree-view" class="view">
+      <aside class="sidebar">
+        <div class="sidebar__brand">
+          <div class="brand__logo ai-logo">AI</div>
+          <div class="brand__name">AI科创平台</div>
+          <div class="brand__actions">
+            <button id="themeToggleKT" class="btn btn--ghost" aria-label="切换明暗模式">☾</button>
+          </div>
+        </div>
+
+        <div class="detail__sidectrl">
+          <button id="backFromKnowledgeTreeBtn" class="btn btn--ghost">← 返回主页</button>
+        </div>
+
+        <nav class="sidebar__nav">
+          <div class="nav__group">
+            <div class="nav__title">知识树导航</div>
+            <ul class="nav__list">
+              <li>
+                <button class="nav__item is-active" data-section="tree">
+                  <span>知识树</span>
+                </button>
+              </li>
+              <li>
+                <button class="nav__item" data-section="roadmap">
+                  <span>学习路线</span>
+                </button>
+              </li>
+              <li>
+                <button class="nav__item" data-section="progress">
+                  <span>学习进度</span>
+                </button>
+              </li>
+            </ul>
+          </div>
+        </nav>
+      </aside>
+
+      <main class="content knowledge-tree-content">
+        <div class="knowledge-tree-container">
+          <!-- 进度概览卡片 -->
+          <div class="knowledge-tree-card" id="progressOverviewCard">
+            <h2 class="knowledge-tree-card__title">学习进度概览</h2>
+            <div id="progressOverview"></div>
+          </div>
+
+          <!-- 本周任务卡片 -->
+          <div class="knowledge-tree-card" id="weeklyTasksCard">
+            <h2 class="knowledge-tree-card__title">本周学习任务</h2>
+            <div id="weeklyTasks"></div>
+          </div>
+
+          <!-- 知识树主区域 -->
+          <div class="knowledge-tree-card knowledge-tree-card--main">
+            <div class="knowledge-tree-header">
+              <h1 class="knowledge-tree-title">AI 知识树</h1>
+              <div class="knowledge-tree-actions">
+                <button class="btn btn--ghost btn--small" id="addNodeBtn" style="display: none;">添加节点</button>
+                <button class="btn btn--ghost btn--small" id="refreshTreeBtn">刷新</button>
+              </div>
+            </div>
+            <div id="knowledgeTreeContainer" class="knowledge-tree-container__tree"></div>
+          </div>
+        </div>
+      </main>
+    </section>
+
+    <!-- 节点详情抽屉 -->
+    <div id="nodeDrawer" class="node-drawer">
+      <div class="node-drawer__content">
+        <div class="node-drawer__header">
+          <h2 id="nodeDrawerTitle" class="node-drawer__title">节点详情</h2>
+          <button id="nodeDrawerClose" class="node-drawer__close">×</button>
+        </div>
+        <div class="node-drawer__body">
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">类型</label>
+            <span id="nodeDrawerType" class="node-drawer__value"></span>
+          </div>
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">描述</label>
+            <p id="nodeDrawerDesc" class="node-drawer__value"></p>
+          </div>
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">预计学习时长</label>
+            <span id="nodeDrawerHours" class="node-drawer__value"></span>
+          </div>
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">完成进度</label>
+            <div class="node-drawer__progress">
+              <div class="node-drawer__progress-bar-wrapper">
+                <div class="node-drawer__progress-bar"></div>
+              </div>
+              <span id="nodeDrawerProgress" class="node-drawer__progress-text"></span>
+            </div>
+          </div>
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">状态</label>
+            <span id="nodeDrawerStatus" class="node-drawer__value"></span>
+          </div>
+          <div class="node-drawer__field">
+            <label class="node-drawer__label">子节点</label>
+            <div id="nodeDrawerChildren" class="node-drawer__children"></div>
+          </div>
+          <div id="nodeDrawerActions" class="node-drawer__actions"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 个人中心页面视图 -->
+    <section id="profile-view" class="view">
+      <main class="content profile-content profile-content--fullscreen">
+        <div class="profile-wrapper">
+          <!-- 导航栏 -->
+          <div class="profile-navigation">
+            <button class="back-btn" id="profileBackBtn">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m15 18-6-6 6-6"/>
+              </svg>
+              返回
+            </button>
+            <button class="btn btn--primary" id="profilePageEditBtn" style="margin-left: auto;">
+              <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+              </svg>
+              编辑个人主页
+            </button>
+          </div>
+
+          <!-- Hero 区域 -->
+          <div class="profile-hero" id="profileHero">
+            <div class="hero-content">
+              <div class="hero-left">
+                <div class="profile-avatar-hero">
+                  <img id="profileHeroAvatar" src="" alt="头像" />
+                  <span class="status-badge-hero" id="profileOnlineBadge" style="display: none;">
+                    <span class="status-dot"></span>
+                    在线
+                  </span>
+                </div>
+              </div>
+              <div class="hero-right">
+                <div class="profile-header">
+                  <div class="header-text">
+                    <h1 class="profile-name-hero" id="profileDisplayName">—</h1>
+                    <p class="profile-title" id="profileTitle">—</p>
+                    <div class="profile-meta">
+                      <span class="meta-item" id="profileInstitution">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                          <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+                        </svg>
+                        <span id="profileInstitutionText">—</span>
+                      </span>
+                      <span class="meta-item" id="profileLocation">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"></path>
+                          <circle cx="12" cy="10" r="3"></circle>
+                        </svg>
+                        <span id="profileLocationText">—</span>
+                      </span>
+                    </div>
+                  </div>
+                  <div class="header-action">
+                    <button class="btn btn--primary btn--large" id="collaborationBtn">发起合作</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- 主内容区 -->
+          <div class="profile-container">
+            <div class="profile-grid">
+              <!-- 左栏（侧边信息栏） -->
+              <div class="profile-sidebar">
+                <!-- 快速信息卡 -->
+                <div class="info-card">
+                  <h3 class="card-title">快速信息</h3>
+                  <div class="info-grid">
+                    <div class="info-box">
+                      <div class="info-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <circle cx="12" cy="12" r="10"></circle>
+                          <polyline points="12 6 12 12 16 14"></polyline>
+                        </svg>
+                      </div>
+                      <div class="info-text">
+                        <p class="info-label">可用时间</p>
+                        <p class="info-value" id="profileAvailability">—</p>
+                      </div>
+                    </div>
+                    <div class="info-box" id="profileResearchAreasBox">
+                      <div class="info-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                        </svg>
+                      </div>
+                      <div class="info-text">
+                        <p class="info-label">研究方向</p>
+                        <div class="info-tags" id="profileResearchTags"></div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- 技能/语言标签卡 -->
+                <div class="languages-card">
+                  <h3 class="card-title">技术栈</h3>
+                  <div class="language-tags" id="profileTechStack"></div>
+                </div>
+
+                <div class="languages-card">
+                  <h3 class="card-title">语言</h3>
+                  <div class="language-tags" id="profileLanguages"></div>
+                </div>
+              </div>
+
+              <!-- 右栏（主内容） -->
+              <div class="profile-main">
+                <!-- 关于卡片 -->
+                <div class="about-card">
+                  <div class="card-header">
+                    <div class="header-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"></path>
+                        <circle cx="9" cy="7" r="4"></circle>
+                        <path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"></path>
+                      </svg>
+                    </div>
+                    <h2 class="card-title-main">关于</h2>
+                  </div>
+                  <p class="about-text" id="profileShortBio">—</p>
+                </div>
+
+                <!-- 背景与经历卡片 -->
+                <div class="education-card">
+                  <div class="card-header">
+                    <div class="header-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M22 10v6M2 10l10-5 10 5-10 5z"></path>
+                        <path d="M6 12v5c3 3 9 3 12 0v-5"></path>
+                      </svg>
+                    </div>
+                    <h2 class="card-title-main">背景与经历</h2>
+                  </div>
+                  <p class="education-text" id="profileBackground">—</p>
+                </div>
+
+                <!-- 研究方向卡片 -->
+                <div class="specialties-card" id="profileResearchAreasCard">
+                  <div class="card-header">
+                    <div class="header-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon>
+                      </svg>
+                    </div>
+                    <h2 class="card-title-main">研究方向</h2>
+                  </div>
+                  <div class="specialties-grid" id="profileResearchGrid"></div>
+                </div>
+
+                <!-- 成果展示卡片 -->
+                <div class="education-card" id="profilePublicationsCard" style="display: none;">
+                  <div class="card-header">
+                    <div class="header-icon">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                        <polyline points="14 2 14 8 20 8"></polyline>
+                        <line x1="16" y1="13" x2="8" y2="13"></line>
+                        <line x1="16" y1="17" x2="8" y2="17"></line>
+                        <polyline points="10 9 9 9 8 9"></polyline>
+                      </svg>
+                    </div>
+                    <h2 class="card-title-main">成果展示</h2>
+                  </div>
+                  <div class="publications-list" id="profilePublicationsList"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </section>
+  </div>
+
+  <!-- 登录模态框 -->
+  <div id="loginModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content">
+      <button class="modal__close" id="closeLoginModal">×</button>
+      <h2 class="modal__title">选择登录角色</h2>
+      <div class="modal__roles">
+        <button class="role__card" data-role="enterprise">
+          <div class="role__icon">🏢</div>
+          <div class="role__name">企业</div>
+          <div class="role__desc">可出题、数据上传</div>
+        </button>
+        <button class="role__card" data-role="teacher">
+          <div class="role__icon">👨‍🏫</div>
+          <div class="role__name">高校教师</div>
+          <div class="role__desc">可出题、数据上传</div>
+        </button>
+        <button class="role__card" data-role="user">
+          <div class="role__icon">👤</div>
+          <div class="role__name">普通使用者</div>
+          <div class="role__desc">浏览与学习</div>
+        </button>
+        <button class="role__card" data-role="admin">
+          <div class="role__icon">⚙️</div>
+          <div class="role__name">管理员</div>
+          <div class="role__desc">审核题目、管理平台</div>
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 注册模态框 -->
+  <div id="registerModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--form">
+      <button class="modal__close" id="closeRegisterModal">×</button>
+      <h2 class="modal__title">注册账号</h2>
+      <form class="register__form" id="registerForm">
+        <div class="form__group">
+          <label for="registerUsername" class="form__label">用户名</label>
+          <input type="text" id="registerUsername" name="username" class="input input--full" placeholder="请输入用户名" autocomplete="username" required />
+        </div>
+        <div class="form__group">
+          <label for="registerEmail" class="form__label">邮箱</label>
+          <input type="email" id="registerEmail" name="email" class="input input--full" placeholder="请输入邮箱" autocomplete="email" required />
+        </div>
+        <div class="form__group">
+          <label for="registerPassword" class="form__label">密码</label>
+          <input type="password" id="registerPassword" name="password" class="input input--full" placeholder="请输入密码" autocomplete="new-password" required />
+        </div>
+        <div class="form__group">
+          <label for="registerPasswordConfirm" class="form__label">确认密码</label>
+          <input type="password" id="registerPasswordConfirm" name="passwordConfirm" class="input input--full" placeholder="请再次输入密码" autocomplete="new-password" required />
+        </div>
+        <div class="form__group">
+          <label for="registerRole" class="form__label">选择角色</label>
+          <select id="registerRole" name="role" class="input input--full" autocomplete="off" required>
+            <option value="">请选择角色</option>
+            <option value="enterprise">企业</option>
+            <option value="teacher">高校教师</option>
+            <option value="user">普通使用者</option>
+            <option value="admin">管理员</option>
+          </select>
+        </div>
+        <button type="submit" class="btn btn--primary btn--large" style="width: 100%; margin-top: 12px;">注册</button>
+        <div class="form__footer">
+          已有账号？<a href="#" id="switchToLogin">立即登录</a>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 功能入口（登录后显示） -->
+  <div class="feature-bar-trigger" id="featureBarTrigger" style="display: none;"></div>
+  <div id="featureBar" class="feature-bar" style="display: none;">
+      <div class="feature-bar__content">
+        <span class="feature-bar__user">当前角色：<span id="currentRole"></span></span>
+        <div class="feature-bar__actions">
+          <button id="profilePageBtn" class="btn btn--primary">个人中心</button>
+          <button id="createProblemBtn" class="btn btn--primary">出题</button>
+          <button id="uploadDataBtn" class="btn btn--primary">数据上传</button>
+          <button id="adminReviewBtn" class="btn btn--primary" style="display: none;">审核题目</button>
+          <button id="logoutBtn" class="btn btn--ghost">退出登录</button>
+        </div>
+      </div>
+  </div>
+
+  <!-- 小频道四步流程模态框 -->
+  <div id="channelsOnboardingModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--onboarding">
+      <button class="modal__close" id="closeChannelsOnboarding">×</button>
+      
+      <!-- 步骤一：团队名称 -->
+      <div class="onboarding-step" id="onboardingStep1">
+        <div class="onboarding-progress">第1步,共4步</div>
+        <h2 class="onboarding-title">你的团队名称是什么？</h2>
+        <p class="onboarding-hint">这将是你的团队名称，请选择你的团队可识别的形式。</p>
+        <label for="teamNameInput" class="sr-only">团队名称</label>
+        <input type="text" id="teamNameInput" name="teamName" class="onboarding-input" placeholder="例: Acme Marketing 或 Acme Co" autocomplete="organization" />
+        <button class="btn btn--primary btn--large onboarding-next" id="step1Next">下一步</button>
+      </div>
+
+      <!-- 步骤二：姓名和头像 -->
+      <div class="onboarding-step" id="onboardingStep2" style="display: none;">
+        <div class="onboarding-progress">第2步,共4步</div>
+        <h2 class="onboarding-title">你的姓名是什么？</h2>
+        <p class="onboarding-hint">添加你的姓名和个人档案照片有助于让团队成员更容易地认出你并与你联系。</p>
+        <label for="userNameInput" class="sr-only">你的姓名</label>
+        <input type="text" id="userNameInput" name="userName" class="onboarding-input" value="mingxuan wang" autocomplete="name" />
+        <div class="onboarding-photo-section">
+          <label for="avatarUpload" class="onboarding-photo-label">你的个人档案照片 (选填)</label>
+          <p class="onboarding-hint-small">帮助团队成员知道他们正在与正确的人聊天。</p>
+          <div class="onboarding-avatar-wrapper">
+            <div class="onboarding-avatar" id="userAvatar">
+              <span id="avatarInitial">m</span>
+            </div>
+            <button type="button" class="btn btn--ghost" id="editPhotoBtn">编辑照片</button>
+            <input type="file" id="avatarUpload" name="avatar" accept="image/*" style="display: none;" />
+          </div>
+        </div>
+        <button class="btn btn--primary btn--large onboarding-next" id="step2Next">下一步</button>
+      </div>
+
+      <!-- 步骤三：邀请团队成员 -->
+      <div class="onboarding-step" id="onboardingStep3" style="display: none;">
+        <div class="onboarding-progress">第3步,共4步</div>
+        <h2 class="onboarding-title" id="step3Title">还有谁在 <span class="team-name-highlight" id="teamNameDisplay">团队</span>？</h2>
+        <p class="onboarding-hint">通过电子邮件地址添加同事</p>
+        <label for="inviteEmailsInput" class="sr-only">邀请邮箱地址</label>
+        <textarea id="inviteEmailsInput" name="inviteEmails" class="onboarding-textarea" placeholder="例:ellis@gmail.com、maria@gmail.com" autocomplete="email"></textarea>
+        <p class="onboarding-hint-small">请注意，邀请会在30天后到期。你可以随时延长截止日期。</p>
+        
+        <!-- 生成邀请码区域 -->
+        <div class="invite-code-section">
+          <label for="inviteCodeDisplay" class="invite-code-label">生成邀请码</label>
+          <div class="invite-code-wrapper">
+            <input type="text" id="inviteCodeDisplay" name="inviteCode" class="invite-code-input" readonly value="" aria-label="邀请码" />
+            <button class="btn btn--primary" id="generateInviteCodeBtn">生成邀请码</button>
+            <button class="btn btn--ghost" id="copyInviteCodeBtn" style="display: none;">复制邀请码</button>
+          </div>
+        </div>
+
+        <div class="onboarding-actions">
+          <button class="btn btn--primary btn--large" id="step3Next">下一步</button>
+          <button class="btn btn--secondary btn--large" id="copyInviteLinkBtn">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M6.5 2H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V6.5L9.5 2H4a2 2 0 0 0-2 2z" stroke="currentColor" stroke-width="1.5"/><path d="M9.5 2v4.5H14" stroke="currentColor" stroke-width="1.5"/></svg>
+            复制邀请链接
+          </button>
+          <button class="btn btn--ghost" id="skipStep3Btn">跳过这一步</button>
+        </div>
+      </div>
+
+      <!-- 步骤四：欢迎加入团队 -->
+      <div class="onboarding-step onboarding-welcome" id="onboardingStep4" style="display: none;">
+        <div class="welcome-success-animation">
+          <div class="success-checkmark">✓</div>
+        </div>
+        <h1 class="welcome-title">欢迎来到你的第一个频道！</h1>
+        <div class="welcome-features-row">
+          <div class="welcome-feature-card">
+            <div class="feature-icon">📊</div>
+            <h3>运行项目</h3>
+            <p>管理项目进度，跟踪里程碑</p>
+          </div>
+          <div class="welcome-feature-card">
+            <div class="feature-icon">💬</div>
+            <h3>与团队成员聊天</h3>
+            <p>实时沟通，协作更高效</p>
+          </div>
+          <div class="welcome-feature-card">
+            <div class="feature-icon">📁</div>
+            <h3>共享文件</h3>
+            <p>上传和分享项目文件</p>
+          </div>
+        </div>
+        <button class="btn btn--primary btn--large" id="finishOnboardingBtn">开始使用</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 管理员审核模态框 -->
+  <div id="adminReviewModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--large">
+      <button class="modal__close" id="closeReviewModal">×</button>
+      <h2 class="modal__title">题目审核</h2>
+      <div id="reviewList" class="review-list">
+        <div class="review-empty">暂无待审核题目</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 文件查看模态框 -->
+  <div id="filesModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--large">
+      <button class="modal__close" id="closeFilesModal">×</button>
+      <h2 class="modal__title">Agent 输出文件</h2>
+      <div class="files-info">
+        <div class="files-path">
+          <strong>输出目录：</strong>
+          <code>./agent_output/</code>
+        </div>
+        <p class="files-desc">AI Agent 生成的代码文件将保存在此目录下，您可以在线预览或下载到本地</p>
+      </div>
+      <div class="files-list" id="filesList">
+        <!-- 文件列表将动态生成 -->
+      </div>
+    </div>
+  </div>
+
+  <!-- 合作弹窗模态框 -->
+  <div id="collaborationModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--form">
+      <button class="modal__close" id="closeCollaborationModal">×</button>
+      <h2 class="modal__title">发起合作</h2>
+      <form class="collaboration__form" id="collaborationForm">
+        <div class="form__group">
+          <label for="collaborationProjectType" class="form__label">项目类型 <span class="required">*</span></label>
+          <select id="collaborationProjectType" name="projectType" class="input input--full" required>
+            <option value="">请选择项目类型</option>
+            <option value="research">研究项目</option>
+            <option value="development">开发项目</option>
+            <option value="consulting">咨询服务</option>
+            <option value="internship">实习机会</option>
+            <option value="other">其他</option>
+          </select>
+        </div>
+        <div class="form__group">
+          <label for="collaborationTimeline" class="form__label">时间周期 <span class="required">*</span></label>
+          <select id="collaborationTimeline" name="timeline" class="input input--full" required>
+            <option value="">请选择时间周期</option>
+            <option value="1month">1个月</option>
+            <option value="3months">3个月</option>
+            <option value="6months">6个月</option>
+            <option value="1year">1年</option>
+            <option value="flexible">灵活安排</option>
+          </select>
+        </div>
+        <div class="form__group">
+          <label for="collaborationMessage" class="form__label">补充说明</label>
+          <textarea id="collaborationMessage" name="message" class="input input--full" rows="4" placeholder="请描述您的合作需求、期望和目标..."></textarea>
+        </div>
+        <div class="form__actions">
+          <button type="button" class="btn btn--ghost" id="cancelCollaborationBtn">取消</button>
+          <button type="submit" class="btn btn--primary">提交</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 个人中心模态框 -->
+  <div id="profileModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--profile">
+      <button class="modal__close" id="closeProfileModal">×</button>
+      <div class="profile-modal__header">
+        <div class="profile-modal__avatar" id="profileModalAvatar">你</div>
+        <div class="profile-modal__info">
+          <h2 class="profile-modal__name" id="profileModalName">个人中心</h2>
+          <div class="profile-modal__role" id="profileModalRole">已登录 · 研究者</div>
+        </div>
+      </div>
+      <div class="profile-modal__content">
+        <div class="profile-section">
+          <h3 class="profile-section__title">账户信息</h3>
+          <div class="profile-info">
+            <div class="profile-info__item">
+              <span class="profile-info__label">用户名</span>
+              <span class="profile-info__value" id="profileUsername">—</span>
+            </div>
+            <div class="profile-info__item">
+              <span class="profile-info__label">角色</span>
+              <span class="profile-info__value" id="profileRole">—</span>
+            </div>
+            <div class="profile-info__item">
+              <span class="profile-info__label">邮箱</span>
+              <span class="profile-info__value" id="profileEmail">—</span>
+            </div>
+          </div>
+        </div>
+        <div class="profile-section">
+          <h3 class="profile-section__title">操作</h3>
+          <div class="profile-actions">
+            <button class="profile-action__btn" id="profileEditBtn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M11.3333 2.00001C11.5084 1.8249 11.7163 1.68605 11.9444 1.59123C12.1726 1.49641 12.4167 1.44727 12.6667 1.44727C12.9167 1.44727 13.1607 1.49641 13.3889 1.59123C13.617 1.68605 13.8249 1.8249 14 2.00001C14.1751 2.17512 14.314 2.38301 14.4088 2.61112C14.5036 2.83923 14.5527 3.08334 14.5527 3.33334C14.5527 3.58334 14.5036 3.82745 14.4088 4.05556C14.314 4.28367 14.1751 4.49156 14 4.66668L5.00001 13.6667L1.33334 14.6667L2.33334 11L11.3333 2.00001Z" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>编辑资料</span>
+            </button>
+            <button class="profile-action__btn" id="profileLogoutBtn">
+              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <path d="M6 14H3.33333C2.89131 14 2.46738 13.8244 2.15482 13.5118C1.84226 13.1993 1.66667 12.7754 1.66667 12.3333V3.66668C1.66667 3.22465 1.84226 2.80073 2.15482 2.48817C2.46738 2.17561 2.89131 2.00001 3.33333 2.00001H6M10.6667 11.3333L14.6667 7.33334M14.6667 7.33334L10.6667 3.33334M14.6667 7.33334H6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/>
+              </svg>
+              <span>退出登录</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 个人主页编辑模态框 -->
+  <div id="profileEditModal" class="modal">
+    <div class="modal__overlay"></div>
+    <div class="modal__content modal__content--large">
+      <button class="modal__close" id="closeProfileEditModal">×</button>
+      <h2 class="modal__title">编辑个人主页</h2>
+      <form class="profile-edit__form" id="profileEditForm">
+        <!-- 基本信息 -->
+        <div class="form-section">
+          <h3 class="form-section__title">基本信息</h3>
+          <div class="form__group">
+            <label for="editDisplayName" class="form__label">显示名称 <span class="required">*</span></label>
+            <input type="text" id="editDisplayName" name="displayName" class="input input--full" required />
+          </div>
+          <div class="form__group">
+            <label for="editTitle" class="form__label">职称/职位</label>
+            <input type="text" id="editTitle" name="title" class="input input--full" />
+          </div>
+          <div class="form__group">
+            <label for="editInstitution" class="form__label">机构/学校</label>
+            <input type="text" id="editInstitution" name="institution" class="input input--full" />
+          </div>
+          <div class="form__group">
+            <label for="editLocation" class="form__label">位置</label>
+            <input type="text" id="editLocation" name="location" class="input input--full" />
+          </div>
+          <div class="form__group">
+            <label for="editAvatarUrl" class="form__label">头像URL</label>
+            <input type="url" id="editAvatarUrl" name="avatarUrl" class="input input--full" placeholder="https://..." />
+          </div>
+          <div class="form__group">
+            <label class="form__label">
+              <input type="checkbox" id="editIsOnline" name="isOnline" />
+              <span style="margin-left: 8px;">显示在线状态</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- 时间与可用性 -->
+        <div class="form-section">
+          <h3 class="form-section__title">时间与可用性</h3>
+          <div class="form__group">
+            <label for="editAvailability" class="form__label">可用时间</label>
+            <input type="text" id="editAvailability" name="availability" class="input input--full" placeholder="例如：周一至周五，9:00-18:00" />
+          </div>
+        </div>
+
+        <!-- 研究方向 -->
+        <div class="form-section">
+          <h3 class="form-section__title">研究方向</h3>
+          <div class="form__group">
+            <label for="editResearchAreas" class="form__label">研究方向（用逗号分隔）</label>
+            <input type="text" id="editResearchAreas" name="researchAreas" class="input input--full" placeholder="例如：机器学习, 自然语言处理, 计算机视觉" />
+            <small class="form__hint">多个研究方向请用逗号分隔</small>
+          </div>
+        </div>
+
+        <!-- 技术栈 -->
+        <div class="form-section">
+          <h3 class="form-section__title">技术栈</h3>
+          <div class="form__group">
+            <label for="editTechStack" class="form__label">技术栈（用逗号分隔）</label>
+            <input type="text" id="editTechStack" name="techStack" class="input input--full" placeholder="例如：Python, PyTorch, TensorFlow, React" />
+            <small class="form__hint">多个技术请用逗号分隔</small>
+          </div>
+        </div>
+
+        <!-- 语言 -->
+        <div class="form-section">
+          <h3 class="form-section__title">语言</h3>
+          <div class="form__group">
+            <label for="editLanguages" class="form__label">语言（用逗号分隔）</label>
+            <input type="text" id="editLanguages" name="languages" class="input input--full" placeholder="例如：中文, English, 日本語" />
+            <small class="form__hint">多个语言请用逗号分隔</small>
+          </div>
+        </div>
+
+        <!-- 简介 -->
+        <div class="form-section">
+          <h3 class="form-section__title">简介</h3>
+          <div class="form__group">
+            <label for="editShortBio" class="form__label">简短介绍</label>
+            <textarea id="editShortBio" name="shortBio" class="input input--full" rows="3" placeholder="1-2句话的简短介绍"></textarea>
+          </div>
+          <div class="form__group">
+            <label for="editBackground" class="form__label">背景与经历</label>
+            <textarea id="editBackground" name="background" class="input input--full" rows="6" placeholder="详细介绍您的背景、经历和研究方向"></textarea>
+          </div>
+        </div>
+
+        <!-- 成果展示（仅教师角色） -->
+        <div class="form-section" id="publicationsSection" style="display: none;">
+          <h3 class="form-section__title">成果展示</h3>
+          <div id="publicationsList" class="publications-edit-list"></div>
+          <button type="button" class="btn btn--ghost" id="addPublicationBtn" style="margin-top: 12px;">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            添加成果
+          </button>
+        </div>
+
+        <!-- 表单操作 -->
+        <div class="form__actions" style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 24px;">
+          <button type="button" class="btn btn--ghost" id="cancelProfileEditBtn">取消</button>
+          <button type="submit" class="btn btn--primary">保存</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- 划词工具栏 -->
+  <div id="textToolbar" class="text-toolbar" style="display: none;">
+    <button class="text-toolbar__btn" id="generateVideoBtn" title="生成讲解视频">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18" stroke="currentColor" stroke-width="2"/><path d="M10 8l6 4-6 4V8z" fill="currentColor"/></svg>
+      <span>生成讲解视频</span>
+    </button>
+    <div class="toolbar__divider"></div>
+    <button class="text-toolbar__btn" id="highlightText" title="高亮">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><rect x="3" y="3" width="18" height="18" stroke="currentColor" stroke-width="2" fill="none"/></svg>
+    </button>
+    <div class="highlight-colors" id="highlightColors" style="display: none;">
+      <div class="color-option" data-color="#fff59d" style="background: #fff59d;" title="黄色"></div>
+      <div class="color-option" data-color="#a5d6a7" style="background: #a5d6a7;" title="绿色"></div>
+      <div class="color-option" data-color="#90caf9" style="background: #90caf9;" title="蓝色"></div>
+      <div class="color-option" data-color="#ef9a9a" style="background: #ef9a9a;" title="红色"></div>
+    </div>
+    <button class="text-toolbar__btn" id="searchText" title="搜索">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="currentColor" stroke-width="2"/><path d="M16 16L21 21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <span>搜索</span>
+    </button>
+    <div class="search-options" id="searchOptions" style="display: none;">
+      <button data-type="paper">文献搜索</button>
+      <button data-type="research">科研搜索</button>
+      <button data-type="code">代码搜索</button>
+      <button data-type="cancel" class="search-option--cancel">取消</button>
+    </div>
+    <button class="text-toolbar__btn" id="underlineText" title="下划线">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M6 3v7a6 6 0 0 0 12 0V3M4 21h16" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <button class="text-toolbar__btn" id="strikeText" title="删除线">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M17.5 12h-11M4 7h16M8 21h8" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <div class="toolbar__divider"></div>
+    <button class="text-toolbar__btn text-toolbar__btn--ghost" id="clearFormatBtn" title="清除所有标注">清除标注</button>
+  </div>
+
+  <!-- 知识树模块 -->
+  <script src="knowledge-tree-data.js"></script>
+  <script src="knowledge-tree-core.js"></script>
+  <script src="knowledge-tree-ui.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
+
+

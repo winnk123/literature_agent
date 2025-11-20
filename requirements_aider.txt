@@ -1,0 +1,7 @@
+# Aider 代码智能体依赖
+flask>=2.3.0
+flask-cors>=4.0.0
+python-dotenv>=1.0.0
+requests>=2.31.0
+numpy>=1.24.0
+

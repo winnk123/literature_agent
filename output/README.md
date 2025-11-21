@@ -2,31 +2,31 @@
 
 ## 🎯 研究目标
 
-本任务旨在学习并搭建Vision Transformer（ViT）的网络结构，不涉及训练过程。重点在于理解其核心组件，如图像分块嵌入、多头自注意力机制、位置编码和Transformer块，并在PyTorch等框架中实现完整架构。该任务要求掌握现代视觉Transformer的基础原理与模块化设计。
+本研究任务聚焦于学习和搭建Vision Transformer（ViT）的网络结构，不涉及模型训练过程。核心挑战在于理解并实现其关键组件，包括图像分块嵌入、多头自注意力机制、位置编码以及标准Transformer块。该任务要求掌握深度学习中先进的架构设计思想，并具备将理论转化为代码的能力。
 
 ## 📦 项目包概览
 
 本项目包含 **5** 个独立的实现包，每个包对应一个具体的行动项：
 
-### 1. Package 1: Vision Transformer 基础模块 — 图像分块嵌入实现
+### 1. Package 1: Vision Transformer 图像分块嵌入模块实现
 
-本教程包专注于 Vision Transformer (ViT) 架构的第一步核心组件：图像分块嵌入（Patch Embedding）。我们将学习如何将二维图像划分为固定大小的图像块（patches），并通过线性投影将其转换为一维嵌入向量序列，从而为后续的 Transformer 编码器提供输入。这...
+本教程包专注于实现 Vision Transformer（ViT）架构中的第一个核心组件：图像分块嵌入（Patch Embedding）。我们将把输入的二维图像划分为固定大小的图像块（patches），并通过一个可学习的线性投影层将每个图像块映射为一维嵌入向量，最终形成一个扁平化的序列。这一过程是 ...
 
-### 2. Package 2: Vision Transformer 中的位置编码机制实现
+### 2. Package 2: Vision Transformer 多头自注意力机制实现
 
-本教程包聚焦于 Vision Transformer（ViT）架构中至关重要的位置编码模块。由于 Transformer 本身不具备感知输入序列顺序的能力，我们必须显式地注入空间位置信息，使模型能够理解图像分块之间的相对或绝对空间关系。我们将实现两种主流的位置编码方式：可学习的绝对位置编码和固定的正...
+本教程包专注于实现 Vision Transformer（ViT）架构中的核心组件——多头自注意力机制（Multi-Head Self-Attention, MHSA）。我们将从基础的缩放点积注意力单元开始，逐步构建完整的多头注意力模块，输入为来自图像分块嵌入步骤的序列化嵌入向量，输出为经过上下文感...
 
-### 3. Package 3: Vision Transformer 核心机制 — 多头自注意力模块实现
+### 3. Package 3: Vision Transformer 位置编码模块实现
 
-同学们好！在本教程包中，我们将聚焦于 Vision Transformer 的核心计算单元——多头自注意力机制（Multi-Head Self-Attention, MHSA）。该模块负责建模图像分块之间的全局依赖关系，是 ViT 实现长距离视觉理解的关键。我们将从最基础的缩放点积注意力开始，逐步构...
+同学们好！在本教程中，我们将聚焦于 Vision Transformer 架构中至关重要的**位置编码**（Position Encoding）模块。由于 Transformer 本身不具备对输入序列顺序的感知能力，我们必须显式地注入空间位置信息，以保留图像分块后的原始空间结构。本包将实现两种主流的...
 
-### 4. Package 4: Vision Transformer 核心构建块 — Transformer 编码器层实现
+### 4. Package 4: Vision Transformer 标准Transformer块实现
 
-同学们好！在本教程中，我们将聚焦于 Vision Transformer 架构中最关键的计算单元之一：**Transformer 编码器层**。该层通过将多头自注意力机制与前馈神经网络（FFN）有机结合，并引入残差连接和层归一化，实现了强大的特征表示能力。虽然我们已在前三讲分别实现了图像分块嵌入、位...
+同学们好！在本教程中，我们将聚焦于构建Vision Transformer（ViT）的核心计算单元——标准Transformer块。该模块将整合前序步骤中实现的多头自注意力机制与位置编码结果，并引入前馈神经网络（FFN）、残差连接和层归一化，形成一个完整的特征处理层。这是ViT架构中实现信息融合与非...
 
-### 5. Package 5: Vision Transformer 主干网络堆叠与完整模型构建
+### 5. Package 5: Vision Transformer 完整网络结构整合与前向传播实现
 
-本教程将指导你完成 Vision Transformer（ViT）架构的最后关键一步：堆叠多个 Transformer 编码器层以形成强大的主干特征提取器，并整合 class token 与 MLP 分类头，构建端到端的 ViT 模型。我们将基于前四讲已实现的模块（图像分块、位置编码、多头自注意力、...
+同学们好！在本包中，我们将把前四个步骤中独立实现的模块——图像分块嵌入、位置编码、标准Transformer块和多头自注意力——有机地组合成一个完整的Vision Transformer（ViT）模型。本步骤的核心任务是构建可调用的ViT主干网络类，并实现分类头对[CLS] token的处理逻辑，从...
 
 
 ## 🚀 快速开始

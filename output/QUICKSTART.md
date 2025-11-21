@@ -16,42 +16,26 @@ cd research-implementation
 
 ### 2. 按顺序设置每个包
 
-#### Package 1: Package 1: Vision Transformer 基础模块 — 图像分块嵌入实现
+#### Package 1: Package 1: Vision Transformer 图像分块嵌入模块实现
 
 ```bash
-cd packages/01-package-1-vision-transformer-基础模块-图像分块嵌入实现
+cd packages/01-package-1-vision-transformer-图像分块嵌入模块实现
 
 # 创建虚拟环境
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 
 # 安装依赖
-pip install torch==>=2.0.0 torchvision==>=0.15.0 pytest==>=7.0.0
+pip install torch==>=2.0.0 torchvision==>=0.15.0 numpy==>=1.21.0 ...
 
 # 查看完整说明
 cat README.md
 ```
 
-#### Package 2: Package 2: Vision Transformer 中的位置编码机制实现
+#### Package 2: Package 2: Vision Transformer 多头自注意力机制实现
 
 ```bash
-cd packages/02-package-2-vision-transformer-中的位置编码机制实现
-
-# 创建虚拟环境
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-
-# 安装依赖
-pip install torch==>=2.0.0 torchvision==>=0.15.0 pytest==>=7.0.0
-
-# 查看完整说明
-cat README.md
-```
-
-#### Package 3: Package 3: Vision Transformer 核心机制 — 多头自注意力模块实现
-
-```bash
-cd packages/03-package-3-vision-transformer-核心机制-多头自注意力模块实现
+cd packages/02-package-2-vision-transformer-多头自注意力机制实现
 
 # 创建虚拟环境
 python -m venv venv
@@ -64,33 +48,49 @@ pip install torch==>=2.0.0 numpy==>=1.21.0 pytest==>=7.0.0
 cat README.md
 ```
 
-#### Package 4: Package 4: Vision Transformer 核心构建块 — Transformer 编码器层实现
+#### Package 3: Package 3: Vision Transformer 位置编码模块实现
 
 ```bash
-cd packages/04-package-4-vision-transformer-核心构建块-transformer-编码器
+cd packages/03-package-3-vision-transformer-位置编码模块实现
 
 # 创建虚拟环境
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 
 # 安装依赖
-pip install torch==>=2.0.0 torchvision==>=0.15.0 pytest==>=7.0.0
+pip install torch==>=2.0.0 numpy==>=1.21.0 PyYAML==>=6.0 ...
 
 # 查看完整说明
 cat README.md
 ```
 
-#### Package 5: Package 5: Vision Transformer 主干网络堆叠与完整模型构建
+#### Package 4: Package 4: Vision Transformer 标准Transformer块实现
 
 ```bash
-cd packages/05-package-5-vision-transformer-主干网络堆叠与完整模型构建
+cd packages/04-package-4-vision-transformer-标准transformer块实现
 
 # 创建虚拟环境
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 
 # 安装依赖
-pip install torch==>=2.0.0 torchvision==>=0.15.0 PyYAML==>=6.0
+pip install torch==>=2.0.0 numpy==>=1.21.0
+
+# 查看完整说明
+cat README.md
+```
+
+#### Package 5: Package 5: Vision Transformer 完整网络结构整合与前向传播实现
+
+```bash
+cd packages/05-package-5-vision-transformer-完整网络结构整合与前向传播实现
+
+# 创建虚拟环境
+python -m venv venv
+source venv/bin/activate  # Linux/Mac
+
+# 安装依赖
+pip install torch==>=2.0.0 numpy==>=1.21.0
 
 # 查看完整说明
 cat README.md
@@ -100,92 +100,90 @@ cat README.md
 
 ### Package 1 示例
 
-创建一个 PatchEmbedding 模块，将 224x224 的 RGB 图像分块为 16x16 的 patches，并投影到 768 维嵌入空间
+用户希望使用默认参数（patch_size=16, embed_dim=768）处理一张 224x224 的 RGB 图像
 
 ```python
 from src.patch_embedding import PatchEmbedding
 import torch
 
-# 创建模块
-patch_embed = PatchEmbedding(img_size=224, patch_size=16, in_channels=3, embed_dim=768)
+# 创建模型实例
+model = PatchEmbedding(img_size=224, patch_size=16, in_chans=3, embed_dim=768)
 
-# 创建一个 batch size 为 2 的随机图像
-x = torch.randn(2, 3, 224, 224)
+# 创建一个模拟的输入图像 (batch_size=1, channels=3, height=224, width=224)
+x = torch.randn(1, 3, 224, 224)
 
 # 前向传播
-embedded_patches = patch_embed(x)
-print(embedded_patches.shape)  # 应输出 torch.Size([2, 196, 768])
+output = model(x)
+print(f"输出形状: {output.shape}")  # 应该是 torch.Size([1, 196, 768])
 ```
 
 详见: `packages/01-*/README.md`
 
 ### Package 2 示例
 
-初始化一个适用于 197 个图像块（14x14 + 1 cls token）、嵌入维度为 768 的位置编码模块。
+给定一个随机嵌入序列，计算其多头自注意力输出
 
 ```python
-from src.positional_encoding import PositionalEncoding
-
-# 创建可学习位置编码模块
-pe = PositionalEncoding(embed_dim=768, max_patches=197, learnable=True)
-
-# 假设我们有一个批次大小为 4 的嵌入张量
 import torch
-embeddings = torch.randn(4, 197, 768)
+from src.multi_head_self_attention import MultiHeadSelfAttention
 
-# 添加位置编码
-output = pe(embeddings)
-print(output.shape) # 应该输出 torch.Size([4, 197, 768])
+# 创建输入：batch_size=2, seq_len=197 (16x16 patches + cls token), embed_dim=768
+x = torch.randn(2, 197, 768)
+
+# 初始化多头注意力模块：embed_dim=768, num_heads=12
+mhsa = MultiHeadSelfAttention(embed_dim=768, num_heads=12)
+
+# 前向传播
+output = mhsa(x)
+print(f"Output shape: {output.shape}")  # 应输出 torch.Size([2, 197, 768])
 ```
 
 详见: `packages/02-*/README.md`
 
 ### Package 3 示例
 
-创建一个标准的多头自注意力模块并处理随机输入
+当你希望模型具备处理比训练时更长序列的潜力，或者想减少可训练参数时。
 
 ```python
-import torch
-from src.multi_head_self_attention import MultiHeadSelfAttention
+from src.sinusoidal_position_encoding import SinusoidalPositionEncoding
+from src.position_encoding_adder import PositionEncodingAdder
 
-# 创建模块：嵌入维度768，头数12
-mhsa = MultiHeadSelfAttention(embed_dim=768, num_heads=12)
+# 假设 patch_embeddings 形状为 [batch_size, seq_len, embed_dim]
+patch_embeddings = ...
 
-# 模拟输入：batch_size=2, seq_len=197 (16x16 patches + cls token), embed_dim=768
-x = torch.randn(2, 197, 768)
+# 创建正弦余弦编码器
+pos_encoder = SinusoidalPositionEncoding(embed_dim=768, max_len=512)
 
-# 前向传播
-output = mhsa(x)
-print(f"Output shape: {output.shape}")  # 应该输出 torch.Size([2, 197, 768])
+# 创建加法器并应用
+adder = PositionEncodingAdder(pos_encoder)
+encoded_embeddings = adder(patch_embeddings)
+
+print(encoded_embeddings.shape) # 应与输入 patch_embeddings 形状相同
 ```
 
 详见: `packages/03-*/README.md`
 
 ### Package 4 示例
 
-创建一个标准的 ViT-Base 配置的编码器层，并对随机输入进行前向传播。
+使用随机初始化的嵌入序列作为输入，通过一个Transformer块进行处理
 
 ```python
 import torch
-from src.transformer_encoder_layer import TransformerEncoderLayer
+from src.transformer_block import TransformerBlock
 
-# 设置参数
+# 假设嵌入维度为768，序列长度为197（16x16图像分块+cls token）
 embed_dim = 768
-num_heads = 12
-ffn_hidden_dim = 3072
+seq_len = 197
+batch_size = 4
 
-# 创建编码器层实例
-encoder_layer = TransformerEncoderLayer(
-    embed_dim=embed_dim,
-    num_heads=num_heads,
-    ffn_hidden_dim=ffn_hidden_dim
-)
+# 创建随机输入 (模拟来自step_3的带位置编码的嵌入)
+x = torch.randn(batch_size, seq_len, embed_dim)
 
-# 创建随机输入: [batch_size, seq_len, embed_dim]
-x = torch.randn(2, 197, embed_dim)  # 197 = 1 ([CLS]) + 14*14 (patches)
+# 初始化Transformer块
+transformer_block = TransformerBlock(embed_dim=embed_dim, num_heads=12, ff_dim=3072)
 
 # 前向传播
-output = encoder_layer(x)
+output = transformer_block(x)
 print(f"Input shape: {x.shape}")
 print(f"Output shape: {output.shape}")
 ```
@@ -194,30 +192,30 @@ print(f"Output shape: {output.shape}")
 
 ### Package 5 示例
 
-快速验证模型是否能正确构建
+创建一个小型ViT模型（用于CIFAR-10），输入随机图像张量，验证前向传播是否成功
 
 ```python
-from src.vision_transformer import VisionTransformer
 import torch
+from src.vision_transformer import VisionTransformer
 
-# 使用默认配置创建模型
+# 创建模型实例
 model = VisionTransformer(
-    img_size=224,
-    patch_size=16,
+    img_size=32,
+    patch_size=4,
     in_channels=3,
-    num_classes=1000,
-    embed_dim=768,
-    depth=12,  # 12层编码器
-    num_heads=12,
-    mlp_ratio=4.
+    num_classes=10,
+    embed_dim=128,
+    depth=4,
+    num_heads=4,
+    mlp_ratio=2.0
 )
 
-print(model)
+# 创建随机输入 (batch_size=2, channels=3, height=32, width=32)
+x = torch.randn(2, 3, 32, 32)
 
-# 创建一个假的输入张量
-x = torch.randn(1, 3, 224, 224)
+# 前向传播
 output = model(x)
-print(f"Output shape: {output.shape}")  # 应为 [1, 1000]
+print(f"Output shape: {output.shape}")  # 应为 [2, 10]
 ```
 
 详见: `packages/05-*/README.md`

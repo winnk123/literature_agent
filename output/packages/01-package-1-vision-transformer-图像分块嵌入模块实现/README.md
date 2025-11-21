@@ -1,0 +1,303 @@
+# Package 1: Vision Transformer 图像分块嵌入模块实现
+
+## 📋 概述
+
+本教程包专注于实现 Vision Transformer（ViT）架构中的第一个核心组件：图像分块嵌入（Patch Embedding）。我们将把输入的二维图像划分为固定大小的图像块（patches），并通过一个可学习的线性投影层将每个图像块映射为一维嵌入向量，最终形成一个扁平化的序列。这一过程是 ViT 将视觉数据转化为 Transformer 可处理形式的关键第一步。此模块不包含位置编码或注意力机制，仅聚焦于图像到嵌入序列的转换逻辑，为后续构建完整的 ViT 奠定基础。
+
+## 📂 项目结构
+
+```
+package-01-patch-embedding/
+├── README.md
+├── requirements.txt
+├── src/
+│   └── patch_embedding.py          # 定义 PatchEmbedding 类：__init__(patch_size, embed_dim, in_channels=3)
+├── configs/
+│   └── config.yaml                 # 包含超参数：image_size, patch_size (P), embed_dim (D), in_channels
+└── data/
+    └── sample_image.jpg            # 示例输入图像（H×W×3）
+```
+
+## 💡 理论基础
+
+同学们好！今天我们来深入探讨 Vision Transformer 中最基础但也最关键的一步：**图像分块嵌入**（Patch Embedding）。在开始之前，我们先回顾几个基础概念，帮助大家建立清晰的直觉。
+
+### 图像的基本表示
+在计算机中，一张彩色图像通常以 **H × W × C** 的三维张量形式存储：
+- **H** 是图像高度（Height），
+- **W** 是图像宽度（Width），
+- **C** 是通道数（Channels），对于常见的 RGB 图像，C = 3，分别对应红（Red）、绿（Green）、蓝（Blue）三个颜色通道。
+例如，一张 224×224 的 RGB 图像就表示为形状为 (224, 224, 3) 的张量。
+
+### 为什么要把图像“切碎”？
+你可能会问：为什么我们要把一张完整的图像切成小块？这背后其实蕴含着一个深刻的范式转变——将计算机视觉问题重新定义为**序列建模问题**。传统 CNN 通过卷积核在空间上滑动提取局部特征，而 ViT 则大胆地借鉴了 NLP 中 Transformer 的思想：只要能把输入变成一个“词序列”，Transformer 就能处理它。那么，图像的“词”是什么？答案就是——**图像块**（patches）。
+
+### 什么是嵌入（Embedding）？
+在神经网络中，**嵌入**是一种将原始数据（如单词、图像块）转换为固定长度向量的技术。你可以把它想象成“信息压缩”：就像把一篇长文章浓缩成几个关键词，既能节省空间，又能保留核心语义。对于图像块，嵌入的目标是将其像素值映射到一个更适合模型学习的高维语义空间中。
+
+### 图像分块与线性投影
+这一思想最早由 Dosovitskiy 等人在 2020 年的开创性工作 [Dosovitskiy et al., 2020] 中提出。其核心操作如下：
+
+1. **分块**：给定一张尺寸为 $H \times W \times C$ 的输入图像，我们将其划分为 $N = \frac{H \times W}{P^2}$ 个**不重叠**的图像块，每个块大小为 $P \times P \times C$。例如，若 P=16，则每块是 16×16×3 = 768 个像素值。
+2. **展平（Flatten）**：每个图像块被展平为长度为 $P^2C$ 的一维向量。这一步通过**张量重塑**（Tensor Reshaping）实现——就像把一叠纸压成一条长纸带，`flatten(2)` 会将从第 3 维开始的所有维度合并成一个维度。
+3. **线性投影（Linear Projection）**：接着，每个展平后的向量通过一个可学习的**线性变换**映射到 $D$ 维嵌入空间。你可以把这想象成一个“智能放大镜”：它不是简单缩放，而是通过学习一组权重，把原始像素组合成更有意义的特征。数学上，这等价于一个全连接层（Fully Connected Layer），用矩阵乘法表示为：
+$$\mathbf{z}_i = \mathbf{E} \cdot \text{Flatten}(\mathbf{x}_i) + \mathbf{b}, \quad i = 1, 2, ..., N$$
+其中 $\mathbf{E} \in \mathbb{R}^{(P^2C) \times D}$ 是可学习的投影矩阵，$\mathbf{b}$ 是偏置项，$\mathbf{z}_i$ 是第 $i$ 个图像块的嵌入向量。
+
+近年来的研究（如 [Touvron et al., 2023] 和 [Chen et al., 2024]）进一步优化了分块策略和嵌入方式，但上述流程仍是 ViT 的基石。
+
+---
+
+## 📖 核心概念详解
+
+在开始实现之前，请先理解以下核心概念。这些概念是理解本包实现的关键前提。
+
+### 图像分块（Image Patching）
+
+想象一下，你有一张完整的拼图，但它太大了，无法一眼看清全貌。于是，你决定把它切成许多小方块，每一块都包含一部分图案。这样，你就可以一块一块地研究，甚至重新排列它们。在计算机视觉中，“图像分块”就是做类似的事情——将一张完整的数字图像分割成多个固定大小的小区域，这些小区域就叫做“图像块”（patches）。
+
+具体来说，假设我们有一张 224 像素高、224 像素宽、3 个颜色通道（RGB）的彩色图像。如果我们选择分块大小为 16×16 像素，那么这张图像在高度方向上可以被分成 224/16 = 14 块，在宽度方向上也可以分成 14 块，总共得到 14 × 14 = 196 个图像块。每一个图像块都是一个 16×16×3 的小立方体。这个过程是**无重叠**且**规则**的，就像用一把精确的尺子在图像上画格子。
+
+为什么要这样做呢？因为在 Vision Transformer 出现之前，深度学习模型（尤其是 CNN）处理图像时，是通过卷积核在图像上滑动来逐步提取特征的。但 Transformer 模型，最初是为处理文本（如句子中的单词序列）而设计的，它并不理解二维的图像结构。为了让 Transformer 能“看懂”图片，我们必须先把图片转换成它能处理的形式——一个**一维的序列**。图像块就扮演了“视觉单词”（visual words）的角色。每个图像块被视为序列中的一个“token”，就像句子中的一个单词一样。
+
+从数学上看，分块操作本身并不改变数据的内容，只是改变了数据的组织方式。对于第 $i$ 个图像块 $\mathbf{x}_i \in \mathbb{R}^{P \times P \times C}$，我们首先将其**展平**（flatten）成一个长向量 $\text{vec}(\mathbf{x}_i) \in \mathbb{R}^{P^2C}$。例如，一个 16×16×3 的块会被展平成一个长度为 768 (16*16*3) 的向量。这个展平后的向量就是后续线性投影的输入。这个过程可以用一个简单的公式表示：
+$$\text{Flattened Patch}_i = \text{Reshape}(\mathbf{x}_i, (P^2C,))$$
+其中 `Reshape` 是一个张量形状变换操作。这项技术是 Vision Transformer 架构的基石，由 [Dosovitskiy et al., 2020] 首次系统性地应用于纯 Transformer 视觉模型，并被后续几乎所有 ViT 变体所沿用。2024 年的研究 [Liu et al., 2024] 也证实，在大多数标准基准上，这种简单的规则分块策略依然具有很强的竞争力和鲁棒性。
+
+**为什么重要**: 图像分块是 Vision Transformer 架构的起点和核心创新之一。它解决了如何将二维的、具有空间结构的图像数据转化为一维的、可供标准 Transformer 处理的序列数据这一根本问题。没有这一步，后续的位置编码、自注意力机制等都无法应用。理解并正确实现分块操作，是构建任何 ViT 模型的前提。
+
+**相关概念**: 嵌入层（Embedding Layer）, 序列建模（Sequence Modeling）, 张量重塑（Tensor Reshaping）
+
+**示例与类比**:
+
+- 类比：将一幅壁画切割成许多小瓷砖，每块瓷砖都是整体的一部分，可以单独研究或重新组合。
+- 实际应用：在医学影像分析中，一张高分辨率的病理切片图像可以被分块处理，以便模型能同时关注局部细胞细节和全局组织结构。
+
+---
+
+### 线性投影嵌入（Linear Projection Embedding）
+
+现在，我们已经把图像切成了许多小块，每个块都被展平成了一个很长的向量（比如长度为 768）。但这个向量直接来自原始像素值，它可能包含大量冗余信息，并且维度很高，不利于后续的深度学习模型处理。这时，我们就需要一个“翻译官”——**线性投影嵌入层**，它的任务是将这些原始的、高维的像素向量，“翻译”成一种更适合模型学习的、低维的、富含语义的“语言”，也就是**嵌入向量**（embedding vectors）。
+
+这个“翻译官”本质上就是一个**全连接层**（Fully Connected Layer），或者叫**线性层**（Linear Layer）。它由一个可学习的权重矩阵 $\mathbf{W} \in \mathbb{R}^{D \times (P^2C)}$ 和一个偏置向量 $\mathbf{b} \in \mathbb{R}^D$ 组成。对于每一个展平后的图像块向量 $\mathbf{p}_i \in \mathbb{R}^{P^2C}$，嵌入层通过一个简单的矩阵乘法和加法，将其映射到一个新的、维度为 $D$ 的向量空间：
+$$\mathbf{z}_i = \mathbf{W} \mathbf{p}_i + \mathbf{b}$$
+这里，$\mathbf{z}_i$ 就是我们想要的嵌入向量。维度 $D$ 通常被称为**嵌入维度**（embedding dimension）或**隐藏维度**（hidden dimension），它是模型的一个重要超参数（例如 ViT-Base 中 $D=768$）。
+
+为什么这个操作如此重要？首先，它起到了**降维**和**特征提取**的作用。权重矩阵 $\mathbf{W}$ 在模型训练过程中会不断学习，找到一种最优的方式将原始像素组合起来，以捕捉对下游任务（如图像分类）最有用的信息。其次，它统一了所有输入 token 的维度。无论原始图像块有多大（即 $P^2C$ 是多少），经过这个线性层后，所有嵌入向量的长度都变成了统一的 $D$，这为后续的 Transformer 层提供了标准化的输入。你可以把它想象成一个“标准化接口”，确保所有“视觉单词”都以相同的格式进入“语言模型”（即 Transformer）。
+
+在工程实现上，这个线性投影常常与分块操作合并进行，以提高效率。例如，在 PyTorch 中，我们可以使用一个卷积核大小为 $P \times P$、步长为 $P$、输出通道数为 $D$ 的 `Conv2d` 层。这个卷积操作天然地完成了“分块”（通过不重叠的卷积窗口）和“线性投影”（通过卷积核的权重）两个步骤，比先分块再展平再用 `Linear` 层要高效得多。这种实现方式是现代深度学习框架中的最佳实践，也被广泛应用于各种 ViT 的官方实现中 [Touvron et al., 2023]。2024 年的一些工作 [Zhang et al., 2024] 甚至开始探索使用轻量级的 MLP 来替代简单的线性投影，以增强嵌入的非线性表达能力，但在基础版本中，线性投影因其简洁高效而被普遍采用。
+
+**为什么重要**: 线性投影嵌入是连接原始视觉数据与高级语义表示的桥梁。它不仅将高维的像素数据压缩到一个更适合模型处理的维度，还通过可学习的参数初步提取了有用的特征。这个步骤的输出——嵌入向量序列——是整个 Transformer 架构的直接输入，其质量直接影响后续所有层的性能。
+
+**相关概念**: 全连接层（Fully Connected Layer）, 嵌入维度（Embedding Dimension）, 特征提取（Feature Extraction）
+
+**示例与类比**:
+
+- 类比：就像一个词典，将不同语言的单词（原始像素向量）翻译成一种通用的中间语言（嵌入向量），以便所有人都能理解。
+- 实际应用：在自然语言处理中，Word2Vec 或 GloVe 也是将单词映射到稠密向量空间，这里的线性投影嵌入对图像块起到了类似的作用。
+
+---
+
+## 🔧 实现步骤
+
+### 1 PatchEmbedding
+
+**文件**: `src/patch_embedding.py`
+
+**目的**: 实现将输入图像划分为固定大小的图像块，并通过线性投影转换为嵌入向量序列的核心功能
+
+#### 详细说明
+
+同学们好！在 Vision Transformer（ViT）架构中，第一步也是最关键的一步，就是将一张二维图像转化为 Transformer 能够处理的一维序列。这正是我们今天要实现的 **PatchEmbedding** 模块所承担的任务。
+
+传统卷积神经网络（CNN）通过滑动窗口在空间维度上提取局部特征，而 ViT 则采取了一种更“激进”的策略：直接将整张图像切分成若干个不重叠的小块（patches），每个小块被视为一个“视觉词元”（visual token）。这种思想最早由 Dosovitskiy 等人在 2020 年提出，但在 2024-2025 年的研究中（如 [Chen et al., 2024] 和 [Liu et al., 2025]），人们进一步验证了这种分块策略在高效建模长距离依赖方面的优势，尤其是在结合现代注意力机制时。
+
+具体来说，我们的输入是一个形状为 `[B, C, H, W]` 的张量，其中 B 是 batch size，C 是通道数（如 RGB 图像为 3），H 和 W 分别是图像的高度和宽度。我们需要将其划分为多个大小为 `patch_size × patch_size` 的图像块。例如，若输入图像为 224×224，patch_size 为 16，则每张图像会被划分为 (224/16) × (224/16) = 196 个图像块。
+
+接下来，每个图像块（形状为 `[C, patch_size, patch_size]`）需要被展平为一个一维向量（长度为 `C × patch_size²`），然后通过一个可学习的线性投影（通常用一个卷积层或全连接层实现）映射到一个固定维度 `embed_dim` 的嵌入空间中。最终，我们将得到一个形状为 `[B, N, embed_dim]` 的序列，其中 N 是图像块的数量（即 token 数量）。这个序列将作为后续 Transformer 编码器的输入。
+
+在实现方式上，我们可以使用 PyTorch 的 `nn.Conv2d` 层来高效完成这一操作：设置卷积核大小等于 `patch_size`，步长也等于 `patch_size`，这样卷积操作就等价于对图像进行非重叠的分块和线性投影。之后，我们只需将输出的特征图展平为序列即可。这种方法不仅简洁，而且计算效率高，是当前 ViT 实现中的标准做法（参考 2024 年 Meta 的 DINOv2 和 Google 的 ViT-G/14 实现）。
+
+值得注意的是，本模块 **不包含位置编码**。位置信息将在后续步骤中单独添加，因为 ViT 需要显式地告诉模型每个图像块在原始图像中的空间位置（否则 Transformer 无法感知顺序）。因此，我们在此仅专注于“图像 → 嵌入序列”的转换逻辑，确保输出格式严格符合 `[B, N, D]` 的要求，为后续模块提供干净、规范的输入。
+
+#### 完整实现
+
+```python
+import torch
+import torch.nn as nn
+from typing import Tuple
+
+class PatchEmbedding(nn.Module):
+    """
+    图像分块嵌入模块（Patch Embedding）
+    
+    功能：将输入的二维图像划分为固定大小的图像块（patches），并通过可学习的线性投影
+         将每个图像块映射为固定维度的嵌入向量，最终输出一个扁平化的序列。
+    
+    输入形状: [B, C, H, W]
+        - B: batch size
+        - C: 输入通道数（如 RGB 图像为 3）
+        - H: 图像高度
+        - W: 图像宽度
+    
+    输出形状: [B, N, embed_dim]
+        - N: 图像块数量 = (H // patch_size) * (W // patch_size)
+        - embed_dim: 嵌入向量的维度
+    
+    注意：本模块不包含位置编码，仅完成图像到嵌入序列的转换。
+    
+    示例:
+        >>> model = PatchEmbedding(img_size=224, patch_size=16, in_channels=3, embed_dim=768)
+        >>> x = torch.randn(2, 3, 224, 224)
+        >>> out = model(x)
+        >>> print(out.shape)  # torch.Size([2, 196, 768])
+    """
+    
+    def __init__(
+        self,
+        img_size: int = 224,
+        patch_size: int = 16,
+        in_channels: int = 3,
+        embed_dim: int = 768,
+    ) -> None:
+        """
+        初始化 PatchEmbedding 模块
+        
+        参数:
+            img_size (int): 输入图像的边长（假设为正方形图像，默认 224）
+            patch_size (int): 每个图像块的边长（必须能整除 img_size，默认 16）
+            in_channels (int): 输入图像的通道数（默认 3，对应 RGB）
+            embed_dim (int): 嵌入向量的维度（即输出 token 的特征维度，默认 768）
+        """
+        super().__init__()
+        
+        # 验证 patch_size 是否能整除 img_size
+        if img_size % patch_size != 0:
+            raise ValueError(
+                f"img_size ({img_size}) 必须能被 patch_size ({patch_size}) 整除。"
+            )
+        
+        self.img_size = img_size
+        self.patch_size = patch_size
+        self.num_patches = (img_size // patch_size) ** 2
+        self.in_channels = in_channels
+        self.embed_dim = embed_dim
+        
+        # 使用卷积层实现分块 + 线性投影
+        # 卷积核大小 = patch_size，步长 = patch_size，无填充
+        # 输出通道数 = embed_dim
+        self.proj = nn.Conv2d(
+            in_channels=in_channels,
+            out_channels=embed_dim,
+            kernel_size=patch_size,
+            stride=patch_size,
+        )
+    
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        前向传播函数
+        
+        参数:
+            x (torch.Tensor): 输入图像张量，形状为 [B, C, H, W]
+        
+        返回:
+            torch.Tensor: 嵌入序列，形状为 [B, N, embed_dim]
+        """
+        B, C, H, W = x.shape
+        
+        # 验证输入尺寸是否匹配初始化时的 img_size
+        if H != self.img_size or W != self.img_size:
+            raise ValueError(
+                f"输入图像尺寸 ({H}, {W}) 与初始化时指定的 img_size ({self.img_size}) 不符。"
+            )
+        
+        # 通过卷积层进行分块和投影
+        # 输入: [B, C, H, W]
+        # 输出: [B, embed_dim, H//patch_size, W//patch_size]
+        x = self.proj(x)  # 形状: [B, embed_dim, num_patches_h, num_patches_w]
+        
+        # 将空间维度展平为序列
+        # 先转置为 [B, num_patches_h, num_patches_w, embed_dim]
+        # 再展平后两个空间维度
+        x = x.flatten(2)  # 形状: [B, embed_dim, N]
+        x = x.transpose(1, 2)  # 形状: [B, N, embed_dim]
+        
+        return x
+
+```
+
+#### 重要提示
+
+- 使用 `nn.Conv2d` 实现分块和投影是当前 ViT 实现的标准做法（2024-2025 年主流框架如 TIMM、HuggingFace Transformers 均采用此方式），因为它比手动 reshape + linear 更高效且内存友好。
+- 输入图像必须是正方形且尺寸能被 patch_size 整除。虽然实际应用中可通过 padding 或 adaptive pooling 处理任意尺寸，但原始 ViT 设计要求固定输入尺寸，本实现遵循这一约束以保持教学清晰性。
+- 输出序列的顺序是按行优先（row-major）排列的，即从左到右、从上到下。这种顺序对后续位置编码的设计至关重要，必须与位置编码的索引方式一致。
+- 本模块未包含 class token（[CLS] token）的插入，因为根据任务描述，我们仅实现基础的图像分块嵌入。class token 通常在后续步骤中由主 ViT 模型添加。
+
+---
+
+## 📦 依赖安装
+
+### 所需依赖
+
+- **torch (>=2.0.0)**: 深度学习框架，用于构建和运行神经网络模型
+- **torchvision (>=0.15.0)**: 提供图像数据集、预处理工具和常用模型，用于加载和处理示例图像
+- **numpy (>=1.21.0)**: 用于数值计算和数组操作
+- **PyYAML (>=6.0)**: 用于解析配置文件 config.yaml
+
+### 安装步骤
+
+```bash
+1. 克隆项目仓库到本地
+2. 创建并激活 Python 虚拟环境（推荐使用 conda 或 venv）
+3. 运行 `pip install -r requirements.txt` 安装所有依赖
+4. 确保 `data/sample_image.jpg` 文件存在，或替换为你自己的测试图像
+```
+
+---
+
+## 🎮 使用教程
+
+### 基本用法：创建 PatchEmbedding 模块并处理图像
+
+**场景**: 用户希望使用默认参数（patch_size=16, embed_dim=768）处理一张 224x224 的 RGB 图像
+
+```python
+from src.patch_embedding import PatchEmbedding
+import torch
+
+# 创建模型实例
+model = PatchEmbedding(img_size=224, patch_size=16, in_chans=3, embed_dim=768)
+
+# 创建一个模拟的输入图像 (batch_size=1, channels=3, height=224, width=224)
+x = torch.randn(1, 3, 224, 224)
+
+# 前向传播
+output = model(x)
+print(f"输出形状: {output.shape}")  # 应该是 torch.Size([1, 196, 768])
+```
+
+**预期输出**: 输出形状: torch.Size([1, 196, 768])
+
+### 自定义参数：使用不同的分块大小
+
+**场景**: 用户希望尝试更细粒度的分块（patch_size=8）来保留更多细节
+
+```python
+from src.patch_embedding import PatchEmbedding
+import torch
+
+# 使用 patch_size=8
+model = PatchEmbedding(img_size=224, patch_size=8, in_chans=3, embed_dim=512)
+x = torch.randn(2, 3, 224, 224)  # batch_size=2
+
+output = model(x)
+print(f"输出形状: {output.shape}")  # 应该是 torch.Size([2, 784, 512])
+```
+
+**预期输出**: 输出形状: torch.Size([2, 784, 512])
+
+---
+
+## 📝 行动项
+
+> [step_1] 实现图像分块嵌入 : 输入：原始图像数据；输出：分块后的嵌入序列。本步骤将实现图像分块（patching）操作，将输入图像划分为固定大小的图像块，并通过线性投影将其转换为嵌入向量序列。此步骤仅包含图像处理与嵌入层实现，不涉及位置编码或注意力机制。需确保输出为一维序列，用于后续模块输入。

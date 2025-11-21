@@ -1477,6 +1477,11 @@ As Dr. Chen, provide a **COMPREHENSIVE and DETAILED** explanation of the technic
   * **CRITICAL**: Every formula MUST start with `$` or `$$` and end with `$` or `$$` respectively. Do NOT forget the closing dollar signs.
   * If the theory involves mathematical concepts, algorithms, or models, you MUST include the relevant formulas, equations, or mathematical expressions.
   * Explain what each symbol means and how the formula is used in practice.
+  * **Verification Requirement**: 在输出前**逐条检查**每一个公式，确保：
+    - 仅使用合法的 LaTeX 运算符（例如使用 `\\in` 而不是 `\\[` 表示集合关系）
+    - `$...$` / `$$...$$` 成对出现，不存在遗漏
+    - 没有混入 Markdown 语法或中文标点到公式分隔符内部
+    - 公式在 MathJax 中能正确渲染（思考是否存在未闭合的括号、转义符等）
 - **Writing style**: Write as Dr. Chen would - with enthusiasm, clarity, and a genuine desire to help learners understand
 - **Focus on UNIQUE theories for this step** - See the "Avoid Duplicate Theoretical Foundation" section above:
   * If a theory was already explained in a previous package, **briefly reference it** (e.g., "如 Package X 中所述，[理论名] 已经在之前包中详细讲解...") instead of repeating the full explanation
@@ -1522,6 +1527,7 @@ As Dr. Chen, provide **clear and focused** explanations of key concepts that are
       - **Display formulas** (centered): Use `$$公式内容$$` format, e.g., `$$\\mathcal{{L}} = \\frac{{1}}{{N}}\\sum_{{i=1}}^{{N}} L(y_i, \\hat{{y}}_i)$$`
       - **CRITICAL**: Every formula MUST start and end with dollar signs (`$` or `$$`). Never forget the closing dollar signs.
       - Explain clearly what each symbol means and how the formula is used
+      - **Verification Requirement**: 输出前逐条核查所有公式：仅使用正确的 LaTeX 命令（如 `\\in` 而不是 `\\[`）、确保 `$`/`$$` 成对、没有未闭合的括号或多余转义，确认在 MathJax 中可正常渲染
     * Explain why it matters and where it's used - Give context and real-world relevance
     * Use analogies and real-world examples to make it concrete - At least 1-2 different analogies/examples per concept
     * Break down complex ideas into smaller, digestible parts - Each paragraph should build on the previous one
@@ -4932,6 +4938,8 @@ You need to revise ONLY the following field(s): {', '.join(fields_to_revise)}
 
 {chr(10).join(issues_text)}
 
+**STRICT PROHIBITION / 严格禁止**: 在修改后的内容中 **绝对不要** 提及“修改意见”“审稿人”“issue”“comment”等字样，也不要引用任何编号（例如“修改意见 #9”）。生成的文本必须面向学习者，好像这些审稿记录从未存在。
+
 ---
 
 # Your Revision Task
@@ -5063,6 +5071,8 @@ All code must remain COMPLETE and RUNNABLE (no placeholders).
 You need to revise ONLY the following field(s): {', '.join(fields_to_revise)}
 
 {chr(10).join(issues_text)}
+
+**STRICT PROHIBITION / 严格禁止**: 在所有修改后的内容中 **绝对不要** 出现“修改意见”“审稿人”“issue”“comment”等字样，也不要引用任何编号（例如“修改意见 #9”）。输出必须面向最终读者，仿佛这些审稿记录从未存在。
 
 ---
 

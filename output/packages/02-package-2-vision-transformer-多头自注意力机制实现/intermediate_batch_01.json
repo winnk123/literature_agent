@@ -1,0 +1,101 @@
+{
+  "package": {
+    "package_title": "Package 2: Vision Transformer 多头自注意力机制实现",
+    "overview": "本教程包专注于实现 Vision Transformer（ViT）架构中的核心组件——多头自注意力机制（Multi-Head Self-Attention, MHSA）。我们将从基础的缩放点积注意力单元开始，逐步构建完整的多头注意力模块，输入为来自图像分块嵌入步骤的序列化嵌入向量，输出为经过上下文感知增强的表示。该模块不包含位置编码或前馈网络，仅聚焦于注意力计算本身，是理解 ViT 如何建模全局依赖关系的关键一步。通过本包的学习，你将掌握 2024 年主流视觉 Transformer 中注意力机制的标准化实现方式。",
+    "project_structure": "package-02-vit-multihead-attention/\n├── README.md\n├── requirements.txt\n├── src/\n│   ├── scaled_dot_product_attention.py\n│   └── multi_head_self_attention.py\n└── tests/\n    ├── test_scaled_dot_product_attention.py\n    └── test_multi_head_self_attention.py",
+    "theoretical_foundation": "同学们好！今天我们深入探讨 Vision Transformer 的“大脑”——**多头自注意力机制**。如果说图像分块嵌入是把图片切成单词，那么多头注意力就是让这些“单词”彼此对话、理解上下文的过程。这个机制最早由 Vaswani 等人在 2017 年提出 [Vaswani et al., 2017]，但直到 2020 年 Dosovitskiy 等人将其成功应用于纯视觉任务 [Dosovitskiy et al., 2020]，才真正引爆了视觉领域的 Transformer 革命。而到了 2024 年，尽管出现了如 FlashAttention-3 [Dao et al., 2024] 等高效变体，标准多头自注意力仍是理解所有先进架构的基石。\n\n多头自注意力的核心思想是：**允许模型在不同表示子空间中同时关注输入序列的不同部分**。具体来说，给定一个输入嵌入序列 $X \\\\[ \\mathbb{R}^{n \\times d}$（其中 $n$ 是 token 数量，$d$ 是嵌入维度），我们首先通过三个可学习的线性变换分别生成查询（Query）、键（Key）和值（Value）矩阵：\n$$Q = XW_Q, \\quad K = XW_K, \\quad V = XW_V$$\n其中 $W_Q, W_K, W_V \\\\[ \\mathbb{R}^{d \\times d_k}$ 是投影权重（通常 $d_k = d / h$，$h$ 为头数）。这一步的关键在于，每个头都拥有独立的参数，从而能捕捉不同的语义关系。\n\n接下来是**缩放点积注意力**（Scaled Dot-Product Attention）的计算。对于单个头，注意力权重通过以下公式计算：\n$$\\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V$$\n这里的缩放因子 $\\sqrt{d_k}$ 至关重要——当 $d_k$ 较大时，点积结果的方差会增大，导致 softmax 函数进入梯度极小的饱和区 [Vaswani et al., 2017]。缩放操作有效缓解了这一问题，确保梯度稳定。你可以把它想象成调节麦克风音量：如果不缩放，某些“声音”（注意力分数）会过大，淹没其他信号。\n\n多头机制则将上述过程并行执行 $h$ 次，得到 $h$ 个输出矩阵 $[\\text{head}_1, \\dots, \\text{head}_h]$，然后将它们拼接起来并通过一个线性层融合：\n$$\\text{MultiHead}(Q, K, V) = \\text{Concat}(\\text{head}_1, \\dots, \\text{head}_h)W_O$$\n其中 $W_O \\\\[ \\mathbb{R}^{hd_v \\times d}$ 是输出投影矩阵。这种设计使得模型能够同时关注局部细节（如边缘、纹理）和全局结构（如物体布局），正如 2024 年最新综述所强调的，多头机制是 Transformer 泛化能力的关键来源 [Tay et al., 2024]。\n\n为什么我们在此步骤中**不包含位置编码**？因为如 Package 1 所述，位置信息将在后续步骤中以可学习向量形式加到嵌入上。注意力机制本身是**排列不变**（permutation-invariant）的——它只关心 token 之间的相对关系，而不关心它们的绝对顺序。因此，将位置编码与注意力解耦，既符合模块化设计原则，也便于后续替换不同的位置编码策略（如 2024 年流行的 RoPE 或 ALiBi）。\n\n最后，值得注意的是，尽管近年来出现了稀疏注意力、线性注意力等高效替代方案，但标准多头自注意力因其**表达能力强、训练稳定**，仍是大多数 ViT 变体的默认选择。2024 年的实证研究表明，在中小规模数据集上，精心调参的标准 MHSA 仍能取得最优性能 [Chen et al., 2024]。因此，扎实掌握其实现细节，是迈向更高级视觉模型的必经之路。",
+    "concept_explanations": [
+      {
+        "concept_name": "缩放点积注意力（Scaled Dot-Product Attention）",
+        "explanation": "让我们从最基础的问题开始：什么是注意力？想象你在嘈杂的咖啡馆里和朋友聊天。尽管周围有很多声音，但你的大脑会自动“聚焦”在朋友的声音上，忽略其他噪音。这种选择性关注的能力，就是“注意力”的本质。在深度学习中，**缩放点积注意力**就是模拟这一过程的数学机制。\n\n具体来说，给定一组“查询”（Query，代表你想了解什么）、“键”（Key，代表可用的信息标签）和“值”（Value，代表实际内容），注意力机制会计算查询与每个键的相似度，然后用这个相似度作为权重，对值进行加权求和。公式如下：\n$$\\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^\\top}{\\sqrt{d_k}}\\right)V$$\n这里，$Q \\\\[ \\mathbb{R}^{n \\times d_k}$、$K \\\\[ \\mathbb{R}^{m \\times d_k}$、$V \\\\[ \\mathbb{R}^{m \\times d_v}$。$QK^\\top$ 计算的是所有查询与键之间的点积相似度，结果是一个 $n \\times m$ 的矩阵，表示每个查询对每个值的关注程度。\n\n但为什么需要“缩放”？关键在于**数值稳定性**。当 $d_k$（键的维度）很大时，点积的结果会变得非常大。例如，如果 $d_k=64$，两个随机向量的点积期望方差约为 64。这么大的值输入到 softmax 函数后，会导致输出接近 one-hot 分布（即某个位置概率接近 1，其余接近 0）。这会使梯度几乎为零，模型难以训练。通过除以 $\\sqrt{d_k}$，我们将点积的方差控制在 1 左右，使 softmax 的输入保持在一个合理的范围内，从而保证梯度流动顺畅 [Vaswani et al., 2017]。\n\n举个生活化的例子：假设你要根据多个专家的意见做决策。每个专家给你的建议（值）都有一个可信度评分（键）。你的问题（查询）会与每个专家的可信度匹配，得到一个“匹配分数”。如果不缩放，某些专家的分数可能高得离谱，导致你完全忽略其他专家——即使他们也有 valuable 的见解。缩放就像一个“公平调节器”，确保你能综合听取多方意见。\n\n在 2024 年的研究中，尽管出现了更复杂的注意力变体，缩放点积注意力因其简洁性和有效性，仍然是绝大多数 Transformer 架构的基础单元 [Tay et al., 2024]。理解它，就掌握了打开 Transformer 世界的第一把钥匙。",
+        "why_important": "缩放点积注意力是多头自注意力机制的基本计算单元。没有它，就无法实现 token 之间的动态权重分配，也就无法建模长距离依赖关系。它是整个 ViT 能够理解图像全局语义的核心。",
+        "related_concepts": [
+          "Softmax 函数",
+          "点积相似度",
+          "梯度消失问题"
+        ],
+        "examples": [
+          "咖啡馆听朋友说话（选择性注意）",
+          "专家意见综合决策（加权求和）",
+          "搜索引擎根据关键词匹配网页（查询-键匹配）"
+        ]
+      },
+      {
+        "concept_name": "多头自注意力（Multi-Head Self-Attention）",
+        "explanation": "现在我们来回答一个关键问题：为什么需要“多头”？单头注意力难道不够吗？答案是否定的。想象你是一位侦探，正在分析一起案件。如果你只从一个角度（比如目击者证词）看问题，可能会遗漏关键线索。但如果你同时从多个角度（监控录像、物证、嫌疑人行为模式等）分析，就能构建更完整的案情图景。**多头自注意力**正是基于这一思想——它让模型能够**并行地从多个表示子空间中学习不同的特征交互模式**。\n\n技术上，多头机制将输入嵌入 $X$ 通过 $h$ 组不同的线性变换（$W_Q^i, W_K^i, W_V^i$）投影到 $h$ 个低维子空间（每个维度为 $d_k = d/h$），然后在每个子空间中独立计算注意力：\n$$\\text{head}_i = \\text{Attention}(XW_Q^i, XW_K^i, XW_V^i)$$\n每个头可以学习到不同的注意力模式。例如，在视觉任务中，一个头可能关注局部纹理，另一个头关注物体边界，第三个头关注全局布局 [Dosovitskiy et al., 2020]。这种多样性极大地增强了模型的表达能力。\n\n计算完所有头后，我们将它们的输出拼接起来：\n$$\\text{MultiHead} = \\text{Concat}(\\text{head}_1, \\dots, \\text{head}_h)$$\n然后通过一个线性变换 $W_O$ 将拼接后的向量映射回原始维度 $d$：\n$$\\text{Output} = \\text{MultiHead} \\cdot W_O$$\n这个输出融合了所有头的信息，成为最终的上下文感知表示。\n\n为什么“自注意力”？因为在这个场景中，查询、键、值都来自同一个输入序列 $X$。这意味着每个 token 都在和其他所有 token 对话，包括自己。这种机制天然适合处理序列数据，因为它不依赖固定的窗口大小（如 CNN）或递归结构（如 RNN），而是直接建模任意两个位置之间的关系。\n\n2024 年的最新研究表明，多头机制不仅是性能提升的关键，还能提高模型的鲁棒性和泛化能力 [Chen et al., 2024]。即使在参数量相同的情况下，多头结构也比单头表现更好，因为它提供了更强的函数逼近能力。可以说，没有多头设计，Transformer 就不可能成为今天的主流架构。",
+        "why_important": "多头自注意力是 ViT 的核心创新之一，它使模型能够同时捕获多种类型的依赖关系（局部/全局、语义/结构等），从而在视觉任务中取得突破性性能。实现它是我们构建完整 ViT 的关键一步。",
+        "related_concepts": [
+          "表示子空间",
+          "并行计算",
+          "特征多样性"
+        ],
+        "examples": [
+          "侦探从多角度破案（多视角分析）",
+          "乐队中不同乐器演奏同一首曲子（多声部和谐）",
+          "多传感器融合（摄像头+雷达+激光雷达）"
+        ]
+      }
+    ],
+    "estimated_steps": 8,
+    "dependencies": [
+      {
+        "name": "torch",
+        "version": ">=2.0.0",
+        "purpose": "提供张量计算和自动微分支持，用于实现注意力机制的核心运算"
+      },
+      {
+        "name": "numpy",
+        "version": ">=1.21.0",
+        "purpose": "用于数值计算和测试数据生成"
+      },
+      {
+        "name": "pytest",
+        "version": ">=7.0.0",
+        "purpose": "用于编写和运行单元测试，确保模块正确性"
+      }
+    ],
+    "setup_instructions": [
+      "创建新的 Python 虚拟环境：python -m venv vit-attention-env",
+      "激活虚拟环境：source vit-attention-env/bin/activate (Linux/Mac) 或 vit-attention-env\\Scripts\\activate (Windows)",
+      "安装依赖：pip install -r requirements.txt",
+      "运行测试验证环境：pytest tests/"
+    ],
+    "usage_examples": [
+      {
+        "title": "基本多头注意力计算",
+        "scenario": "给定一个随机嵌入序列，计算其多头自注意力输出",
+        "code": "import torch\nfrom src.multi_head_self_attention import MultiHeadSelfAttention\n\n# 创建输入：batch_size=2, seq_len=197 (16x16 patches + cls token), embed_dim=768\nx = torch.randn(2, 197, 768)\n\n# 初始化多头注意力模块：embed_dim=768, num_heads=12\nmhsa = MultiHeadSelfAttention(embed_dim=768, num_heads=12)\n\n# 前向传播\noutput = mhsa(x)\nprint(f\"Output shape: {output.shape}\")  # 应输出 torch.Size([2, 197, 768])",
+        "expected_output": "Output shape: torch.Size([2, 197, 768])"
+      },
+      {
+        "title": "缩放点积注意力单元测试",
+        "scenario": "单独测试缩放点积注意力模块的正确性",
+        "code": "import torch\nfrom src.scaled_dot_product_attention import ScaledDotProductAttention\n\n# 创建 Q, K, V：batch_size=1, seq_len=4, head_dim=8\nQ = torch.randn(1, 4, 8)\nK = torch.randn(1, 4, 8)\nV = torch.randn(1, 4, 8)\n\n# 初始化模块\nattn = ScaledDotProductAttention()\n\n# 计算注意力\noutput, attn_weights = attn(Q, K, V)\nprint(f\"Output shape: {output.shape}\")\nprint(f\"Attention weights shape: {attn_weights.shape}\")",
+        "expected_output": "Output shape: torch.Size([1, 4, 8])\nAttention weights shape: torch.Size([1, 4, 4])"
+      }
+    ],
+    "implementation_steps": [
+      {
+        "step_number": "1",
+        "component_name": "ScaledDotProductAttention",
+        "file_path": "src/scaled_dot_product_attention.py",
+        "purpose": "实现标准的缩放点积注意力机制，作为多头自注意力模块的核心计算单元，用于计算查询、键和值之间的注意力权重并生成上下文感知的输出表示。",
+        "explanation": "同学们好！在上一步中，我们完成了图像分块嵌入（Patch Embedding），将输入图像转换为一系列扁平化的 token 序列，每个 token 是一个 d 维向量。现在，我们要构建 Vision Transformer 的“思考引擎”——**多头自注意力机制**的第一块基石：**缩放点积注意力（Scaled Dot-Product Attention）**。\n\n为什么需要这个组件？因为在原始的 Transformer 论文中 [Vaswani et al., 2017]，作者发现直接计算 Q 和 K 的点积会导致梯度消失问题，尤其是在高维空间中。因此，他们引入了 **缩放因子** $\\frac{1}{\\sqrt{d_k}}$ 来稳定 softmax 的梯度。这个看似简单的操作，却是整个注意力机制能够有效训练的关键。\n\n具体来说，给定查询矩阵 $Q \\in \\mathbb{R}^{n \\times d_k}$、键矩阵 $K \\in \\mathbb{R}^{n \\times d_k}$ 和值矩阵 $V \\in \\mathbb{R}^{n \\times d_v}$，缩放点积注意力的计算公式为：\n$$\n\\text{Attention}(Q, K, V) = \\text{softmax}\\left(\\frac{QK^T}{\\sqrt{d_k}}\\right)V\n$$\n其中 $d_k$ 是每个注意力头的维度。注意，这里我们假设 Q、K、V 已经由线性层投影得到，本模块只负责核心的注意力计算。\n\n在实现时，我们需要特别注意数值稳定性。当 $d_k$ 较大时，$QK^T$ 的值可能非常大，导致 softmax 输出接近 one-hot，梯度几乎为零。因此，除了缩放，我们还支持可选的 **注意力掩码（attn_mask）**，这在处理变长序列或防止信息泄露（如解码器中的因果掩码）时至关重要。掩码通常是一个布尔张量或浮点张量，我们会将其转换为负无穷（-inf）以在 softmax 中屏蔽对应位置。\n\n数据流方面：输入是 (Q, K, V, attn_mask)，输出是一个与 V 形状相同的加权求和结果。整个过程完全可微，且计算高效，适合 GPU 并行。这也是为什么它成为 2024 年绝大多数视觉和语言模型的标准组件——尽管有 FlashAttention 等优化版本，但其数学本质不变。\n\n设计上，我们选择将此功能封装为一个独立的类而非函数，是为了便于后续集成到多头注意力模块中，并支持未来扩展（如添加 dropout、不同缩放策略等）。这种模块化设计符合 PyTorch 的最佳实践，也便于单元测试和调试。\n\n最后，这个组件将被 `MultiHeadSelfAttention` 类调用多次（每个头一次），因此它的接口必须清晰、鲁棒。我们将在下一步中看到如何将多个这样的注意力头并行计算并拼接起来，形成真正的“多头”能力。",
+        "code": "import torch\nimport torch.nn as nn\nimport math\nfrom typing import Optional\n\n\nclass ScaledDotProductAttention(nn.Module):\n    \"\"\"\n    实现标准的缩放点积注意力机制。\n    \n    该模块接收查询(Q)、键(K)、值(V)张量以及可选的注意力掩码，\n    计算缩放后的点积注意力权重，并对值进行加权求和。\n    \n    公式: Attention(Q, K, V) = softmax(QK^T / sqrt(d_k)) * V\n    \n    参数:\n        dropout (float): 注意力权重上的 dropout 比例，默认为 0.0（无 dropout）\n    \n    输入:\n        q (Tensor): 查询张量，形状为 (batch_size, n_heads, seq_len, d_k)\n        k (Tensor): 键张量，形状为 (batch_size, n_heads, seq_len, d_k)\n        v (Tensor): 值张量，形状为 (batch_size, n_heads, seq_len, d_v)\n        attn_mask (Optional[Tensor]): 注意力掩码，形状为 (batch_size, n_heads, seq_len, seq_len)\n            - 若为布尔张量，True 表示屏蔽该位置\n            - 若为浮点张量，直接加到注意力分数上（通常为 -inf 表示屏蔽）\n    \n    输出:\n        output (Tensor): 注意力输出，形状为 (batch_size, n_heads, seq_len, d_v)\n        attn_weights (Tensor): 注意力权重，形状为 (batch_size, n_heads, seq_len, seq_len)\n    \n    示例:\n        >>> attention = ScaledDotProductAttention(dropout=0.1)\n        >>> q = torch.randn(2, 8, 197, 64)\n        >>> k = torch.randn(2, 8, 197, 64)\n        >>> v = torch.randn(2, 8, 197, 64)\n        >>> out, weights = attention(q, k, v)\n        >>> print(out.shape)  # torch.Size([2, 8, 197, 64])\n    \"\"\"\n    \n    def __init__(self, dropout: float = 0.0):\n        super(ScaledDotProductAttention, self).__init__()\n        # 初始化 dropout 层，用于在注意力权重上随机置零，防止过拟合\n        self.dropout = nn.Dropout(dropout)\n        # 缓存 softmax 结果用于调试或可视化（可选）\n        self.attn_weights: Optional[torch.Tensor] = None\n    \n    def forward(\n        self,\n        q: torch.Tensor,\n        k: torch.Tensor,\n        v: torch.Tensor,\n        attn_mask: Optional[torch.Tensor] = None\n    ) -> tuple[torch.Tensor, torch.Tensor]:\n        \"\"\"\n        执行缩放点积注意力计算。\n        \n        步骤详解:\n        1. 计算 Q 和 K 的点积，得到原始注意力分数\n        2. 应用缩放因子 1/sqrt(d_k) 稳定梯度\n        3. 如果提供了 attn_mask，则应用掩码（将屏蔽位置设为 -inf）\n        4. 对注意力分数应用 softmax 得到归一化权重\n        5. 对权重应用 dropout（如果 dropout > 0）\n        6. 使用权重对 V 进行加权求和，得到最终输出\n        \"\"\"\n        # 获取每个注意力头的维度 d_k，用于缩放\n        # q 的形状: (batch_size, n_heads, seq_len, d_k)\n        d_k = q.size(-1)\n        \n        # 步骤1 & 2: 计算缩放点积注意力分数\n        # torch.matmul 支持批量矩阵乘法，自动处理前两个维度\n        # scores 形状: (batch_size, n_heads, seq_len, seq_len)\n        scores = torch.matmul(q, k.transpose(-2, -1)) / math.sqrt(d_k)\n        \n        # 步骤3: 应用注意力掩码（如果提供）\n        if attn_mask is not None:\n            # 处理布尔掩码：将 True 转换为 -inf，False 保持为 0\n            if attn_mask.dtype == torch.bool:\n                # 创建与 scores 同形状的掩码张量\n                masked_scores = scores.masked_fill(attn_mask, float('-inf'))\n            else:\n                # 假设 attn_mask 已经是浮点数（如 -inf 表示屏蔽）\n                masked_scores = scores + attn_mask\n        else:\n            masked_scores = scores\n        \n        # 步骤4: 应用 softmax 得到注意力权重\n        # dim=-1 表示在最后一个维度（即 key 的序列维度）上归一化\n        attn_weights = torch.softmax(masked_scores, dim=-1)\n        \n        # 步骤5: 对注意力权重应用 dropout\n        # 注意：dropout 应用于权重，而不是输出\n        attn_weights = self.dropout(attn_weights)\n        \n        # 缓存注意力权重（可用于调试或可视化）\n        self.attn_weights = attn_weights.detach()  # 分离计算图，避免内存泄漏\n        \n        # 步骤6: 使用注意力权重对值进行加权求和\n        # output 形状: (batch_size, n_heads, seq_len, d_v)\n        output = torch.matmul(attn_weights, v)\n        \n        return output, attn_weights",
+        "language": "python",
+        "important_notes": [
+          "缩放因子 1/sqrt(d_k) 至关重要：当 d_k 较大时，QK^T 的方差会增大，导致 softmax 梯度饱和。缩放后能保持梯度稳定，这是 2017 年原始论文的关键洞见，至今仍是标准做法。",
+          "注意力掩码的处理需谨慎：布尔掩码和浮点掩码的语义不同。布尔掩码中 True 表示屏蔽，而浮点掩码通常直接加到分数上（-inf 表示屏蔽）。我们的实现同时支持两种格式，提高了模块的通用性。",
+          "Dropout 应用于注意力权重而非输出：这是 Transformer 原始论文的做法，有助于防止模型过度依赖某些特定的注意力连接，提升泛化能力。在 ViT 中，通常设置较小的 dropout 率（如 0.1）。",
+          "缓存注意力权重（self.attn_weights）是一个实用技巧：虽然不参与前向计算，但在调试或可视化注意力模式时非常有用。使用 .detach() 避免保留计算图，防止内存泄漏。"
+        ]
+      }
+    ]
+  },
+  "batch_info": {
+    "current_batch": 1,
+    "total_batches": 2,
+    "steps_generated": 1,
+    "status": "in_progress"
+  }
+}

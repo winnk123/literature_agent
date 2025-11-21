@@ -3,6 +3,9 @@ Flask API 服务器
 提供代码智能体的 REST API 接口
 """
 
+import json
+from pathlib import Path
+
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import io
@@ -15,6 +18,9 @@ import numpy as np
 import requests
 from dotenv import load_dotenv
 load_dotenv("config/api.env")
+
+BASE_DIR = Path(__file__).resolve().parent
+DEFAULT_TUTORIAL_DIR = Path(os.environ.get("TUTORIAL_OUTPUT_DIR") or (BASE_DIR / "output"))
 try:
     import torch
 except Exception:
@@ -342,6 +348,51 @@ def code_chat():
             'success': False,
             'message': f'服务器错误: {str(e)}'
         }), 500
+
+
+@app.route('/api/tutorial/full', methods=['GET'])
+def get_full_tutorial():
+    """
+    返回 FULL_TUTORIAL.ipynb 的 JSON 内容，供前端展示或下载。
+    可通过 query 参数 path 指定输出目录下的其他 notebook。
+    """
+    base_dir = Path(os.environ.get('TUTORIAL_OUTPUT_DIR') or DEFAULT_TUTORIAL_DIR).resolve()
+
+    if not base_dir.exists():
+        return jsonify({
+            'success': False,
+            'message': f'教程输出目录不存在: {base_dir}'
+        }), 404
+
+    requested_path = request.args.get('path')
+    notebook_path = (base_dir / requested_path).resolve() if requested_path else (base_dir / 'FULL_TUTORIAL.ipynb').resolve()
+
+    # 路径安全检查，禁止越界访问
+    try:
+        notebook_path.relative_to(base_dir)
+    except ValueError:
+        return jsonify({'success': False, 'message': '非法路径请求'}), 400
+
+    if not notebook_path.exists():
+        return jsonify({
+            'success': False,
+            'message': f'未找到教程文件: {notebook_path}'
+        }), 404
+
+    try:
+        with notebook_path.open('r', encoding='utf-8') as f:
+            notebook_json = json.load(f)
+    except json.JSONDecodeError as exc:
+        return jsonify({
+            'success': False,
+            'message': f'教程文件解析失败: {exc}'
+        }), 500
+
+    return jsonify({
+        'success': True,
+        'path': str(notebook_path),
+        'notebook': notebook_json
+    })
 
 
 @app.route('/api/notebook/run', methods=['GET', 'POST', 'OPTIONS'])
